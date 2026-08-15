@@ -323,9 +323,22 @@ input[type="text"], input[type="date"], input[type="number"], select {
 .agenda-name { font-weight: 500; }
 .agenda-type { font-size: 12px; color: var(--muted); margin-left: auto; }
 
-.chip.mine { font-weight: 600; }
+.chip.mine { font-weight: 600; cursor: grab; }
 .chip:hover { filter: brightness(1.08); }
 .chip:focus-visible, .agenda-item:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+
+/* Drag-to-move (desktop grid only, see drag.ts's MIN_WIDTH gate). */
+.chip-dragging {
+	cursor: grabbing;
+	opacity: 0.55;
+	outline: 2px dashed var(--chip);
+	outline-offset: 1px;
+}
+.cell.drop-target {
+	background: color-mix(in srgb, var(--accent) 14%, var(--surface));
+	outline: 2px solid var(--accent);
+	outline-offset: -2px;
+}
 
 .calendar-actions { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: var(--pad); }
 .calendar-actions .hint { font-size: 13px; }

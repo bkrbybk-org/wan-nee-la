@@ -8,3 +8,4 @@
  */
 import './booking.ts';
 import './calendar.ts';
+import './drag.ts';

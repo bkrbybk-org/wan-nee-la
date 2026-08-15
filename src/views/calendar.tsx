@@ -41,6 +41,13 @@ function entryData(e: LeaveEntry, canEdit: boolean) {
 		'data-days': formatDays(e.days_total),
 		'data-note': e.note ?? '',
 		'data-can-edit': canEdit ? '1' : '',
+		// Raw values, not for display — drag-to-move rebuilds the booking from
+		// these rather than parsing the human-readable data-when/data-type back apart.
+		'data-type-id': e.leave_type_id,
+		'data-start-date': e.start_date,
+		'data-end-date': e.end_date,
+		'data-start-half': e.start_half,
+		'data-end-half': e.end_half,
 	};
 }
 

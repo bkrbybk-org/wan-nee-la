@@ -400,7 +400,6 @@ app.get('/leave/:id/edit', async (c) => {
 app.post('/api/leave/:id/edit', async (c) => {
 	const today = c.get('today');
 	const id = c.req.param('id');
-	const back = `/leave/${id}/edit`;
 
 	const owned = await ownedLeave(c, id);
 	if (!owned.ok) return redirectWithFlash('/me', 'err', owned.error);
@@ -409,6 +408,13 @@ app.post('/api/leave/:id/edit', async (c) => {
 	}
 
 	const form = await c.req.parseBody();
+
+	// Dragging on the calendar posts here too, and should land back on the month
+	// it was dragged in rather than on /me or the edit page. The edit page sends
+	// no returnTo and keeps the original behaviour.
+	const returnTo = safePath(form.returnTo);
+	const back = returnTo ?? `/leave/${id}/edit`;
+	const done = returnTo ?? '/me';
 	const parsed = parseBooking(form as Record<string, unknown>);
 	if ('error' in parsed) return redirectWithFlash(back, 'err', parsed.error);
 
@@ -428,9 +434,9 @@ app.post('/api/leave/:id/edit', async (c) => {
 		days_total: check.days,
 		note: parsed.note || null,
 	});
-	if (!changed) return redirectWithFlash('/me', 'err', 'That booking was cancelled while you were editing it.');
+	if (!changed) return redirectWithFlash(done, 'err', 'That booking was cancelled while you were editing it.');
 
-	return redirectWithFlash('/me', 'ok', `Updated to ${check.days} day(s) of ${check.type.label_en.toLowerCase()} leave.`);
+	return redirectWithFlash(done, 'ok', `Updated to ${check.days} day(s) of ${check.type.label_en.toLowerCase()} leave.`);
 });
 
 app.post('/api/leave/:id/cancel', async (c) => {
@@ -678,6 +684,18 @@ function validDateOr(raw: string | undefined, fallback: string): string {
  * same-origin URL are kept — a Referer is attacker-influenceable, and feeding
  * it whole into a redirect is an open-redirect.
  */
+/**
+ * A client-supplied redirect target, accepted only when it is a plain
+ * same-origin path. A bare `/` prefix is not enough: `//evil.example` is
+ * protocol-relative and would leave the site, which is an open redirect.
+ */
+function safePath(raw: unknown): string | null {
+	const value = typeof raw === 'string' ? raw.trim() : '';
+	if (!value.startsWith('/') || value.startsWith('//')) return null;
+	if (value.includes('\\') || value.includes('\n') || value.includes('\r')) return null;
+	return value.slice(0, 200);
+}
+
 function referrerPath(referer: string | undefined): string | null {
 	if (!referer) return null;
 	try {
@@ -741,12 +759,18 @@ function readFlash(cookieHeader: string | undefined): Flash {
 	}
 }
 
-/** Redirect to a bare path, carrying the message in the flash cookie. */
+/**
+ * Redirect, carrying the message in the flash cookie.
+ *
+ * The query string is preserved. It used to be stripped because the message
+ * itself travelled there; now that it does not, keeping the query is what lets
+ * a redirect return to the month that was being viewed or the year being
+ * edited.
+ */
 function redirectWithFlash(path: string, kind: 'ok' | 'err', message: string): Response {
-	const [base] = path.split('?');
 	return new Response(null, {
 		status: 303,
-		headers: { Location: base, 'Set-Cookie': flashCookie(kind, message) },
+		headers: { Location: path, 'Set-Cookie': flashCookie(kind, message) },
 	});
 }
 
