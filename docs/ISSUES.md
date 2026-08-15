@@ -111,20 +111,22 @@ Accepted for v1: the window is milliseconds, the population is small, and an ove
 
 ---
 
-## #8 — Retroactive cancellation still reclaims quota `open — needs owner decision`
+## #8 — Retroactive edit/cancel still reclaims quota `open — needs owner decision`
 
-Self-serve with no approval means a user can cancel leave that has already been taken and get the days back. Nothing currently stops it.
+Self-serve with no approval means a user can edit or cancel leave that has already been taken and get the days back. Nothing stops it, and the owner has since asked for edit and remove to be available on every booking, so the surface is now wider than when this was first written.
 
-Partial mitigations already in place:
+Mitigations in place:
 
-- Booking is limited to `MAX_BACKDATE_DAYS = 90` days in the past (`src/domain/leave.ts`), so history cannot be rewritten arbitrarily far back.
-- Cancellation is a soft delete: `status` flips to `cancelled` and `cancelled_at` is stamped, so the row survives for an audit.
+- `MAX_BACKDATE_DAYS = 90` applies to edits as well as new bookings, so a booking cannot be *moved* further back than that either.
+- Cancellation is a soft delete: `status` flips to `cancelled`, `cancelled_at` is stamped, the row survives.
 
-Not fixed: cancelling a *past* booking is still allowed and still returns the days.
+Still true, and now on more paths: a past booking can be shortened, retyped, or removed, and the days come back.
 
-Options: (a) allow it, trust people; (b) block cancelling a booking whose end date has passed, admin override only; (c) allow but surface it in an admin audit view.
+Not fixed, and **deliberately not decided unilaterally** — this is a policy question about how much the company trusts self-reporting, not a technical one.
 
-Leaning (b). Needs the owner's call — it is a policy question, not a technical one.
+Options: (a) allow it, trust people; (b) freeze bookings whose end date has passed, admin override only; (c) allow but write an audit row on every edit and cancel, surfaced in `/admin`.
+
+Leaning (c) now rather than (b): the owner explicitly wants correction to be easy, and an audit trail preserves that while making retroactive changes visible. Note that an edit currently overwrites the old values with no record of what they were, so (c) needs a new table.
 
 ---
 

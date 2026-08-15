@@ -6,7 +6,7 @@ Updated: 2026-08-15
 
 **Phases 1–3 built, verified, and deployed.** Phase 4 (LINE push) is deliberately not built — the owner deferred it.
 
-Live at **https://leave.example.com** — account `<account name>` (`<account-id>`), version `140856d6-fbd1-4314-8c79-b21e341e2eed`, D1 `<database-id>` (APAC).
+Live at **https://leave.example.com** — account `<account name>` (`<account-id>`), version `0e16f0df-ea29-4dd1-bcc3-292f3c65dd46`, D1 `<database-id>` (APAC).
 
 Cloudflare Access is enforcing: team `<team>.cloudflareaccess.com`, AUD `<access-aud>`, both set in `wrangler.jsonc` vars. `/health` reports `accessConfigured: true`, `devAuthBypass: false`.
 
@@ -79,4 +79,6 @@ Service-token claims are `aud, common_name, exp, iat, iss, sub, type` — no `em
 ## Log
 
 - **2026-08-15** — Requirements gathered. Architecture, plan, and issue list drafted. Confirmed LINE Notify EOL against LINE's own announcement; repointed the notification design at the Messaging API. Flagged per-member push billing (ISSUES.md #2).
+- **2026-08-15** — Added edit and remove for submitted leave: `/leave/:id/edit`, `POST /api/leave/:id/edit`. Editing excludes the booking from its own overlap check and credits its days back before the balance check, so shortening or retyping is never refused by the quota the booking itself holds. Remove is the existing soft cancel, now reachable from every confirmed booking including past ones.
+- **2026-08-15** — Booking in a browser hit a Cloudflare WAF block; cause was our own query-string flash messages (ISSUES.md #15). Moved them to a cookie.
 - **2026-08-15** — Built phases 1–3. Owner deferred the LINE notification, so the `scheduled()` handler logs its decision instead of pushing. Verified every booking rule and both cron branches against a local D1.

@@ -1,5 +1,5 @@
 import { Hono } from 'hono';
-import type { MiddlewareHandler } from 'hono';
+import type { Context, MiddlewareHandler } from 'hono';
 import { authenticate } from './auth/access.ts';
 import {
 	bangkokNow,
@@ -14,6 +14,7 @@ import { parseBooking, round, validateBooking } from './domain/leave.ts';
 import * as db from './repo/db.ts';
 import { AdminPage } from './views/admin.tsx';
 import { CalendarPage } from './views/calendar.tsx';
+import { EditPage } from './views/edit.tsx';
 import { ErrorPage, Layout } from './views/layout.tsx';
 import { MePage } from './views/me.tsx';
 import type { Env, LeaveRequest, User } from './types.ts';
@@ -208,34 +209,61 @@ app.get('/api/leave/preview', async (c) => {
 // Booking
 // ---------------------------------------------------------------------------
 
+/**
+ * Everything `validateBooking` needs, for a given user.
+ *
+ * `replacing` is the booking being edited, if any. It is excluded from the
+ * overlap check — a booking always overlaps itself, so without this every edit
+ * would be rejected as a clash with the very row it is rewriting — and its days
+ * are credited back before the balance check, so shortening or retyping a
+ * booking is never refused for a quota the booking itself is consuming.
+ */
+async function buildBookingContext(
+	env: Env,
+	email: string,
+	parsed: { startDate: string; endDate: string },
+	today: string,
+	replacing?: LeaveRequest,
+) {
+	const year = Number(today.slice(0, 4));
+	const [types, existing, quotas, used, holidays] = await Promise.all([
+		db.listLeaveTypes(env.DB),
+		db.confirmedRanges(env.DB, email),
+		db.listQuotas(env.DB, email, year),
+		db.usedByType(env.DB, email, year),
+		// Holidays are looked up across the request's own range rather than the
+		// whole year — a booking can legitimately cross into next year.
+		db.holidaySet(env.DB, parsed.startDate, parsed.endDate),
+	]);
+
+	const remaining = new Map<number, number>();
+	for (const t of types) {
+		const allotted = quotas.find((q) => q.leave_type_id === t.id)?.days_allotted ?? 0;
+		let spent = used.get(t.id) ?? 0;
+		if (replacing && replacing.leave_type_id === t.id) spent = round(spent - replacing.days_total);
+		remaining.set(t.id, round(allotted - spent));
+	}
+
+	return {
+		holidays,
+		existing: replacing ? existing.filter((e) => e.id !== replacing.id) : existing,
+		types,
+		remaining,
+		today,
+	};
+}
+
 app.post('/api/leave', async (c) => {
 	const user = c.get('user');
 	const today = c.get('today');
-	const year = Number(today.slice(0, 4));
 	const back = referrerPath(c.req.header('Referer')) ?? '/me';
 
 	const form = await c.req.parseBody();
 	const parsed = parseBooking(form as Record<string, unknown>);
 	if ('error' in parsed) return redirectWithFlash(back, 'err', parsed.error);
 
-	const [types, existing, quotas, used] = await Promise.all([
-		db.listLeaveTypes(c.env.DB),
-		db.confirmedRanges(c.env.DB, user.email),
-		db.listQuotas(c.env.DB, user.email, year),
-		db.usedByType(c.env.DB, user.email, year),
-	]);
-
-	// Holidays are looked up across the request's own range, plus slack, rather
-	// than the whole year — a booking can legitimately cross into next year.
-	const holidays = await db.holidaySet(c.env.DB, parsed.startDate, parsed.endDate);
-
-	const remaining = new Map<number, number>();
-	for (const t of types) {
-		const allotted = quotas.find((q) => q.leave_type_id === t.id)?.days_allotted ?? 0;
-		remaining.set(t.id, round(allotted - (used.get(t.id) ?? 0)));
-	}
-
-	const check = validateBooking(parsed, { holidays, existing, types, remaining, today });
+	const ctx = await buildBookingContext(c.env, user.email, parsed, today);
+	const check = validateBooking(parsed, ctx);
 	if (!check.ok) return redirectWithFlash(back, 'err', check.error);
 
 	const row: LeaveRequest = {
@@ -257,18 +285,94 @@ app.post('/api/leave', async (c) => {
 	return redirectWithFlash(back, 'ok', `Booked ${check.days} day(s) of ${check.type.label_en.toLowerCase()} leave.`);
 });
 
-app.post('/api/leave/:id/cancel', async (c) => {
+/**
+ * Ownership gate for editing or cancelling a booking. Own bookings always;
+ * anyone else's only as an admin. An id is guessable in principle, so this runs
+ * before the row is shown or touched.
+ */
+async function ownedLeave(
+	c: Context<{ Bindings: Env; Variables: Vars }>,
+	id: string,
+): Promise<{ ok: true; row: LeaveRequest } | { ok: false; error: string }> {
 	const user = c.get('user');
+	const row = await db.getLeave(c.env.DB, id);
+	if (!row) return { ok: false, error: 'That booking no longer exists.' };
+	if (row.user_email !== user.email && !user.is_admin) {
+		return { ok: false, error: 'That is not your booking.' };
+	}
+	return { ok: true, row };
+}
+
+app.get('/leave/:id/edit', async (c) => {
+	const user = c.get('user');
+	const today = c.get('today');
+	const id = c.req.param('id');
+
+	const owned = await ownedLeave(c, id);
+	if (!owned.ok) return redirectWithFlash('/me', 'err', owned.error);
+	if (owned.row.status !== 'confirmed') {
+		return redirectWithFlash('/me', 'err', 'That booking is cancelled. Book it again instead of editing it.');
+	}
+
+	const [entry, types] = await Promise.all([db.getLeaveEntry(c.env.DB, id), db.listLeaveTypes(c.env.DB)]);
+	if (!entry) return redirectWithFlash('/me', 'err', 'That booking no longer exists.');
+
+	return c.html(
+		<EditPage
+			user={user}
+			entry={entry}
+			types={types}
+			today={today}
+			onBehalfOf={entry.user_email === user.email ? undefined : entry.display_name}
+			version={c.env.CF_VERSION_METADATA?.id}
+			error={flashOf(c.get('flash'), 'err')}
+			notice={flashOf(c.get('flash'), 'ok')}
+		/>,
+	);
+});
+
+app.post('/api/leave/:id/edit', async (c) => {
+	const today = c.get('today');
+	const id = c.req.param('id');
+	const back = `/leave/${id}/edit`;
+
+	const owned = await ownedLeave(c, id);
+	if (!owned.ok) return redirectWithFlash('/me', 'err', owned.error);
+	if (owned.row.status !== 'confirmed') {
+		return redirectWithFlash('/me', 'err', 'That booking is cancelled and cannot be edited.');
+	}
+
+	const form = await c.req.parseBody();
+	const parsed = parseBooking(form as Record<string, unknown>);
+	if ('error' in parsed) return redirectWithFlash(back, 'err', parsed.error);
+
+	// Validate against the owner of the booking, not whoever is editing it — an
+	// admin fixing someone else's leave must be checked against that person's
+	// quota and their other bookings.
+	const ctx = await buildBookingContext(c.env, owned.row.user_email, parsed, today, owned.row);
+	const check = validateBooking(parsed, ctx);
+	if (!check.ok) return redirectWithFlash(back, 'err', check.error);
+
+	const changed = await db.updateLeave(c.env.DB, id, {
+		leave_type_id: parsed.leaveTypeId,
+		start_date: parsed.startDate,
+		end_date: parsed.endDate,
+		start_half: parsed.startHalf,
+		end_half: parsed.endHalf,
+		days_total: check.days,
+		note: parsed.note || null,
+	});
+	if (!changed) return redirectWithFlash('/me', 'err', 'That booking was cancelled while you were editing it.');
+
+	return redirectWithFlash('/me', 'ok', `Updated to ${check.days} day(s) of ${check.type.label_en.toLowerCase()} leave.`);
+});
+
+app.post('/api/leave/:id/cancel', async (c) => {
 	const back = referrerPath(c.req.header('Referer')) ?? '/me';
 	const id = c.req.param('id');
 
-	const row = await db.getLeave(c.env.DB, id);
-	if (!row) return redirectWithFlash(back, 'err', 'That booking no longer exists.');
-	// Ownership check before anything else: an id is guessable in principle and
-	// admins are the only ones who may touch someone else's row.
-	if (row.user_email !== user.email && !user.is_admin) {
-		return redirectWithFlash(back, 'err', 'That is not your booking.');
-	}
+	const owned = await ownedLeave(c, id);
+	if (!owned.ok) return redirectWithFlash(back, 'err', owned.error);
 
 	const done = await db.cancelLeave(c.env.DB, id);
 	return done

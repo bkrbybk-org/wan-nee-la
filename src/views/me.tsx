@@ -79,7 +79,7 @@ export function MePage(props: MeProps) {
 				) : (
 					<ul class="leave-list">
 						{upcoming.map((e) => (
-							<LeaveRow entry={e} cancellable />
+							<LeaveRow entry={e} />
 						))}
 					</ul>
 				)}
@@ -110,7 +110,12 @@ export function MePage(props: MeProps) {
 	);
 }
 
-function LeaveRow({ entry, cancellable }: { entry: LeaveEntry; cancellable?: boolean }) {
+/**
+ * A booking in a list. Edit and remove are offered on every confirmed booking,
+ * past ones included — sick leave in particular is often entered after the fact
+ * and then needs correcting.
+ */
+function LeaveRow({ entry }: { entry: LeaveEntry }) {
 	const cancelled = entry.status === 'cancelled';
 	return (
 		<li class={`leave-row ${cancelled ? 'cancelled' : ''}`}>
@@ -120,10 +125,13 @@ function LeaveRow({ entry, cancellable }: { entry: LeaveEntry; cancellable?: boo
 			<span class="leave-days">{formatDays(entry.days_total)}d</span>
 			{entry.note ? <span class="leave-note muted">{entry.note}</span> : null}
 			{cancelled ? <span class="tag">cancelled</span> : null}
-			{cancellable && !cancelled ? (
-				<form method="post" action={`/api/leave/${entry.id}/cancel`} class="inline">
-					<button type="submit" class="btn small danger">Cancel</button>
-				</form>
+			{!cancelled ? (
+				<span class="row-actions">
+					<a class="btn small" href={`/leave/${entry.id}/edit`}>Edit</a>
+					<form method="post" action={`/api/leave/${entry.id}/cancel`} class="inline">
+						<button type="submit" class="btn small danger">Remove</button>
+					</form>
+				</span>
 			) : null}
 		</li>
 	);

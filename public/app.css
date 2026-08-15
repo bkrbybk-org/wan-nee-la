@@ -258,6 +258,8 @@ input[type="text"], input[type="date"], input[type="number"], select {
 .leave-type { font-size: 13px; }
 .leave-days { margin-left: auto; font-variant-numeric: tabular-nums; }
 .leave-note { font-size: 13px; flex-basis: 100%; }
+.row-actions { display: inline-flex; gap: 6px; align-items: center; }
+.leave-current { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin: 0; }
 
 /* ---------- admin ---------- */
 

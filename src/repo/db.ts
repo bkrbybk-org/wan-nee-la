@@ -241,6 +241,49 @@ export async function getLeave(db: D1Database, id: string): Promise<LeaveRequest
 	return await db.prepare('SELECT * FROM leave_requests WHERE id = ?').bind(id).first<LeaveRequest>();
 }
 
+/** The same row as `getLeave`, with the display fields the edit page renders. */
+export async function getLeaveEntry(db: D1Database, id: string): Promise<LeaveEntry | null> {
+	return await db
+		.prepare(`SELECT ${ENTRY_COLUMNS} ${ENTRY_FROM} WHERE r.id = ?`)
+		.bind(id)
+		.first<LeaveEntry>();
+}
+
+/**
+ * Rewrite a booking in place.
+ *
+ * The `status = 'confirmed'` guard means a cancelled booking cannot be edited
+ * back into existence — cancelling is the way out, and re-booking is the way
+ * back in, so the balance arithmetic only ever has one path to reason about.
+ */
+export async function updateLeave(
+	db: D1Database,
+	id: string,
+	row: Pick<
+		LeaveRequest,
+		'leave_type_id' | 'start_date' | 'end_date' | 'start_half' | 'end_half' | 'days_total' | 'note'
+	>,
+): Promise<boolean> {
+	const res = await db
+		.prepare(
+			`UPDATE leave_requests
+			 SET leave_type_id = ?, start_date = ?, end_date = ?, start_half = ?, end_half = ?, days_total = ?, note = ?
+			 WHERE id = ? AND status = 'confirmed'`,
+		)
+		.bind(
+			row.leave_type_id,
+			row.start_date,
+			row.end_date,
+			row.start_half,
+			row.end_half,
+			row.days_total,
+			row.note,
+			id,
+		)
+		.run();
+	return (res.meta.changes ?? 0) > 0;
+}
+
 /**
  * Cancel a request. Returns false when nothing was cancelled — a wrong id, or a
  * row already cancelled. The status guard in the WHERE clause makes a double
