@@ -72,7 +72,7 @@ Phases 1–3 do not block on any of these. 0.5/0.6 are only needed at first depl
 | # | Task | Owner |
 | --- | --- | --- |
 | 5.1 | `npm test` aggregate script | **Haiku** |
-| 5.2 | GitHub Actions: typecheck + test on PR, deploy on main | **Haiku** |
+| 5.2 | GitHub Actions: typecheck, tests, client + Worker build, and a committed-secrets guard, on push and PR | **done** (Opus) |
 | 5.3 | README: setup, secrets, LINE onboarding, Access config | **Haiku** drafts → **Opus** reviews |
 | 5.4 | Deploy, smoke-test on phone + laptop, watch the first real 08:00 run | **Opus** |
 

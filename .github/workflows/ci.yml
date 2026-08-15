@@ -1,0 +1,90 @@
+name: CI
+
+# Runs on every push to main and every pull request. Deliberately needs no
+# secrets: the checks below are all local, so they work unchanged on pull
+# requests from forks, which GitHub never gives secrets to.
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    name: typecheck, tests, build
+    runs-on: ubuntu-latest
+    env:
+      # Wrangler phones home about usage by default; a CI runner has no user to
+      # collect telemetry about.
+      WRANGLER_SEND_METRICS: false
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          # Single source of truth with local development. The test scripts
+          # import .ts files directly via type stripping, which needs Node 24.
+          node-version-file: .nvmrc
+          cache: npm
+
+      - run: npm ci
+
+      - name: Typecheck
+        # Two configs: the Worker and the browser bundle have different libs.
+        run: npm run typecheck
+
+      - name: Unit tests
+        # Date maths, booking rules, LINE webhook signature and digest.
+        run: npm test
+
+      - name: Build the client bundle
+        # esbuild can fail on things tsc accepts, and the bundle is gitignored,
+        # so nothing else would catch a break.
+        run: npm run build:client
+
+      - name: Build the Worker
+        # Catches bundling errors tsc cannot see — a bad import, a module that
+        # does not survive the Workers runtime. --dry-run needs no credentials
+        # and never contacts the API, so this stays secret-free. Uses the
+        # committed template config, which also proves a fresh clone builds.
+        run: npx wrangler deploy --config wrangler.jsonc --dry-run --outdir /tmp/worker-build
+
+  hygiene:
+    name: nothing sensitive committed
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Local-only files must stay untracked
+        # These hold real credentials and real infrastructure ids. This repo is
+        # public, so a single stray `git add -f` is the whole exposure.
+        run: |
+          fail=0
+          for f in .dev.vars wrangler.local.jsonc public/app.js; do
+            if git ls-files --error-unmatch "$f" >/dev/null 2>&1; then
+              echo "::error file=$f::$f is tracked but must be local-only"
+              fail=1
+            fi
+          done
+          exit $fail
+
+      - name: No credential-shaped strings in tracked files
+        # Deliberately generic patterns. Naming this company's own hostname or
+        # account id here would put them back in the public repo, which is the
+        # thing being guarded against.
+        run: |
+          if git grep -nIE \
+            -e 'BEGIN [A-Z ]*PRIVATE KEY' \
+            -e 'AKIA[0-9A-Z]{16}' \
+            -e '\bsk-[A-Za-z0-9]{20,}' \
+            -e '\bghp_[A-Za-z0-9]{20,}' \
+            -e 'xox[baprs]-[A-Za-z0-9-]{10,}' \
+            -e 'CF_ACCESS_CLIENT_SECRET[[:space:]]*[:=][[:space:]]*[A-Za-z0-9]' \
+            -e 'LINE_CHANNEL_(ACCESS_TOKEN|SECRET)[[:space:]]*[:=][[:space:]]*["'"'"']?[A-Za-z0-9+/]{16}' \
+            -- . ; then
+            echo "::error::a credential-shaped string is committed"
+            exit 1
+          fi
+          echo "clean"

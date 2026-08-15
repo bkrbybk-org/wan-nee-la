@@ -1,5 +1,7 @@
 # wan-nee-la (วันนี้ลา)
 
+[![CI](https://github.com/bkrbybk-org/wan-nee-la/actions/workflows/ci.yml/badge.svg)](https://github.com/bkrbybk-org/wan-nee-la/actions/workflows/ci.yml)
+
 Employee leave tracker on Cloudflare Workers. "wan nee la" is Thai for *on leave today*.
 
 - Global calendar — who is out, which day. Click a day to book it, click an entry to open it, drag an entry to move it.
@@ -60,6 +62,8 @@ The first account to sign in becomes the admin.
 ```bash
 npm run typecheck && npm test
 ```
+
+CI runs the same checks on every push and pull request, plus a client and Worker build, and asserts that no local-only file or credential-shaped string has been committed. It needs no secrets, so it also runs on pull requests from forks.
 
 To fire the morning digest by hand, run `wrangler dev --test-scheduled` and:
 

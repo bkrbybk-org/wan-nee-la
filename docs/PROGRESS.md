@@ -30,7 +30,7 @@ Cloudflare Access is enforcing, with the team domain and AUD set in `wrangler.lo
 | 2 — Core app | **done** |
 | 3 — Admin | **done** |
 | 4 — LINE notification | **built**; inert until the LINE credentials are set. |
-| 5 — Ship | **deployed**; CI not set up |
+| 5 — Ship | **deployed**; CI runs on push and PR. Deploy is still manual by choice — see below. |
 
 ## What exists
 
@@ -84,7 +84,7 @@ Service-token claims are `aud, common_name, exp, iat, iss, sub, type` — no `em
    3. `wrangler secret put LINE_CHANNEL_ACCESS_TOKEN` and `wrangler secret put LINE_CHANNEL_SECRET`
    4. post any message in the group so the webhook captures the group id, then check /admin shows it
    5. use **Preview** on /admin, then **Send now**
-3. Then: CI (phase 5.2). Nothing else depends on it.
+3. Optional: automated deploy on merge to main. Not set up, deliberately — it needs a Cloudflare API token in GitHub secrets plus the account id, hostname and database id as Actions variables, since `wrangler.local.jsonc` is not in the repo. Deploying from a laptop is currently one command and carries none of that. Worth revisiting when more than one person merges.
 
 ## Log
 
