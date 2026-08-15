@@ -36,6 +36,22 @@ export function AdminPage(props: AdminProps) {
 			<section class="card">
 				<h2>Quotas</h2>
 				<p class="muted">Days allotted per person for {year}. Blank rows default from the leave type.</p>
+				<form method="post" action="/admin/quotas/bulk" class="quota-form bulk-quota-form">
+					<input type="hidden" name="year" value={String(year)} />
+					<label class="quota-cell">
+						<span class="muted">Leave type</span>
+						<select name="leaveTypeId" required>
+							{types.map((t) => (
+								<option value={String(t.id)}>{t.label_en}</option>
+							))}
+						</select>
+					</label>
+					<label class="quota-cell">
+						<span class="muted">Days</span>
+						<input type="number" name="days" step="0.5" min="0" max="365" required />
+					</label>
+					<button type="submit" class="btn small">Set for everyone (active)</button>
+				</form>
 				<div class="table-scroll">
 					<table class="grid-table">
 						{/* Two columns only: the quota inputs carry their own labels, so a

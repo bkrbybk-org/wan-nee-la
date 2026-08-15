@@ -404,6 +404,16 @@ input[type="text"], input[type="date"], input[type="number"], select {
 .person { display: flex; flex-direction: column; }
 .checkline { display: inline-flex; align-items: center; gap: 4px; font-size: 13px; }
 .quota-form { display: flex; flex-wrap: wrap; gap: 10px; align-items: flex-end; }
+/* Sets the bulk action apart from the per-person rows below it — the two do
+   very different things and sit inside the same card. */
+.bulk-quota-form {
+	padding: 12px;
+	margin-bottom: var(--pad);
+	background: var(--bg);
+	border: 1px solid var(--line);
+	border-radius: 8px;
+}
+.bulk-quota-form select { min-height: 36px; font-size: 14px; }
 .quota-cell { display: flex; flex-direction: column; gap: 2px; font-size: 12px; width: 92px; }
 .quota-cell input { min-height: 36px; font-size: 14px; }
 .holiday-list { list-style: none; padding: 0; }

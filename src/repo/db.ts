@@ -160,6 +160,24 @@ export async function setQuota(
 		.run();
 }
 
+/**
+ * Set one leave type's quota for every active user. `db.batch()` sends the
+ * whole set as one round trip instead of N sequential awaits — a 40-person
+ * team is 40 batched statements, not 40 network round trips.
+ */
+export async function bulkSetQuota(db: D1Database, year: number, leaveTypeId: number, days: number): Promise<number> {
+	const active = await db.prepare('SELECT email FROM users WHERE active = 1').all<{ email: string }>();
+	const emails = (active.results ?? []).map((u) => u.email);
+	if (emails.length === 0) return 0;
+
+	const stmt = db.prepare(
+		`INSERT INTO quotas (user_email, year, leave_type_id, days_allotted) VALUES (?, ?, ?, ?)
+		 ON CONFLICT (user_email, year, leave_type_id) DO UPDATE SET days_allotted = excluded.days_allotted`,
+	);
+	await db.batch(emails.map((email) => stmt.bind(email, year, leaveTypeId, days)));
+	return emails.length;
+}
+
 // ---------------------------------------------------------------------------
 // Leave
 // ---------------------------------------------------------------------------

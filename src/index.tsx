@@ -550,6 +550,25 @@ app.post('/admin/quotas', async (c) => {
 	return redirectWithFlash(`/admin?y=${year}`, 'ok', `Quotas saved for ${email}.`);
 });
 
+app.post('/admin/quotas/bulk', async (c) => {
+	const form = await c.req.parseBody();
+	const leaveTypeId = Number(form.leaveTypeId);
+	const days = Number(form.days);
+	const year = Number(form.year);
+	if (!Number.isInteger(year)) return redirectWithFlash('/admin', 'err', 'Bad request.');
+	if (!Number.isFinite(days) || days < 0 || days > 365) {
+		return redirectWithFlash('/admin', 'err', 'Days must be between 0 and 365.');
+	}
+
+	const types = await db.listLeaveTypes(c.env.DB);
+	if (!types.some((t) => t.id === leaveTypeId)) {
+		return redirectWithFlash('/admin', 'err', 'Unknown leave type.');
+	}
+
+	const count = await db.bulkSetQuota(c.env.DB, year, leaveTypeId, round(days));
+	return redirectWithFlash(`/admin?y=${year}`, 'ok', `Set quota for ${count} active user(s).`);
+});
+
 app.post('/admin/user', async (c) => {
 	const actor = c.get('user');
 	const form = await c.req.parseBody();
