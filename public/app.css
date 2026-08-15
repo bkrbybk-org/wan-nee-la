@@ -2,7 +2,18 @@
    grid is hidden and the agenda list is shown, because a 7-column grid with
    names in the cells is unreadable on a phone. */
 
+/* Theme has three states. "System" is the default and stamps nothing on the
+   root, so `prefers-color-scheme` decides. An explicit choice stamps
+   data-theme="light" or "dark", which must win in BOTH directions — hence the
+   :not([data-theme="light"]) guard on the media query, so choosing Light on a
+   dark-mode OS actually stays light.
+
+   Dark tokens are written twice on purpose. Custom properties cannot be
+   composed, and a shared class would have to be applied by JS, which reopens
+   the flash-of-wrong-theme this design avoids. */
+
 :root {
+	color-scheme: light;
 	--bg: #f6f7f9;
 	--surface: #ffffff;
 	--ink: #16181d;
@@ -17,7 +28,8 @@
 }
 
 @media (prefers-color-scheme: dark) {
-	:root {
+	:root:not([data-theme="light"]) {
+		color-scheme: dark;
 		--bg: #101215;
 		--surface: #181b20;
 		--ink: #e8eaed;
@@ -28,6 +40,19 @@
 		--ok: #34d399;
 		--weekend: #14171b;
 	}
+}
+
+:root[data-theme="dark"] {
+	color-scheme: dark;
+	--bg: #101215;
+	--surface: #181b20;
+	--ink: #e8eaed;
+	--muted: #9aa1ab;
+	--line: #2a2f37;
+	--accent: #60a5fa;
+	--danger: #f87171;
+	--ok: #34d399;
+	--weekend: #14171b;
 }
 
 * { box-sizing: border-box; }
@@ -71,6 +96,27 @@ body {
 }
 .nav a.on { background: var(--bg); color: var(--ink); }
 .who { display: none; color: var(--muted); font-size: 13px; }
+
+/* The toggle is useless without JS, so it stays hidden until the inline theme
+   script proves scripting is on by stamping data-js. */
+.theme-toggle { display: none; }
+:root[data-js="1"] .theme-toggle {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	width: 34px;
+	height: 34px;
+	flex: none;
+	padding: 0;
+	font-size: 15px;
+	line-height: 1;
+	border: 1px solid var(--line);
+	border-radius: 8px;
+	background: var(--surface);
+	color: var(--ink);
+	cursor: pointer;
+}
+.theme-toggle:hover { background: var(--bg); }
 
 .wrap { max-width: 1100px; margin: 0 auto; padding: var(--pad); }
 .foot {

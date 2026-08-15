@@ -143,6 +143,21 @@ Message: Flex message, one line per person — name, leave type, and half-day ma
 
 ## Frontend
 
+### Theme
+
+Three states: **System** (default), **Light**, **Dark**, cycled by a button in the top bar and remembered in `localStorage` under `wnl-theme`.
+
+- System stamps nothing on `<html>`, so `prefers-color-scheme` decides.
+- An explicit choice stamps `data-theme="light"` or `data-theme="dark"`.
+- The dark media query is guarded with `:root:not([data-theme="light"])`, so choosing Light on a dark-mode OS actually stays light. Without that guard the override only works in one direction.
+- `color-scheme` is set alongside the tokens, so native date pickers, selects, and scrollbars follow the chosen theme rather than the OS.
+
+The switching logic is **inlined into `<head>`** (`THEME_SCRIPT` in `views/layout.tsx`), not shipped in `booking.js`. A stored choice has to be applied before the first paint; a deferred or external script renders the system theme first and then flips. The same script stamps `data-js="1"`, which is what reveals the toggle — the control is useless without scripting, so it stays hidden when there is none.
+
+Dark tokens are duplicated between the media query and the `[data-theme="dark"]` block. Custom properties cannot be composed, and the alternative — a class applied by JS — reintroduces the flash.
+
+### Layout
+
 One `public/app.css`, mobile-first. Breakpoint 768px: below it the calendar renders as a scrollable agenda list (a 7×5 grid with names is unreadable on a phone); above it, a month grid with colored chips. Booking form is a `<form>` that works without JS; JS only adds the date-range picker and live day-count preview.
 
 ## Non-goals (v1)

@@ -1,6 +1,38 @@
 import type { Child } from 'hono/jsx';
 import type { User } from '../types.ts';
 
+/**
+ * Theme switching, inlined into <head> on purpose.
+ *
+ * The stored choice has to be applied before the first paint, otherwise the
+ * page renders in the system theme and then flips — an external script cannot
+ * do that without either blocking on a network round trip or flashing. It is
+ * small enough that inlining it on every page costs less than the extra
+ * request would.
+ *
+ * Three states: "system" (the default) stamps nothing and lets
+ * prefers-color-scheme decide; "light" and "dark" stamp data-theme and win.
+ */
+const THEME_SCRIPT = `(function(){
+var KEY='wnl-theme',ORDER=['system','light','dark'],root=document.documentElement;
+var ICON={system:'◐',light:'☀',dark:'☾'},LABEL={system:'System',light:'Light',dark:'Dark'};
+function read(){try{var v=localStorage.getItem(KEY);return ORDER.indexOf(v)>-1?v:'system';}catch(e){return 'system';}}
+function apply(m){if(m==='light'||m==='dark'){root.setAttribute('data-theme',m);}else{root.removeAttribute('data-theme');}}
+root.setAttribute('data-js','1');
+apply(read());
+document.addEventListener('DOMContentLoaded',function(){
+var btn=document.querySelector('[data-theme-toggle]');
+if(!btn)return;
+function paint(){var m=read();btn.textContent=ICON[m];var t='Theme: '+LABEL[m]+'. Click to change.';btn.title=t;btn.setAttribute('aria-label',t);}
+paint();
+btn.addEventListener('click',function(){
+var next=ORDER[(ORDER.indexOf(read())+1)%ORDER.length];
+try{localStorage.setItem(KEY,next);}catch(e){}
+apply(next);paint();
+});
+});
+})();`;
+
 interface LayoutProps {
 	title: string;
 	user: User;
@@ -20,6 +52,8 @@ export function Layout({ title, user, active, version, children }: LayoutProps) 
 				<title>{title} · wan-nee-la</title>
 				<link rel="stylesheet" href="/app.css" />
 				<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><text y='14' font-size='14'>🌴</text></svg>" />
+				{/* Must run before first paint — see THEME_SCRIPT. */}
+				<script dangerouslySetInnerHTML={{ __html: THEME_SCRIPT }} />
 				{/* Enhancement only — every page works with this blocked. */}
 				<script src="/booking.js" defer></script>
 			</head>
@@ -36,6 +70,7 @@ export function Layout({ title, user, active, version, children }: LayoutProps) 
 							<a href="/admin" class={active === 'admin' ? 'on' : ''}>Admin</a>
 						) : null}
 					</nav>
+					<button type="button" class="theme-toggle" data-theme-toggle aria-label="Theme">◐</button>
 					<span class="who" title={user.email}>{user.display_name}</span>
 				</header>
 
@@ -64,6 +99,7 @@ export function ErrorPage({ title, detail }: { title: string; detail: string }) 
 				<meta name="color-scheme" content="light dark" />
 				<title>{title} · wan-nee-la</title>
 				<link rel="stylesheet" href="/app.css" />
+				<script dangerouslySetInnerHTML={{ __html: THEME_SCRIPT }} />
 			</head>
 			<body>
 				<main class="wrap">
