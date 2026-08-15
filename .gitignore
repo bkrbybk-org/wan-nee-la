@@ -5,3 +5,4 @@ dist/
 worker-configuration.d.ts
 public/app.js
 .claude/worktrees/
+wrangler.local.jsonc

@@ -1,17 +1,34 @@
 {
 	"$schema": "node_modules/wrangler/config-schema.json",
 	"name": "wan-nee-la",
-	"account_id": "<account-id>",
 	"main": "src/index.tsx",
 	"compatibility_date": "2026-08-01",
 
-	// Never expose a workers.dev URL. Cloudflare Access protects the custom hostname only,
-	// so a workers.dev route would be an unauthenticated bypass to every employee's leave data.
-	// Deploy fails until the route below is filled in — that is the intended safe default.
+	// ---------------------------------------------------------------------------
+	// This file is a TEMPLATE, committed with placeholders.
+	//
+	// Copy it to `wrangler.local.jsonc` (gitignored), fill in the four values
+	// marked REPLACE_ME below, and the npm scripts will prefer that copy
+	// automatically. Keeping the real ids out of the repo means a public clone
+	// does not advertise which account, hostname and Access application hold a
+	// given company's leave data.
+	//
+	// Nothing here is a credential. The two LINE secrets never live in any config
+	// file — see `vars` at the bottom.
+	// ---------------------------------------------------------------------------
+
+	// Your Cloudflare account id. Alternatively drop this key and export
+	// CLOUDFLARE_ACCOUNT_ID in the environment.
+	"account_id": "REPLACE_ME_ACCOUNT_ID",
+
+	// Never expose a workers.dev URL. Cloudflare Access protects the custom
+	// hostname only, so a workers.dev route would be an unauthenticated bypass to
+	// every employee's leave data.
 	"workers_dev": false,
 	"routes": [
 		{
-			"pattern": "leave.example.com",
+			// The hostname staff will use. Its zone must be in the same account.
+			"pattern": "REPLACE_ME_HOSTNAME",
 			"custom_domain": true,
 		},
 	],
@@ -35,25 +52,28 @@
 		{
 			"binding": "DB",
 			"database_name": "wan-nee-la",
-			"database_id": "<database-id>",
+			// From `wrangler d1 create wan-nee-la`.
+			"database_id": "REPLACE_ME_DATABASE_ID",
 		},
 	],
 
 	// 01:00 UTC = 08:00 Asia/Bangkok. Thailand has no DST, so this offset is fixed.
-	// Phase 4 (LINE push) is not implemented yet; the handler is a no-op stub for now.
 	"triggers": {
 		"crons": ["0 1 * * *"],
 	},
 
 	"vars": {
-		// Cloudflare Access team domain.
-		"ACCESS_TEAM_DOMAIN": "<team>.cloudflareaccess.com",
-		// Access application AUD tag. Both must be set before the app will serve anything.
-		"ACCESS_AUD": "<access-aud>",
+		// Cloudflare Access team domain, e.g. "acme.cloudflareaccess.com", and the
+		// Access application's AUD tag. The app fails closed while either is empty,
+		// so an unconfigured deployment serves nothing.
+		"ACCESS_TEAM_DOMAIN": "",
+		"ACCESS_AUD": "",
+
 		// "1" bypasses Access verification and logs in as DEV_EMAIL. Local development only.
 		// Setting this in production hands every visitor an admin session.
 		"DEV_AUTH_BYPASS": "0",
 		"DEV_EMAIL": "dev@example.com",
+
 		// Optional pin for the LINE group. Normally left empty: /line/webhook
 		// captures the group id into app_config the first time the bot sees a
 		// message in the group.

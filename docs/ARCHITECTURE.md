@@ -112,7 +112,10 @@ Self-serve model (owner's decision): a POST creates a `confirmed` row directly. 
 | POST | `/api/leave` | Book leave. Server computes days, checks overlap + balance. |
 | POST | `/api/leave/:id/cancel` | Cancel own leave (admin can cancel any). |
 | GET | `/admin` | Users, quotas, holidays, notification log. Admin only. |
-| POST | `/admin/quotas` | Edit quota rows. |
+| POST | `/admin/quotas` | Edit one person's quota rows. |
+| POST | `/admin/quotas/bulk` | Set one leave type's quota for every active user. |
+| POST | `/admin/notify/preview` | Dry-run the digest through the real job. |
+| POST | `/admin/notify/send` | Send the digest now, or retry a failed date. |
 | POST | `/line/webhook` | Capture the group ID; verify `X-Line-Signature` (HMAC-SHA256 of raw body with the channel secret). |
 | GET | `/health` | Version metadata + D1 ping + LINE config presence. |
 
@@ -125,10 +128,12 @@ Self-serve model (owner's decision): a POST creates a `confirmed` row directly. 
 3. Query confirmed leave overlapping today.
 4. If nobody on leave → `skipped_empty`, stop. (Also saves LINE quota — see ISSUES.md #2.)
 5. `INSERT OR IGNORE` into `notification_log` **first**. If the row already exists with `status='sent'`, stop. Cron retries and manual re-runs must not double-post.
-6. `POST https://api.line.me/v2/bot/message/push` with `to = <group id>`, Bearer channel access token, and an `X-Line-Retry-Key` UUID (LINE's own idempotency header).
+6. `POST https://api.line.me/v2/bot/message/push` with `to = <group id>`, Bearer channel access token, and an `X-Line-Retry-Key` (LINE's own idempotency header).
 7. Update the log row with the outcome.
 
-Message: Flex message, one line per person — name, leave type, and half-day marker. Falls back to plain text if the Flex payload is rejected.
+The claim in step 5 happens **before** the push, so a crash mid-send fails closed with no message rather than open with two. A send that fails stays logged as `failed` and needs an explicit force to retry, so a flapping error cannot spam the group.
+
+Message: **plain text**, one line per person — name, leave type, half-day marker, and the span for multi-day leave. Not a Flex bubble: a Flex payload is a second thing that can be rejected for schema reasons at 08:00 with nobody watching, and it costs the same under LINE's per-member billing.
 
 ## Secrets / bindings
 
@@ -141,8 +146,9 @@ Message: Flex message, one line per person — name, leave type, and half-day ma
 | `ACCESS_AUD` | var | Access application AUD tag |
 | `LINE_CHANNEL_ACCESS_TOKEN` | secret | `wrangler secret put` |
 | `LINE_CHANNEL_SECRET` | secret | webhook signature verification |
-| `LINE_GROUP_ID` | var or app_config | captured by the webhook |
-| `TZ_OFFSET` | var | `+07:00`, single source of truth |
+| `LINE_GROUP_ID` | var or app_config | normally captured by the webhook |
+
+The Bangkok offset is a constant in `src/domain/dates.ts`, not a binding — Thailand has never observed DST, so there is nothing to configure.
 
 ## Frontend
 

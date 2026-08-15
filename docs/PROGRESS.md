@@ -4,11 +4,11 @@ Updated: 2026-08-15
 
 ## Status
 
-**Phases 1–3 built, verified, and deployed.** Phase 4 (LINE push) is deliberately not built — the owner deferred it.
+**Phases 1–4 built, verified, and deployed.** The LINE post is built but inert until its two secrets are set.
 
-Live at **https://leave.example.com** — account `<account name>` (`<account-id>`), version `3c0b882b-304f-4630-8cba-0bb8ebeae216`, D1 `<database-id>` (APAC).
+Deployed and running. The real hostname, account id, database id and Access details are in `wrangler.local.jsonc`, which is gitignored — this repo is public, so the values below are placeholders. Version `3c0b882b-304f-4630-8cba-0bb8ebeae216`, D1 `<database-id>` (APAC).
 
-Cloudflare Access is enforcing: team `<team>.cloudflareaccess.com`, AUD `<access-aud>`, both set in `wrangler.jsonc` vars. `/health` reports `accessConfigured: true`, `devAuthBypass: false`.
+Cloudflare Access is enforcing, with the team domain and AUD set in `wrangler.local.jsonc`. `/health` reports `accessConfigured: true`, `devAuthBypass: false`.
 
 **Not yet confirmed: a human SSO login.** That cannot be tested from a terminal. Everything up to the identity claim is proven (see below) — someone needs to open the URL in a browser and confirm they land on the calendar. The first person to do so becomes the admin.
 
@@ -16,7 +16,7 @@ Cloudflare Access is enforcing: team `<team>.cloudflareaccess.com`, AUD `<access
 
 - Self-serve booking. No approval workflow, no pending state. — owner
 - Per-type annual quota (annual / sick / personal / unpaid). No carry-over in v1. — owner
-- LINE notification deferred. Cron trigger is wired and logs what it *would* send. — owner
+- LINE notification via the Messaging API; LINE Notify is dead. Ships inert until the secrets are set.
 - Hono + JSX SSR + D1 on Workers, mirroring a sibling Workers project's stack.
 - Dates stored as Bangkok-local `YYYY-MM-DD` strings.
 - Node 24 (`.nvmrc`) — the test scripts import `.ts` directly via type stripping.
@@ -25,7 +25,7 @@ Cloudflare Access is enforcing: team `<team>.cloudflareaccess.com`, AUD `<access
 
 | Phase | State |
 | --- | --- |
-| 0 — Prerequisites | **blocked on owner**: hostname, Access app. LINE items no longer blocking. |
+| 0 — Prerequisites | hostname + Access app **done**; LINE channel still outstanding. |
 | 1 — Foundation | **done** |
 | 2 — Core app | **done** |
 | 3 — Admin | **done** |
@@ -40,11 +40,12 @@ Cloudflare Access is enforcing: team `<team>.cloudflareaccess.com`, AUD `<access
 | Booking rules, balances | [src/domain/leave.ts](../src/domain/leave.ts) |
 | Access JWT verification | [src/auth/access.ts](../src/auth/access.ts) |
 | D1 queries | [src/repo/db.ts](../src/repo/db.ts) |
-| Routes + cron stub | [src/index.tsx](../src/index.tsx) |
+| Routes + cron | [src/index.tsx](../src/index.tsx) |
+| LINE digest + webhook | [src/notify/](../src/notify/) |
 | Views | [src/views/](../src/views/) |
 | Client bundle (progressive enhancement) | [src/client/app.ts](../src/client/app.ts) → `booking.ts`, `calendar.ts` |
 | Schema + seed | [migrations/](../migrations/) |
-| Tests | [scripts/test-dates.mjs](../scripts/test-dates.mjs), [scripts/test-leave.mjs](../scripts/test-leave.mjs) |
+| Tests | [scripts/](../scripts/) — dates, leave, LINE |
 
 ## Verified locally (2026-08-15)
 
@@ -58,7 +59,10 @@ Against `wrangler dev` with a local D1 and `DEV_AUTH_BYPASS=1`:
 - Last-admin guard blocks self-demotion; out-of-range quota values are ignored.
 - Month grid renders at desktop width; agenda list renders at 375px with half-day markers and Thai labels.
 - Live day-count preview matches the server exactly (`pm`→`am` over Tue–Fri = 3 days in both).
-- Cron fires both branches: `skipped_empty` with nobody out, `would_send` with one person out.
+- Cron skips weekends and holidays; posts only when someone is out.
+- Webhook returns 401 for unsigned, wrong and tampered bodies; 200 and captures the group id for a valid signature.
+- Digest is idempotent: a second send is refused as a duplicate, and only an explicit force retries a failed date.
+- Bulk quota touches active users only; drag preserves a booking's length and shifts from the grabbed day.
 
 ## Production validation (2026-08-15, via Access service token)
 
