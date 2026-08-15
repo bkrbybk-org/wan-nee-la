@@ -298,6 +298,81 @@ export async function cancelLeave(db: D1Database, id: string): Promise<boolean> 
 }
 
 // ---------------------------------------------------------------------------
+// App config (LINE group id)
+// ---------------------------------------------------------------------------
+
+export async function getConfig(db: D1Database, key: string): Promise<string | null> {
+	const row = await db.prepare('SELECT value FROM app_config WHERE key = ?').bind(key).first<{ value: string }>();
+	return row?.value ?? null;
+}
+
+export async function setConfig(db: D1Database, key: string, value: string): Promise<void> {
+	await db
+		.prepare(
+			`INSERT INTO app_config (key, value) VALUES (?, ?)
+			 ON CONFLICT (key) DO UPDATE SET value = excluded.value`,
+		)
+		.bind(key, value)
+		.run();
+}
+
+// ---------------------------------------------------------------------------
+// Notification log
+// ---------------------------------------------------------------------------
+
+export interface NotificationLog {
+	date: string;
+	sent_at: string;
+	people: number;
+	status: string;
+	error: string | null;
+}
+
+/**
+ * Claim the right to notify for `date`.
+ *
+ * Returns false when a row already exists, which means some earlier run already
+ * handled this date. This is the guard against posting twice to a company group
+ * chat — cron can fire more than once, and a manual re-run is one curl away.
+ *
+ * The row is claimed *before* the push is attempted, so a crash mid-send fails
+ * closed (no message) rather than open (two messages). A genuinely failed send
+ * is visible in /admin and can be retried deliberately via `clearNotification`.
+ */
+export async function claimNotification(db: D1Database, date: string, people: number): Promise<boolean> {
+	const res = await db
+		.prepare(`INSERT OR IGNORE INTO notification_log (date, sent_at, people, status) VALUES (?, ?, ?, 'pending')`)
+		.bind(date, bangkokNow(), people)
+		.run();
+	return (res.meta.changes ?? 0) > 0;
+}
+
+export async function finishNotification(
+	db: D1Database,
+	date: string,
+	status: 'sent' | 'skipped_empty' | 'failed',
+	error?: string,
+): Promise<void> {
+	await db
+		.prepare('UPDATE notification_log SET status = ?, error = ?, sent_at = ? WHERE date = ?')
+		.bind(status, error ?? null, bangkokNow(), date)
+		.run();
+}
+
+/** Drop a log row so a failed date can be retried. */
+export async function clearNotification(db: D1Database, date: string): Promise<void> {
+	await db.prepare('DELETE FROM notification_log WHERE date = ?').bind(date).run();
+}
+
+export async function recentNotifications(db: D1Database, limit = 14): Promise<NotificationLog[]> {
+	const res = await db
+		.prepare('SELECT * FROM notification_log ORDER BY date DESC LIMIT ?')
+		.bind(limit)
+		.all<NotificationLog>();
+	return res.results ?? [];
+}
+
+// ---------------------------------------------------------------------------
 // Composites
 // ---------------------------------------------------------------------------
 

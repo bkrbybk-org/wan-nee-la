@@ -6,6 +6,11 @@ export interface Env {
 	ACCESS_AUD: string;
 	DEV_AUTH_BYPASS: string;
 	DEV_EMAIL: string;
+	/** LINE Messaging API. Set with `wrangler secret put` — never in wrangler.jsonc. */
+	LINE_CHANNEL_ACCESS_TOKEN: string;
+	LINE_CHANNEL_SECRET: string;
+	/** Optional pin. Normally the group id is captured by /line/webhook into app_config. */
+	LINE_GROUP_ID: string;
 }
 
 export type Half = 'full' | 'am' | 'pm';

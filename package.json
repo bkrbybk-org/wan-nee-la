@@ -16,7 +16,8 @@
     "db:seed:remote": "wrangler d1 execute wan-nee-la --remote --file=migrations/0002_seed.sql",
     "test:dates": "node --experimental-strip-types scripts/test-dates.mjs",
     "test:leave": "node --experimental-strip-types scripts/test-leave.mjs",
-    "test": "npm run test:dates && npm run test:leave"
+    "test": "npm run test:dates && npm run test:leave && npm run test:line",
+    "test:line": "node --experimental-strip-types scripts/test-line.mjs"
   },
   "dependencies": {
     "hono": "^4.6.14"

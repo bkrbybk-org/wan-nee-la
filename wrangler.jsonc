@@ -54,5 +54,13 @@
 		// Setting this in production hands every visitor an admin session.
 		"DEV_AUTH_BYPASS": "0",
 		"DEV_EMAIL": "dev@example.com",
+		// Optional pin for the LINE group. Normally left empty: /line/webhook
+		// captures the group id into app_config the first time the bot sees a
+		// message in the group.
+		//
+		// The two LINE credentials are SECRETS and must never appear in this file:
+		//   wrangler secret put LINE_CHANNEL_ACCESS_TOKEN
+		//   wrangler secret put LINE_CHANNEL_SECRET
+		"LINE_GROUP_ID": "",
 	},
 }

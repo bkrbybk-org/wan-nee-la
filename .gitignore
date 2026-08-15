@@ -4,3 +4,4 @@ node_modules/
 dist/
 worker-configuration.d.ts
 public/app.js
+.claude/worktrees/

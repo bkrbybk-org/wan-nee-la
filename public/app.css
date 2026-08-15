@@ -142,7 +142,15 @@ body {
 .card h2 { margin: 0 0 12px; font-size: 16px; }
 .centered { text-align: center; }
 
-.banner { padding: 10px 14px; border-radius: var(--radius); margin-bottom: var(--pad); font-size: 14px; }
+/* pre-wrap so the LINE digest preview keeps its line breaks — it is shown in a
+   banner exactly as it would be posted. */
+.banner {
+	padding: 10px 14px;
+	border-radius: var(--radius);
+	margin-bottom: var(--pad);
+	font-size: 14px;
+	white-space: pre-wrap;
+}
 .banner.error { background: color-mix(in srgb, var(--danger) 12%, var(--surface)); color: var(--danger); }
 .banner.ok { background: color-mix(in srgb, var(--ok) 12%, var(--surface)); color: var(--ok); }
 
@@ -167,6 +175,8 @@ body {
 
 .dot { width: 10px; height: 10px; border-radius: 50%; background: var(--chip, var(--accent)); display: inline-block; flex: none; }
 .tag { font-size: 11px; padding: 1px 6px; border-radius: 999px; background: var(--bg); color: var(--muted); }
+.tag.bad { background: color-mix(in srgb, var(--danger) 15%, var(--surface)); color: var(--danger); }
+h3.sub { font-size: 14px; margin: var(--pad) 0 8px; }
 
 .page-head, .month-head { display: flex; align-items: center; gap: 10px; margin-bottom: var(--pad); }
 .page-head h1, .month-head h1 { margin: 0; font-size: 20px; }

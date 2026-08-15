@@ -18,6 +18,8 @@ import { CalendarPage } from './views/calendar.tsx';
 import { EditPage } from './views/edit.tsx';
 import { ErrorPage, Layout } from './views/layout.tsx';
 import { MePage } from './views/me.tsx';
+import { groupIdFromWebhook, verifyLineSignature } from './notify/line.ts';
+import { GROUP_ID_KEY, lineConfigured, resolveGroupId, runDigest } from './notify/digest.ts';
 import type { Env, LeaveRequest, User } from './types.ts';
 
 type Vars = { user: User; today: string; flash: Flash };
@@ -66,6 +68,45 @@ app.get('/health', async (c) => {
 		// Surfaced so a production check can catch the dev bypass being left on.
 		devAuthBypass: c.env.DEV_AUTH_BYPASS === '1',
 	});
+});
+
+/**
+ * LINE webhook. Deliberately above the auth middleware, because LINE's servers
+ * must reach it and cannot carry an Access token — it needs a Bypass rule on
+ * this path in the Access policy.
+ *
+ * That makes it the one publicly reachable route in the app, so it defends
+ * itself: the raw body is read once and its HMAC checked before anything is
+ * parsed, an unsigned request is refused outright rather than logged and
+ * allowed, and the only state it may write is the group id.
+ */
+app.post('/line/webhook', async (c) => {
+	const secret = c.env.LINE_CHANNEL_SECRET;
+	if (!secret) return c.text('LINE is not configured.', 503);
+
+	const signature = c.req.header('X-Line-Signature') ?? '';
+	// Read the raw bytes exactly once, before any parsing. `c.req.json()`
+	// consumes the stream; a later re-read yields an empty body and the
+	// signature would then be verified over nothing.
+	const raw = await c.req.text();
+
+	if (!(await verifyLineSignature(raw, signature, secret))) {
+		return c.text('Bad signature.', 401);
+	}
+
+	let body: unknown;
+	try {
+		body = JSON.parse(raw);
+	} catch {
+		return c.text('Bad JSON.', 400);
+	}
+
+	const groupId = groupIdFromWebhook(body);
+	if (groupId) await db.setConfig(c.env.DB, GROUP_ID_KEY, groupId);
+
+	// LINE retries on any non-2xx, so acknowledge even when the event carried
+	// nothing we wanted.
+	return c.text('ok');
 });
 
 /**
@@ -463,13 +504,16 @@ app.get('/admin', async (c) => {
 	const today = c.get('today');
 	const year = clampInt(c.req.query('y'), Number(today.slice(0, 4)), 2000, 2100);
 
-	const [users, types, holidays] = await Promise.all([
+	const [users, types, holidays, groupId, log] = await Promise.all([
 		db.listUsers(c.env.DB),
 		db.listLeaveTypes(c.env.DB),
 		db.listHolidays(c.env.DB, `${year}-01-01`, `${year + 1}-12-31`),
+		resolveGroupId(c.env),
+		db.recentNotifications(c.env.DB),
 	]);
 
 	const quotas = (await Promise.all(users.map((u) => db.listQuotas(c.env.DB, u.email, year)))).flat();
+	const configured = lineConfigured(c.env);
 
 	return c.html(
 		<AdminPage
@@ -479,6 +523,9 @@ app.get('/admin', async (c) => {
 			types={types}
 			quotas={quotas}
 			holidays={holidays}
+			today={today}
+			line={{ configured, groupId, ready: configured && Boolean(groupId) }}
+			log={log}
 			version={c.env.CF_VERSION_METADATA?.id}
 			error={flashOf(c.get('flash'), 'err')}
 			notice={flashOf(c.get('flash'), 'ok')}
@@ -524,6 +571,42 @@ app.post('/admin/user', async (c) => {
 	await db.setAdmin(c.env.DB, email, isAdmin);
 	await db.setActive(c.env.DB, email, active);
 	return redirectWithFlash('/admin', 'ok', `Updated ${email}.`);
+});
+
+/**
+ * Preview the digest without sending. Runs the real job in dry-run mode, so
+ * what an admin sees here is produced by the same code that posts at 08:00.
+ */
+app.post('/admin/notify/preview', async (c) => {
+	const form = await c.req.parseBody();
+	const date = String(form.date ?? '').trim() || c.get('today');
+	if (!isValidDate(date)) return redirectWithFlash('/admin', 'err', 'Bad date.');
+
+	const outcome = await runDigest(c.env, date, { dryRun: true });
+	const summary =
+		outcome.status === 'dry_run'
+			? `Would post about ${outcome.people} person(s).`
+			: `Would not post: ${outcome.status.replace(/_/g, ' ')}.`;
+
+	// The preview text itself is stashed in the flash rather than the URL —
+	// query strings carrying prose get blocked by the WAF (docs/ISSUES.md #15).
+	return redirectWithFlash('/admin', 'ok', outcome.text ? `${summary}\n\n${outcome.text}` : summary);
+});
+
+/** Send the digest now. Used to verify a fresh LINE setup, and to retry a failure. */
+app.post('/admin/notify/send', async (c) => {
+	const form = await c.req.parseBody();
+	const date = String(form.date ?? '').trim() || c.get('today');
+	if (!isValidDate(date)) return redirectWithFlash('/admin', 'err', 'Bad date.');
+
+	const outcome = await runDigest(c.env, date, { force: form.force === '1' });
+	if (outcome.status === 'sent') {
+		return redirectWithFlash('/admin', 'ok', `Posted to LINE about ${outcome.people} person(s).`);
+	}
+	if (outcome.status === 'failed') {
+		return redirectWithFlash('/admin', 'err', `LINE rejected it — ${outcome.error ?? 'unknown error'}`);
+	}
+	return redirectWithFlash('/admin', 'err', `Nothing sent: ${outcome.status.replace(/_/g, ' ')}.`);
 });
 
 app.post('/admin/holiday', async (c) => {
@@ -652,23 +735,25 @@ export default {
 	fetch: app.fetch,
 
 	/**
-	 * 08:00 Asia/Bangkok. The LINE push is phase 4 and not built yet; this
-	 * records what it *would* have sent so the schedule and the query are
-	 * proven correct before a message ever reaches a company group chat.
+	 * 08:00 Asia/Bangkok (01:00 UTC — Thailand has no DST).
+	 *
+	 * Never throws: a rejected scheduled handler is retried by the platform, and
+	 * a retry that got as far as sending would post a second message to the
+	 * group. The outcome is logged instead and recorded in notification_log,
+	 * which /admin surfaces.
 	 */
 	async scheduled(_event: ScheduledController, env: Env, _ctx: ExecutionContext): Promise<void> {
-		const today = bangkokToday();
-		const entries = await db.listLeaveInRange(env.DB, today, today);
-		const holidays = await db.holidaySet(env.DB, today, today);
-		const skip = holidays.has(today) || entries.length === 0;
-		console.log(
-			JSON.stringify({
-				job: 'daily-leave-digest',
-				date: today,
-				people: entries.length,
-				status: skip ? 'skipped_empty' : 'would_send',
-				note: 'LINE push not implemented (docs/PLAN.md phase 4)',
-			}),
-		);
+		try {
+			const outcome = await runDigest(env);
+			console.log(JSON.stringify({ job: 'daily-leave-digest', ...outcome, text: undefined }));
+		} catch (err) {
+			console.log(
+				JSON.stringify({
+					job: 'daily-leave-digest',
+					status: 'error',
+					error: err instanceof Error ? err.message : String(err),
+				}),
+			);
+		}
 	},
 };
