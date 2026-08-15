@@ -6,7 +6,7 @@ Updated: 2026-08-15
 
 **Phases 1–3 built, verified, and deployed.** Phase 4 (LINE push) is deliberately not built — the owner deferred it.
 
-Live at **https://leave.example.com** — account `<account name>` (`<account-id>`), version `3483fca9-7a0c-4d78-bac1-28e080055c0b`, D1 `<database-id>` (APAC).
+Live at **https://leave.example.com** — account `<account name>` (`<account-id>`), version `3c0b882b-304f-4630-8cba-0bb8ebeae216`, D1 `<database-id>` (APAC).
 
 Cloudflare Access is enforcing: team `<team>.cloudflareaccess.com`, AUD `<access-aud>`, both set in `wrangler.jsonc` vars. `/health` reports `accessConfigured: true`, `devAuthBypass: false`.
 
@@ -29,7 +29,7 @@ Cloudflare Access is enforcing: team `<team>.cloudflareaccess.com`, AUD `<access
 | 1 — Foundation | **done** |
 | 2 — Core app | **done** |
 | 3 — Admin | **done** |
-| 4 — LINE notification | **deferred by owner**. Cron fires and logs; no message is sent. |
+| 4 — LINE notification | **built**; inert until the LINE credentials are set. |
 | 5 — Ship | **deployed**; CI not set up |
 
 ## What exists
@@ -74,11 +74,19 @@ Service-token claims are `aud, common_name, exp, iat, iss, sub, type` — no `em
 ## Next action
 
 1. **Owner**: open https://leave.example.com in a browser, sign in through Access, confirm the calendar renders. This is the one path that cannot be validated from a terminal. Whoever does this first becomes the admin — make sure it is the right person.
-2. Then: CI (phase 5.2), and phase 4 (LINE) whenever the owner wants it. Nothing else depends on either.
+2. **Owner**: to switch the LINE post on —
+   1. create a Messaging API channel, invite the bot to the group, disable auto-reply and enable webhook in the LINE OA Manager
+   2. set the webhook URL to `https://leave.example.com/line/webhook` and add an Access **Bypass** rule for that path, or LINE's requests will be sent to the login page
+   3. `wrangler secret put LINE_CHANNEL_ACCESS_TOKEN` and `wrangler secret put LINE_CHANNEL_SECRET`
+   4. post any message in the group so the webhook captures the group id, then check /admin shows it
+   5. use **Preview** on /admin, then **Send now**
+3. Then: CI (phase 5.2). Nothing else depends on it.
 
 ## Log
 
 - **2026-08-15** — Requirements gathered. Architecture, plan, and issue list drafted. Confirmed LINE Notify EOL against LINE's own announcement; repointed the notification design at the Messaging API. Flagged per-member push billing (ISSUES.md #2).
+- **2026-08-15** — LINE digest built (phase 4). Cron posts the day's leave to a LINE group; /line/webhook captures the group id and verifies X-Line-Signature; notification_log makes a double post impossible. Inert until the two secrets are set.
+- **2026-08-15** — Bulk quota action on /admin, and drag-to-move on the calendar.
 - **2026-08-15** — Calendar is now directly editable: click an empty day to book it, click an entry to open a detail popup with Edit and Remove. Both are real links (`/book?date=`, `/leave/:id/edit`) upgraded to dialogs by `src/client/calendar.ts`, so the calendar still works with scripting off. Client bundle renamed `booking.js` → `app.js`.
 - **2026-08-15** — Added a System/Light/Dark theme toggle, defaulting to System. Switching logic is inlined in `<head>` so a stored choice applies before first paint; the dark media query is guarded so an explicit Light choice wins on a dark-mode OS.
 - **2026-08-15** — Added edit and remove for submitted leave: `/leave/:id/edit`, `POST /api/leave/:id/edit`. Editing excludes the booking from its own overlap check and credits its days back before the balance check, so shortening or retyping is never refused by the quota the booking itself holds. Remove is the existing soft cancel, now reachable from every confirmed booking including past ones.
