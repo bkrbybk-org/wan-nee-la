@@ -80,8 +80,25 @@ function audMatches(aud: unknown, want: string): boolean {
 	return false;
 }
 
-/** Verify an Access JWT. Returns the identity, or null for any failure. */
-export async function verifyAccessJwt(token: string, teamDomain: string, aud: string): Promise<Identity | null> {
+/** Why a structurally valid token still did not yield a person. */
+export type Rejection = { reason: 'service-token' | 'no-email' };
+
+function isRejection(v: Identity | Rejection | null): v is Rejection {
+	return v !== null && 'reason' in v;
+}
+
+/**
+ * Verify an Access JWT.
+ *
+ * Returns the identity, `null` when the token is invalid (bad signature, wrong
+ * audience, expired), or a `Rejection` when the token is genuinely valid but
+ * does not identify a person.
+ */
+export async function verifyAccessJwt(
+	token: string,
+	teamDomain: string,
+	aud: string,
+): Promise<Identity | Rejection | null> {
 	const parts = token.split('.');
 	if (parts.length !== 3) return null;
 	const [rawHeader, rawPayload, rawSig] = parts;
@@ -108,7 +125,15 @@ export async function verifyAccessJwt(token: string, teamDomain: string, aud: st
 	if (payload.iss !== `https://${teamDomain}`) return null;
 
 	const email = typeof payload.email === 'string' ? payload.email.trim().toLowerCase() : '';
-	if (!email) return null;
+	if (!email) {
+		// A fully valid Access token carrying no `email` is a service token: its
+		// claims are `common_name`/`sub`, because it identifies a machine, not a
+		// person. This app is a per-person leave record — admitting one would
+		// create a user row named after a credential. Reject it, but say why:
+		// "failed verification" would send someone hunting a signature bug that
+		// is not there.
+		return { reason: typeof payload.common_name === 'string' ? 'service-token' : 'no-email' };
+	}
 
 	return { email };
 }
@@ -146,8 +171,17 @@ export async function authenticate(req: Request, env: Env): Promise<AuthResult> 
 	const token = readToken(req);
 	if (!token) return { ok: false, reason: 'No Cloudflare Access token on this request.' };
 
-	const identity = await verifyAccessJwt(token, env.ACCESS_TEAM_DOMAIN, env.ACCESS_AUD);
-	if (!identity) return { ok: false, reason: 'Access token failed verification.' };
+	const result = await verifyAccessJwt(token, env.ACCESS_TEAM_DOMAIN, env.ACCESS_AUD);
+	if (!result) return { ok: false, reason: 'Access token failed verification.' };
+	if (isRejection(result)) {
+		return {
+			ok: false,
+			reason:
+				result.reason === 'service-token'
+					? 'This is a valid service token, not a person. wan-nee-la tracks leave per employee, so sign in with your own account instead.'
+					: 'That Access token carries no email address, so there is no employee to show leave for.',
+		};
+	}
 
-	return { ok: true, identity };
+	return { ok: true, identity: result };
 }

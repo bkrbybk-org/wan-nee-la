@@ -152,6 +152,28 @@ Add those via `/admin` → Holidays. A missing holiday is not cosmetic: leave bo
 
 ---
 
+## #13 — Zone rules override the Worker's security headers `open — owner's call`
+
+The Worker sets `X-Frame-Options: DENY` and `Referrer-Policy: no-referrer`. Production serves `SAMEORIGIN` and `same-origin`.
+
+Confirmed not an app bug: the same build on `wrangler dev` emits `DENY` / `no-referrer`, so something on the `example.com` zone — a Transform Rule or managed header setting — is rewriting them downstream. `X-Robots-Tag` and `X-Content-Type-Options` pass through untouched.
+
+Impact is mild: `SAMEORIGIN` still blocks third-party framing, and `same-origin` still withholds the referrer cross-origin. But the app cannot enforce its own header policy, and it would be worth knowing that before relying on any header this Worker sets.
+
+Owner's call: leave it, or find the zone rule and exempt this hostname. Fighting it from the Worker is not possible — the rewrite happens after the response leaves.
+
+---
+
+## #14 — Service tokens cannot use the app `resolved by design`
+
+An Access service token authenticates fine at the edge but carries `common_name`/`sub` and no `email` — it identifies a machine. wan-nee-la is a per-person leave record, so admitting one would create a user row named after a credential, with its own quota and balance.
+
+`verifyAccessJwt` returns a typed `Rejection` for this case rather than a bare `null`, so the app can say "this is a valid service token, not a person" instead of "failed verification" — the latter sends people hunting a signature bug that does not exist.
+
+Consequence for testing: **production cannot be smoke-tested end to end with a service token.** Anything past the identity check needs a real browser session. Worth remembering before writing a synthetic uptime check against `/` — use `/health`, which sits above the auth middleware.
+
+---
+
 ## #11 — No CSRF token, only an Origin check `accepted`
 
 Cloudflare Access authenticates but does not stop a cross-site form POST — its cookie rides along. `src/index.tsx` rejects any non-GET whose `Origin` host differs from the `Host` header.

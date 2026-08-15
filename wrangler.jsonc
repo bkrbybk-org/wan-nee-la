@@ -46,10 +46,10 @@
 	},
 
 	"vars": {
-		// Cloudflare Access team domain, e.g. "acme.cloudflareaccess.com".
-		"ACCESS_TEAM_DOMAIN": "",
+		// Cloudflare Access team domain.
+		"ACCESS_TEAM_DOMAIN": "<team>.cloudflareaccess.com",
 		// Access application AUD tag. Both must be set before the app will serve anything.
-		"ACCESS_AUD": "",
+		"ACCESS_AUD": "<access-aud>",
 		// "1" bypasses Access verification and logs in as DEV_EMAIL. Local development only.
 		// Setting this in production hands every visitor an admin session.
 		"DEV_AUTH_BYPASS": "0",

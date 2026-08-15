@@ -6,9 +6,11 @@ Updated: 2026-08-15
 
 **Phases 1–3 built, verified, and deployed.** Phase 4 (LINE push) is deliberately not built — the owner deferred it.
 
-Live at **https://leave.example.com** — account `<account name>` (`<account-id>`), version `ee94f57f-7ad4-48d0-9716-ee02e173c20c`, D1 `<database-id>` (APAC).
+Live at **https://leave.example.com** — account `<account name>` (`<account-id>`), version `6c871b1d-a3b5-4a4b-8a14-c6c2967b9fac`, D1 `<database-id>` (APAC).
 
-**The deployment currently returns 403 to everyone, by design.** `ACCESS_TEAM_DOMAIN` and `ACCESS_AUD` are empty, and `authenticate()` fails closed when they are — an unconfigured deployment must not serve leave data to whoever finds the hostname. It stays unusable until the owner creates the Access application and those two vars are set. That is the last remaining step.
+Cloudflare Access is enforcing: team `<team>.cloudflareaccess.com`, AUD `<access-aud>`, both set in `wrangler.jsonc` vars. `/health` reports `accessConfigured: true`, `devAuthBypass: false`.
+
+**Not yet confirmed: a human SSO login.** That cannot be tested from a terminal. Everything up to the identity claim is proven (see below) — someone needs to open the URL in a browser and confirm they land on the calendar. The first person to do so becomes the admin.
 
 ## Decisions locked (2026-08-15)
 
@@ -58,12 +60,21 @@ Against `wrangler dev` with a local D1 and `DEV_AUTH_BYPASS=1`:
 - Live day-count preview matches the server exactly (`pm`→`am` over Tue–Fri = 3 days in both).
 - Cron fires both branches: `skipped_empty` with nobody out, `would_send` with one person out.
 
+## Production validation (2026-08-15, via Access service token)
+
+- Unauthenticated request → 302 to `<team>.cloudflareaccess.com` login. Access is in front of every path, `/health` included.
+- A forged `Cf-Access-Jwt-Assertion` never reaches the Worker — Access rejects it first.
+- `wan-nee-la.<sub>.workers.dev` → 404. No unauthenticated route to the same data.
+- Service token reaches the Worker and is refused with "This is a valid service token, not a person." That message only prints **after** signature, `exp`, `aud`, and `iss` have all passed, so it proves the whole Access chain is correctly configured — the token simply carries no `email`.
+- D1 reachable from production (`/health` → `db: true`), 7 tables, seed loaded.
+- Cron `0 1 * * *` registered on the deployed Worker.
+
+Service-token claims are `aud, common_name, exp, iat, iss, sub, type` — no `email`, which is why a machine credential cannot be admitted to a per-person leave record.
+
 ## Next action
 
-1. **Owner**: create a Cloudflare Access application on `leave.example.com` with the policy for staff. Then hand over the team domain (e.g. `<team>.cloudflareaccess.com`) and the application **AUD tag**.
-2. Put both into `vars` in `wrangler.jsonc` and redeploy. `/health` must then report `accessConfigured: true` and `devAuthBypass: false`.
-3. First person to sign in becomes the admin — make sure that is the right person.
-4. Then: CI (phase 5.2), and phase 4 (LINE) whenever the owner wants it. Nothing else depends on either.
+1. **Owner**: open https://leave.example.com in a browser, sign in through Access, confirm the calendar renders. This is the one path that cannot be validated from a terminal. Whoever does this first becomes the admin — make sure it is the right person.
+2. Then: CI (phase 5.2), and phase 4 (LINE) whenever the owner wants it. Nothing else depends on either.
 
 ## Log
 
