@@ -152,6 +152,26 @@ Add those via `/admin` → Holidays. A missing holiday is not cosmetic: leave bo
 
 ---
 
+## #15 — WAF blocked the post-booking redirect `resolved`
+
+**Symptom**: booking leave in a browser landed on a Cloudflare block page.
+
+**Cause, ours not theirs.** The app used post-redirect-get with the message in the query string:
+
+```
+GET /?ok=Booked%205%20day(s)%20of%20annual%20leave.
+```
+
+The zone's custom rule `<rule-id>` — "Block Attacks (WAF Attack Score ≤ 20)" — scored that as an injection probe. Free prose in a query string carries the same punctuation as an attack payload: parentheses, colons, periods, percent-encoding. Confirmed against `firewallEventsAdaptive`: ray `<ray-id>`, `GET /`, browser user-agent, action `block`.
+
+**Fix**: the message now travels in a short-lived cookie (`wnl_flash`, 30s, HttpOnly, Secure, SameSite=Lax, base64url-encoded), and the redirect target is a bare path. A flash is read once and the cookie expired on the same response, so it never resurfaces on refresh.
+
+The WAF rule was right and was left alone. A flash message is UI state, not addressable content — it never belonged in a URL. The base64url encoding also keeps punctuation out of the cookie header, so the payload cannot trip the same rule from its new home.
+
+**Watch for this again** anywhere user-visible prose would end up in a URL. Nothing in the app does that now.
+
+---
+
 ## #13 — Zone rules override the Worker's security headers `open — owner's call`
 
 The Worker sets `X-Frame-Options: DENY` and `Referrer-Policy: no-referrer`. Production serves `SAMEORIGIN` and `same-origin`.

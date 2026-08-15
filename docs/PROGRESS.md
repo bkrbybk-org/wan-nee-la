@@ -6,7 +6,7 @@ Updated: 2026-08-15
 
 **Phases 1–3 built, verified, and deployed.** Phase 4 (LINE push) is deliberately not built — the owner deferred it.
 
-Live at **https://leave.example.com** — account `<account name>` (`<account-id>`), version `6c871b1d-a3b5-4a4b-8a14-c6c2967b9fac`, D1 `<database-id>` (APAC).
+Live at **https://leave.example.com** — account `<account name>` (`<account-id>`), version `140856d6-fbd1-4314-8c79-b21e341e2eed`, D1 `<database-id>` (APAC).
 
 Cloudflare Access is enforcing: team `<team>.cloudflareaccess.com`, AUD `<access-aud>`, both set in `wrangler.jsonc` vars. `/health` reports `accessConfigured: true`, `devAuthBypass: false`.
 

@@ -18,8 +18,19 @@ import { ErrorPage, Layout } from './views/layout.tsx';
 import { MePage } from './views/me.tsx';
 import type { Env, LeaveRequest, User } from './types.ts';
 
-type Vars = { user: User; today: string };
+type Vars = { user: User; today: string; flash: Flash };
 const app = new Hono<{ Bindings: Env; Variables: Vars }>();
+
+/**
+ * Pick up a flash message and immediately expire the cookie, so a message is
+ * shown exactly once and never resurfaces on a refresh.
+ */
+app.use('*', async (c, next) => {
+	const flash = readFlash(c.req.header('Cookie'));
+	c.set('flash', flash);
+	await next();
+	if (flash) c.header('Set-Cookie', FLASH_CLEAR, { append: true });
+});
 
 app.use('*', async (c, next) => {
 	await next();
@@ -136,8 +147,8 @@ app.get('/', async (c) => {
 			types={types}
 			today={today}
 			version={c.env.CF_VERSION_METADATA?.id}
-			error={c.req.query('err')}
-			notice={c.req.query('ok')}
+			error={flashOf(c.get('flash'), 'err')}
+			notice={flashOf(c.get('flash'), 'ok')}
 		/>,
 	);
 });
@@ -205,7 +216,7 @@ app.post('/api/leave', async (c) => {
 
 	const form = await c.req.parseBody();
 	const parsed = parseBooking(form as Record<string, unknown>);
-	if ('error' in parsed) return c.redirect(withFlag(back, 'err', parsed.error), 303);
+	if ('error' in parsed) return redirectWithFlash(back, 'err', parsed.error);
 
 	const [types, existing, quotas, used] = await Promise.all([
 		db.listLeaveTypes(c.env.DB),
@@ -225,7 +236,7 @@ app.post('/api/leave', async (c) => {
 	}
 
 	const check = validateBooking(parsed, { holidays, existing, types, remaining, today });
-	if (!check.ok) return c.redirect(withFlag(back, 'err', check.error), 303);
+	if (!check.ok) return redirectWithFlash(back, 'err', check.error);
 
 	const row: LeaveRequest = {
 		id: crypto.randomUUID(),
@@ -243,7 +254,7 @@ app.post('/api/leave', async (c) => {
 	};
 	await db.insertLeave(c.env.DB, row);
 
-	return c.redirect(withFlag(back, 'ok', `Booked ${check.days} day(s) of ${check.type.label_en.toLowerCase()} leave.`), 303);
+	return redirectWithFlash(back, 'ok', `Booked ${check.days} day(s) of ${check.type.label_en.toLowerCase()} leave.`);
 });
 
 app.post('/api/leave/:id/cancel', async (c) => {
@@ -252,18 +263,17 @@ app.post('/api/leave/:id/cancel', async (c) => {
 	const id = c.req.param('id');
 
 	const row = await db.getLeave(c.env.DB, id);
-	if (!row) return c.redirect(withFlag(back, 'err', 'That booking no longer exists.'), 303);
+	if (!row) return redirectWithFlash(back, 'err', 'That booking no longer exists.');
 	// Ownership check before anything else: an id is guessable in principle and
 	// admins are the only ones who may touch someone else's row.
 	if (row.user_email !== user.email && !user.is_admin) {
-		return c.redirect(withFlag(back, 'err', 'That is not your booking.'), 303);
+		return redirectWithFlash(back, 'err', 'That is not your booking.');
 	}
 
 	const done = await db.cancelLeave(c.env.DB, id);
-	return c.redirect(
-		done ? withFlag(back, 'ok', 'Booking cancelled.') : withFlag(back, 'err', 'That booking was already cancelled.'),
-		303,
-	);
+	return done
+		? redirectWithFlash(back, 'ok', 'Booking cancelled.')
+		: redirectWithFlash(back, 'err', 'That booking was already cancelled.');
 });
 
 // ---------------------------------------------------------------------------
@@ -290,8 +300,8 @@ app.get('/me', async (c) => {
 			types={types}
 			today={today}
 			version={c.env.CF_VERSION_METADATA?.id}
-			error={c.req.query('err')}
-			notice={c.req.query('ok')}
+			error={flashOf(c.get('flash'), 'err')}
+			notice={flashOf(c.get('flash'), 'ok')}
 		/>,
 	);
 });
@@ -300,9 +310,9 @@ app.post('/me/name', async (c) => {
 	const user = c.get('user');
 	const form = await c.req.parseBody();
 	const name = String(form.displayName ?? '').trim().slice(0, 60);
-	if (!name) return c.redirect(withFlag('/me', 'err', 'Display name cannot be empty.'), 303);
+	if (!name) return redirectWithFlash('/me', 'err', 'Display name cannot be empty.');
 	await db.setDisplayName(c.env.DB, user.email, name);
-	return c.redirect(withFlag('/me', 'ok', 'Name updated.'), 303);
+	return redirectWithFlash('/me', 'ok', 'Name updated.');
 });
 
 // ---------------------------------------------------------------------------
@@ -341,8 +351,8 @@ app.get('/admin', async (c) => {
 			quotas={quotas}
 			holidays={holidays}
 			version={c.env.CF_VERSION_METADATA?.id}
-			error={c.req.query('err')}
-			notice={c.req.query('ok')}
+			error={flashOf(c.get('flash'), 'err')}
+			notice={flashOf(c.get('flash'), 'ok')}
 		/>,
 	);
 });
@@ -351,7 +361,7 @@ app.post('/admin/quotas', async (c) => {
 	const form = await c.req.parseBody();
 	const email = String(form.email ?? '').trim().toLowerCase();
 	const year = Number(form.year);
-	if (!email || !Number.isInteger(year)) return c.redirect(withFlag('/admin', 'err', 'Bad request.'), 303);
+	if (!email || !Number.isInteger(year)) return redirectWithFlash('/admin', 'err', 'Bad request.');
 
 	const types = await db.listLeaveTypes(c.env.DB);
 	for (const t of types) {
@@ -361,14 +371,14 @@ app.post('/admin/quotas', async (c) => {
 		if (!Number.isFinite(days) || days < 0 || days > 365) continue;
 		await db.setQuota(c.env.DB, email, year, t.id, round(days));
 	}
-	return c.redirect(withFlag(`/admin?y=${year}`, 'ok', `Quotas saved for ${email}.`), 303);
+	return redirectWithFlash(`/admin?y=${year}`, 'ok', `Quotas saved for ${email}.`);
 });
 
 app.post('/admin/user', async (c) => {
 	const actor = c.get('user');
 	const form = await c.req.parseBody();
 	const email = String(form.email ?? '').trim().toLowerCase();
-	if (!email) return c.redirect(withFlag('/admin', 'err', 'Bad request.'), 303);
+	if (!email) return redirectWithFlash('/admin', 'err', 'Bad request.');
 
 	const isAdmin = form.isAdmin === '1';
 	const active = form.active === '1';
@@ -378,30 +388,30 @@ app.post('/admin/user', async (c) => {
 	if (email === actor.email && (!isAdmin || !active)) {
 		const admins = (await db.listUsers(c.env.DB)).filter((u) => u.is_admin && u.active);
 		if (admins.length <= 1) {
-			return c.redirect(withFlag('/admin', 'err', 'You are the only admin — promote someone else first.'), 303);
+			return redirectWithFlash('/admin', 'err', 'You are the only admin — promote someone else first.');
 		}
 	}
 
 	await db.setAdmin(c.env.DB, email, isAdmin);
 	await db.setActive(c.env.DB, email, active);
-	return c.redirect(withFlag('/admin', 'ok', `Updated ${email}.`), 303);
+	return redirectWithFlash('/admin', 'ok', `Updated ${email}.`);
 });
 
 app.post('/admin/holiday', async (c) => {
 	const form = await c.req.parseBody();
 	const date = String(form.date ?? '').trim();
 	const label = String(form.label ?? '').trim().slice(0, 80);
-	if (!isValidDate(date) || !label) return c.redirect(withFlag('/admin', 'err', 'Need a valid date and a label.'), 303);
+	if (!isValidDate(date) || !label) return redirectWithFlash('/admin', 'err', 'Need a valid date and a label.');
 	await db.addHoliday(c.env.DB, date, label);
-	return c.redirect(withFlag('/admin', 'ok', `Added ${date}.`), 303);
+	return redirectWithFlash('/admin', 'ok', `Added ${date}.`);
 });
 
 app.post('/admin/holiday/delete', async (c) => {
 	const form = await c.req.parseBody();
 	const date = String(form.date ?? '').trim();
-	if (!isValidDate(date)) return c.redirect(withFlag('/admin', 'err', 'Bad date.'), 303);
+	if (!isValidDate(date)) return redirectWithFlash('/admin', 'err', 'Bad date.');
 	await db.removeHoliday(c.env.DB, date);
-	return c.redirect(withFlag('/admin', 'ok', `Removed ${date}.`), 303);
+	return redirectWithFlash('/admin', 'ok', `Removed ${date}.`);
 });
 
 app.notFound((c) => {
@@ -447,9 +457,66 @@ function referrerPath(referer: string | undefined): string | null {
 	}
 }
 
-function withFlag(path: string, key: 'ok' | 'err', message: string): string {
+/**
+ * Post-redirect-get flash messages, carried in a short-lived cookie.
+ *
+ * These used to ride in the query string (`/me?ok=Booked 5 day(s)…`). Cloudflare's
+ * managed "Block Attacks (WAF Attack Score)" rule blocked those redirects: free
+ * prose in a query string — parentheses, colons, quotes — scores like an
+ * injection probe, so a successful booking bounced the user into a WAF block
+ * page. The message is UI state, not addressable content, so it does not belong
+ * in the URL at all.
+ *
+ * Base64url keeps punctuation out of the header value too, so the cookie itself
+ * cannot trip the same rule.
+ */
+const FLASH_COOKIE = 'wnl_flash';
+const FLASH_MAX = 300;
+
+export type Flash = { kind: 'ok' | 'err'; message: string } | null;
+
+function flashCookie(kind: 'ok' | 'err', message: string): string {
+	const payload = JSON.stringify({ k: kind, m: message.slice(0, FLASH_MAX) });
+	const b64 = btoa(String.fromCharCode(...new TextEncoder().encode(payload)))
+		.replace(/\+/g, '-')
+		.replace(/\//g, '_')
+		.replace(/=+$/, '');
+	// Max-Age is 30s: long enough to survive the redirect, short enough that a
+	// stale message never reappears on a later visit.
+	return `${FLASH_COOKIE}=${b64}; Path=/; Max-Age=30; HttpOnly; Secure; SameSite=Lax`;
+}
+
+const FLASH_CLEAR = `${FLASH_COOKIE}=; Path=/; Max-Age=0; HttpOnly; Secure; SameSite=Lax`;
+
+/** The message text when the flash is of this kind, else undefined. */
+function flashOf(flash: Flash, kind: 'ok' | 'err'): string | undefined {
+	return flash && flash.kind === kind ? flash.message : undefined;
+}
+
+function readFlash(cookieHeader: string | undefined): Flash {
+	if (!cookieHeader) return null;
+	const m = new RegExp(`(?:^|;\\s*)${FLASH_COOKIE}=([^;]+)`).exec(cookieHeader);
+	if (!m) return null;
+	try {
+		const b64 = m[1].replace(/-/g, '+').replace(/_/g, '/');
+		const bin = atob(b64.padEnd(Math.ceil(b64.length / 4) * 4, '='));
+		const bytes = Uint8Array.from(bin, (ch) => ch.charCodeAt(0));
+		const parsed = JSON.parse(new TextDecoder().decode(bytes)) as { k?: string; m?: string };
+		if ((parsed.k !== 'ok' && parsed.k !== 'err') || typeof parsed.m !== 'string') return null;
+		return { kind: parsed.k, message: parsed.m.slice(0, FLASH_MAX) };
+	} catch {
+		// A malformed cookie is not worth an error page — just show no message.
+		return null;
+	}
+}
+
+/** Redirect to a bare path, carrying the message in the flash cookie. */
+function redirectWithFlash(path: string, kind: 'ok' | 'err', message: string): Response {
 	const [base] = path.split('?');
-	return `${base}?${key}=${encodeURIComponent(message)}`;
+	return new Response(null, {
+		status: 303,
+		headers: { Location: base, 'Set-Cookie': flashCookie(kind, message) },
+	});
 }
 
 export default {
