@@ -1,0 +1,34 @@
+{
+  "name": "wan-nee-la",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.client.json",
+    "cf-typegen": "wrangler types",
+    "build:client": "esbuild src/client/booking.ts --bundle --format=iife --minify --target=es2020 --outfile=public/booking.js",
+    "predeploy": "npm run build:client",
+    "db:init": "wrangler d1 execute wan-nee-la --local --file=migrations/0001_init.sql",
+    "db:seed": "wrangler d1 execute wan-nee-la --local --file=migrations/0002_seed.sql",
+    "db:init:remote": "wrangler d1 execute wan-nee-la --remote --file=migrations/0001_init.sql",
+    "db:seed:remote": "wrangler d1 execute wan-nee-la --remote --file=migrations/0002_seed.sql",
+    "test:dates": "node --experimental-strip-types scripts/test-dates.mjs",
+    "test:leave": "node --experimental-strip-types scripts/test-leave.mjs",
+    "test": "npm run test:dates && npm run test:leave"
+  },
+  "dependencies": {
+    "hono": "^4.6.14"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^5.20260801.1",
+    "esbuild": "^0.28.1",
+    "typescript": "^5.7.2",
+    "wrangler": "^4.120.0"
+  },
+  "allowScripts": {
+    "esbuild@0.28.2": true,
+    "workerd@1.20260811.1": true
+  }
+}

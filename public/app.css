@@ -1,0 +1,289 @@
+/* wan-nee-la — mobile-first. Single breakpoint at 768px: below it the month
+   grid is hidden and the agenda list is shown, because a 7-column grid with
+   names in the cells is unreadable on a phone. */
+
+:root {
+	--bg: #f6f7f9;
+	--surface: #ffffff;
+	--ink: #16181d;
+	--muted: #6b7280;
+	--line: #e4e7ec;
+	--accent: #2563eb;
+	--danger: #dc2626;
+	--ok: #047857;
+	--weekend: #f0f1f4;
+	--radius: 10px;
+	--pad: 16px;
+}
+
+@media (prefers-color-scheme: dark) {
+	:root {
+		--bg: #101215;
+		--surface: #181b20;
+		--ink: #e8eaed;
+		--muted: #9aa1ab;
+		--line: #2a2f37;
+		--accent: #60a5fa;
+		--danger: #f87171;
+		--ok: #34d399;
+		--weekend: #14171b;
+	}
+}
+
+* { box-sizing: border-box; }
+
+body {
+	margin: 0;
+	background: var(--bg);
+	color: var(--ink);
+	font: 15px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans Thai", Roboto, sans-serif;
+	-webkit-text-size-adjust: 100%;
+}
+
+.mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.85em; }
+.muted { color: var(--muted); }
+.pad { padding: var(--pad); }
+
+/* ---------- chrome ---------- */
+
+.topbar {
+	position: sticky;
+	top: 0;
+	z-index: 10;
+	display: flex;
+	align-items: center;
+	gap: 12px;
+	padding: 10px var(--pad);
+	padding-top: max(10px, env(safe-area-inset-top));
+	background: var(--surface);
+	border-bottom: 1px solid var(--line);
+}
+
+.brand { display: flex; align-items: center; gap: 6px; text-decoration: none; color: inherit; font-weight: 600; }
+.brand-name { display: none; }
+.nav { display: flex; gap: 4px; margin-left: auto; }
+.nav a {
+	padding: 6px 10px;
+	border-radius: 8px;
+	text-decoration: none;
+	color: var(--muted);
+	font-weight: 500;
+}
+.nav a.on { background: var(--bg); color: var(--ink); }
+.who { display: none; color: var(--muted); font-size: 13px; }
+
+.wrap { max-width: 1100px; margin: 0 auto; padding: var(--pad); }
+.foot {
+	display: flex;
+	justify-content: space-between;
+	max-width: 1100px;
+	margin: 0 auto;
+	padding: var(--pad);
+	padding-bottom: max(var(--pad), env(safe-area-inset-bottom));
+	color: var(--muted);
+	font-size: 12px;
+}
+
+/* ---------- bits ---------- */
+
+.card {
+	background: var(--surface);
+	border: 1px solid var(--line);
+	border-radius: var(--radius);
+	padding: var(--pad);
+	margin-bottom: var(--pad);
+}
+.card h2 { margin: 0 0 12px; font-size: 16px; }
+.centered { text-align: center; }
+
+.banner { padding: 10px 14px; border-radius: var(--radius); margin-bottom: var(--pad); font-size: 14px; }
+.banner.error { background: color-mix(in srgb, var(--danger) 12%, var(--surface)); color: var(--danger); }
+.banner.ok { background: color-mix(in srgb, var(--ok) 12%, var(--surface)); color: var(--ok); }
+
+.btn {
+	display: inline-block;
+	padding: 9px 14px;
+	border: 1px solid var(--line);
+	border-radius: 8px;
+	background: var(--surface);
+	color: var(--ink);
+	font: inherit;
+	font-weight: 500;
+	text-decoration: none;
+	cursor: pointer;
+	/* 44px min touch target on phones */
+	min-height: 40px;
+}
+.btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+.btn.danger { color: var(--danger); border-color: color-mix(in srgb, var(--danger) 40%, var(--line)); }
+.btn.ghost { border-color: transparent; background: transparent; padding: 6px 10px; }
+.btn.small { padding: 4px 9px; min-height: 32px; font-size: 13px; }
+
+.dot { width: 10px; height: 10px; border-radius: 50%; background: var(--chip, var(--accent)); display: inline-block; flex: none; }
+.tag { font-size: 11px; padding: 1px 6px; border-radius: 999px; background: var(--bg); color: var(--muted); }
+
+.page-head, .month-head { display: flex; align-items: center; gap: 10px; margin-bottom: var(--pad); }
+.page-head h1, .month-head h1 { margin: 0; font-size: 20px; }
+.month-head .today-link { margin-left: auto; }
+
+/* ---------- forms ---------- */
+
+.field { display: flex; flex-direction: column; gap: 4px; margin-bottom: 12px; flex: 1 1 160px; }
+.field label { font-size: 13px; font-weight: 500; }
+.row { display: flex; gap: 12px; flex-wrap: wrap; }
+.row.inline { align-items: center; margin-bottom: 8px; }
+/* Inline forms should size to their content, not stretch every input to the
+   full card width the way the stacked mobile fields do. */
+.row.inline input[type="text"], .row.inline input[type="date"] { width: auto; flex: 0 1 240px; }
+form.inline { display: inline-flex; gap: 6px; align-items: center; }
+
+input[type="text"], input[type="date"], input[type="number"], select {
+	width: 100%;
+	padding: 9px 10px;
+	border: 1px solid var(--line);
+	border-radius: 8px;
+	background: var(--surface);
+	color: var(--ink);
+	/* 16px stops iOS Safari zooming the page on focus */
+	font-size: 16px;
+	min-height: 42px;
+}
+
+.actions { display: flex; align-items: center; gap: 12px; }
+.preview { font-size: 14px; color: var(--muted); }
+.preview.bad { color: var(--danger); }
+
+.booking-disclosure { margin-bottom: var(--pad); }
+.booking-disclosure summary { list-style: none; display: inline-block; }
+.booking-disclosure summary::-webkit-details-marker { display: none; }
+.booking-disclosure[open] summary { margin-bottom: 12px; }
+.booking {
+	background: var(--surface);
+	border: 1px solid var(--line);
+	border-radius: var(--radius);
+	padding: var(--pad);
+}
+.booking.compact { border: 0; padding: 0; }
+
+/* ---------- month grid (>=768px) ---------- */
+
+.grid-view { display: none; }
+
+.weekhead { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; margin-bottom: 4px; }
+.weekhead-cell { font-size: 12px; font-weight: 600; color: var(--muted); padding: 4px 6px; }
+.weekhead-cell.weekend { color: color-mix(in srgb, var(--muted) 70%, transparent); }
+
+.grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; }
+.cell {
+	min-height: 96px;
+	padding: 6px;
+	background: var(--surface);
+	border: 1px solid var(--line);
+	border-radius: 8px;
+	overflow: hidden;
+}
+.cell.out { opacity: 0.45; }
+.cell.weekend { background: var(--weekend); }
+.cell.holiday { background: color-mix(in srgb, var(--danger) 7%, var(--surface)); }
+.cell.today { outline: 2px solid var(--accent); outline-offset: -1px; }
+.cell-head { display: flex; align-items: baseline; gap: 6px; margin-bottom: 4px; }
+.daynum { font-size: 13px; font-weight: 600; }
+.holiday-tag {
+	font-size: 10px;
+	color: var(--danger);
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+.holiday-tag.block { white-space: normal; margin-bottom: 4px; }
+
+.chips { display: flex; flex-direction: column; gap: 3px; }
+.chip {
+	font-size: 11px;
+	line-height: 1.4;
+	padding: 2px 6px;
+	border-radius: 5px;
+	background: color-mix(in srgb, var(--chip) 16%, var(--surface));
+	border-left: 3px solid var(--chip);
+	color: var(--ink);
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+
+/* ---------- agenda (<768px) ---------- */
+
+.agenda-view {
+	background: var(--surface);
+	border: 1px solid var(--line);
+	border-radius: var(--radius);
+	overflow: hidden;
+}
+.agenda-row { display: flex; gap: 12px; padding: 10px var(--pad); border-bottom: 1px solid var(--line); }
+.agenda-row:last-child { border-bottom: 0; }
+.agenda-row.today { background: color-mix(in srgb, var(--accent) 8%, var(--surface)); }
+.agenda-date { display: flex; flex-direction: column; align-items: center; width: 34px; flex: none; }
+.agenda-dow { font-size: 11px; color: var(--muted); }
+.agenda-num { font-size: 18px; font-weight: 600; }
+.agenda-body { flex: 1; min-width: 0; }
+.agenda-item { display: flex; align-items: center; gap: 8px; padding: 2px 0; }
+.agenda-name { font-weight: 500; }
+.agenda-type { font-size: 12px; color: var(--muted); margin-left: auto; }
+
+.legend { display: flex; flex-wrap: wrap; gap: 14px; margin: var(--pad) 0; font-size: 13px; }
+.legend-item { display: inline-flex; align-items: center; gap: 6px; }
+.month-summary { margin-bottom: var(--pad); font-size: 14px; }
+.plain { list-style: none; padding: 0; }
+.plain li { padding: 4px 0; }
+
+/* ---------- balances ---------- */
+
+.balances { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; margin-bottom: var(--pad); }
+.balance-card { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: 14px; }
+.balance-top { display: flex; align-items: center; gap: 6px; font-size: 13px; margin-bottom: 8px; }
+.balance-label { font-weight: 600; }
+.balance-th { font-size: 12px; }
+.balance-big { font-size: 30px; font-weight: 700; line-height: 1.1; }
+.balance-big .unit { font-size: 12px; font-weight: 400; color: var(--muted); margin-left: 6px; }
+.meter { height: 6px; background: var(--bg); border-radius: 999px; margin: 8px 0 6px; overflow: hidden; }
+.meter-fill { display: block; height: 100%; background: var(--chip, var(--accent)); border-radius: 999px; }
+.balance-sub { font-size: 12px; }
+
+.leave-list { list-style: none; padding: 0; margin: 0; }
+.leave-row { display: flex; align-items: center; gap: 10px; padding: 9px 0; border-bottom: 1px solid var(--line); flex-wrap: wrap; }
+.leave-row:last-child { border-bottom: 0; }
+.leave-row.cancelled { opacity: 0.55; }
+.leave-row.cancelled .leave-when { text-decoration: line-through; }
+.leave-when { font-weight: 500; }
+.leave-type { font-size: 13px; }
+.leave-days { margin-left: auto; font-variant-numeric: tabular-nums; }
+.leave-note { font-size: 13px; flex-basis: 100%; }
+
+/* ---------- admin ---------- */
+
+.table-scroll { overflow-x: auto; }
+.grid-table { width: 100%; border-collapse: collapse; font-size: 14px; }
+.grid-table th { text-align: left; padding: 8px; color: var(--muted); font-size: 12px; border-bottom: 1px solid var(--line); }
+.grid-table td { padding: 8px; border-bottom: 1px solid var(--line); vertical-align: top; }
+.grid-table tr.inactive { opacity: 0.5; }
+.person { display: flex; flex-direction: column; }
+.checkline { display: inline-flex; align-items: center; gap: 4px; font-size: 13px; }
+.quota-form { display: flex; flex-wrap: wrap; gap: 10px; align-items: flex-end; }
+.quota-cell { display: flex; flex-direction: column; gap: 2px; font-size: 12px; width: 92px; }
+.quota-cell input { min-height: 36px; font-size: 14px; }
+.holiday-list { list-style: none; padding: 0; }
+.holiday-list li { display: flex; align-items: center; gap: 10px; padding: 6px 0; border-bottom: 1px solid var(--line); }
+
+/* ---------- desktop ---------- */
+
+@media (min-width: 768px) {
+	.brand-name { display: inline; }
+	.who { display: inline; }
+	.grid-view { display: block; }
+	.agenda-view { display: none; }
+	.wrap { padding: 24px; }
+}
+
+@media (min-width: 1000px) {
+	.cell { min-height: 118px; }
+}

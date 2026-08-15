@@ -1,0 +1,54 @@
+{
+	"$schema": "node_modules/wrangler/config-schema.json",
+	"name": "wan-nee-la",
+	"main": "src/index.tsx",
+	"compatibility_date": "2026-08-01",
+
+	// Never expose a workers.dev URL. Cloudflare Access protects the custom hostname only,
+	// so a workers.dev route would be an unauthenticated bypass to every employee's leave data.
+	// Deploy fails until the route below is filled in — that is the intended safe default.
+	"workers_dev": false,
+	// TODO(0.6): set the hostname, then uncomment. The zone must be in the same account.
+	// "routes": [{ "pattern": "leave.example.com", "custom_domain": true }],
+
+	"observability": {
+		"enabled": true,
+	},
+
+	// Deployment version id + upload timestamp, populated by the platform at deploy time.
+	// Surfaced in /health and the page footer so a production check can prove which code answered.
+	"version_metadata": {
+		"binding": "CF_VERSION_METADATA",
+	},
+
+	"assets": {
+		"directory": "./public",
+		"binding": "ASSETS",
+	},
+
+	"d1_databases": [
+		{
+			"binding": "DB",
+			"database_name": "wan-nee-la",
+			// TODO: `wrangler d1 create wan-nee-la` and paste the id here.
+			"database_id": "REPLACE_ME",
+		},
+	],
+
+	// 01:00 UTC = 08:00 Asia/Bangkok. Thailand has no DST, so this offset is fixed.
+	// Phase 4 (LINE push) is not implemented yet; the handler is a no-op stub for now.
+	"triggers": {
+		"crons": ["0 1 * * *"],
+	},
+
+	"vars": {
+		// Cloudflare Access team domain, e.g. "acme.cloudflareaccess.com".
+		"ACCESS_TEAM_DOMAIN": "",
+		// Access application AUD tag. Both must be set before the app will serve anything.
+		"ACCESS_AUD": "",
+		// "1" bypasses Access verification and logs in as DEV_EMAIL. Local development only.
+		// Setting this in production hands every visitor an admin session.
+		"DEV_AUTH_BYPASS": "0",
+		"DEV_EMAIL": "dev@example.com",
+	},
+}
