@@ -63,6 +63,11 @@ The first account to sign in becomes the admin.
 npm run typecheck && npm test
 ```
 
+`npm run test:smoke` additionally boots a worker against a scratch database and
+exercises the HTTP layer — CSRF, ownership checks, booking rules, the digest's
+decisions and the LINE webhook signature. It needs no secrets and makes no
+outbound calls.
+
 CI runs the same checks on every push and pull request, plus a client and Worker build, and asserts that no local-only file or credential-shaped string has been committed. It needs no secrets, so it also runs on pull requests from forks.
 
 To fire the morning digest by hand, run `wrangler dev --test-scheduled` and:

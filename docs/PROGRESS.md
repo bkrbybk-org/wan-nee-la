@@ -6,7 +6,7 @@ Updated: 2026-08-15
 
 **Phases 1–4 built, verified, and deployed.** The LINE post is built but inert until its two secrets are set.
 
-Deployed and running. The real hostname, account id, database id and Access details are in `wrangler.local.jsonc`, which is gitignored — this repo is public, so the values below are placeholders. Version `3c0b882b-304f-4630-8cba-0bb8ebeae216`, D1 `<database-id>` (APAC).
+Deployed and running. The real hostname, account id, database id and Access details are in `wrangler.local.jsonc`, which is gitignored — this repo is public, so the values below are placeholders. Version `f21afd6b-5e4f-49ee-b15b-5294ad0af810`, D1 `<database-id>` (APAC).
 
 Cloudflare Access is enforcing, with the team domain and AUD set in `wrangler.local.jsonc`. `/health` reports `accessConfigured: true`, `devAuthBypass: false`.
 
@@ -30,7 +30,7 @@ Cloudflare Access is enforcing, with the team domain and AUD set in `wrangler.lo
 | 2 — Core app | **done** |
 | 3 — Admin | **done** |
 | 4 — LINE notification | **built**; inert until the LINE credentials are set. |
-| 5 — Ship | **deployed**; CI runs on push and PR. Deploy is still manual by choice — see below. |
+| 5 — Ship | **deployed**; CI runs unit + route smoke tests, both builds, and a committed-secrets guard on push and PR. Deploy is manual by choice — see below. |
 
 ## What exists
 
@@ -45,7 +45,7 @@ Cloudflare Access is enforcing, with the team domain and AUD set in `wrangler.lo
 | Views | [src/views/](../src/views/) |
 | Client bundle (progressive enhancement) | [src/client/app.ts](../src/client/app.ts) → `booking.ts`, `calendar.ts` |
 | Schema + seed | [migrations/](../migrations/) |
-| Tests | [scripts/](../scripts/) — dates, leave, LINE |
+| Tests | [scripts/](../scripts/) — dates, leave, LINE units; `smoke.mjs` covers the HTTP layer |
 
 ## Verified locally (2026-08-15)
 
@@ -89,6 +89,8 @@ Service-token claims are `aud, common_name, exp, iat, iss, sub, type` — no `em
 ## Log
 
 - **2026-08-15** — Requirements gathered. Architecture, plan, and issue list drafted. Confirmed LINE Notify EOL against LINE's own announcement; repointed the notification design at the Messaging API. Flagged per-member push billing (ISSUES.md #2).
+- **2026-08-15** — Route-level smoke tests (`npm run test:smoke`, 58 assertions) now cover the HTTP layer in CI: CSRF, ownership, booking rules over a real request, the open-redirect guard, digest decisions and the LINE webhook signature. Verified by breaking the code on purpose.
+- **2026-08-15** — Deactivated users no longer appear on the shared calendar, feed or digest; the JSON feed no longer returns emails; the calendar gained an out-today / next-7-days summary.
 - **2026-08-15** — LINE digest built (phase 4). Cron posts the day's leave to a LINE group; /line/webhook captures the group id and verifies X-Line-Signature; notification_log makes a double post impossible. Inert until the two secrets are set.
 - **2026-08-15** — Bulk quota action on /admin, and drag-to-move on the calendar.
 - **2026-08-15** — Calendar is now directly editable: click an empty day to book it, click an entry to open a detail popup with Edit and Remove. Both are real links (`/book?date=`, `/leave/:id/edit`) upgraded to dialogs by `src/client/calendar.ts`, so the calendar still works with scripting off. Client bundle renamed `booking.js` → `app.js`.
