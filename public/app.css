@@ -343,6 +343,35 @@ input[type="text"], input[type="date"], input[type="number"], select {
 .calendar-actions { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: var(--pad); }
 .calendar-actions .hint { font-size: 13px; }
 
+/* ---------- who's out summary ---------- */
+
+.who-summary {
+	display: grid;
+	grid-template-columns: 1fr 1fr;
+	gap: var(--pad);
+	margin-bottom: var(--pad);
+	padding: 10px var(--pad);
+	border: 1px solid var(--line);
+	border-radius: var(--radius);
+	background: var(--surface);
+}
+.who-block h2 {
+	margin: 0 0 4px;
+	font-size: 12px;
+	font-weight: 600;
+	text-transform: uppercase;
+	letter-spacing: 0.03em;
+	color: var(--muted);
+}
+.who-block .muted { font-size: 13px; }
+.who-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
+.who-list li { display: flex; align-items: baseline; gap: 6px; font-size: 13px; flex-wrap: wrap; }
+.who-name { font-weight: 600; }
+
+@media (max-width: 768px) {
+	.who-summary { grid-template-columns: 1fr; gap: 10px; }
+}
+
 /* ---------- popups ---------- */
 
 .popup {

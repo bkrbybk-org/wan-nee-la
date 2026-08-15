@@ -182,12 +182,25 @@ export async function bulkSetQuota(db: D1Database, year: number, leaveTypeId: nu
 // Leave
 // ---------------------------------------------------------------------------
 
-/** Confirmed leave overlapping [from, to], for the calendar. */
+/**
+ * Confirmed leave overlapping [from, to], for the shared calendar / JSON feed /
+ * LINE digest — the three surfaces that answer "who of us is out". A
+ * deactivated user's leave is excluded here only; admin-facing queries
+ * (listUserLeave, usedByType, confirmedRanges) are untouched so their history
+ * and balances stay intact.
+ *
+ * `u` is a LEFT JOIN, so `u.active` is NULL when the user row is missing
+ * entirely (never actually true today, but nothing guarantees it stays that
+ * way). That absence has nothing to do with the active/inactive decision, so
+ * treat NULL as "not deactivated" rather than filtering the row out for an
+ * unrelated reason — only an explicit `active = 0` hides a row.
+ */
 export async function listLeaveInRange(db: D1Database, from: string, to: string): Promise<LeaveEntry[]> {
 	const res = await db
 		.prepare(
 			`SELECT ${ENTRY_COLUMNS} ${ENTRY_FROM}
 			 WHERE r.status = 'confirmed' AND r.start_date <= ? AND r.end_date >= ?
+			 AND (u.active IS NULL OR u.active = 1)
 			 ORDER BY r.start_date, display_name`,
 		)
 		.bind(to, from)

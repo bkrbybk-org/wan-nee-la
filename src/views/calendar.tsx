@@ -1,4 +1,4 @@
-import { dayOfWeek, describeRange, formatDays, monthGrid, monthName, shiftMonth, shortDate } from '../domain/dates.ts';
+import { addDays, dayOfWeek, describeRange, formatDays, monthGrid, monthName, shiftMonth, shortDate } from '../domain/dates.ts';
 import { byDate, halfOn } from '../domain/leave.ts';
 import type { Half, Holiday, LeaveEntry, LeaveType, User } from '../types.ts';
 import { Layout } from './layout.tsx';
@@ -62,6 +62,39 @@ export function CalendarPage(props: CalendarProps) {
 
 	const canEdit = (e: LeaveEntry) => e.user_email === user.email || Boolean(user.is_admin);
 
+	// `entries` only covers the displayed month's grid, padded to whole weeks.
+	// When today isn't in that grid (browsing another month) there is no data
+	// to summarise, so the whole block is hidden rather than showing a false
+	// "nobody out" for a day we never fetched.
+	const showSummary = grid.includes(today);
+	const todayEntries = showSummary ? map.get(today) ?? [] : [];
+	const todayEmails = new Set(todayEntries.map((e) => e.user_email));
+
+	// The next seven days, not the calendar week.
+	//
+	// A Mon-Sun week is the obvious reading of "this week", but it is mostly in
+	// the past by Thursday and entirely useless on a Sunday — the moment someone
+	// is most likely to be checking what the coming week looks like. A rolling
+	// window answers the planning question on every day of the week.
+	//
+	// The route deliberately queries seven days past the end of the grid so this
+	// window is always fully covered, including when today falls in the month's
+	// last row.
+	const weekDates = showSummary ? Array.from({ length: 7 }, (_, i) => addDays(today, i + 1)) : [];
+
+	type WeekPerson = { id: string; name: string; type: string; color: string; days: string[] };
+	const weekMap = new Map<string, WeekPerson>();
+	for (const d of weekDates) {
+		if (d === today) continue;
+		for (const e of map.get(d) ?? []) {
+			if (todayEmails.has(e.user_email)) continue;
+			const existing = weekMap.get(e.id);
+			if (existing) existing.days.push(d);
+			else weekMap.set(e.id, { id: e.id, name: e.display_name, type: e.type_label_en, color: e.color, days: [d] });
+		}
+	}
+	const weekPeople = [...weekMap.values()];
+
 	// The agenda view only lists days that have something on them — a phone
 	// screen of empty date rows is scrolling for no reason.
 	const agenda = grid
@@ -89,6 +122,48 @@ export function CalendarPage(props: CalendarProps) {
 				<a class="btn primary" href="/book" data-book-link>Book leave</a>
 				<span class="muted hint">Click any day to book it, or an entry to open it.</span>
 			</p>
+
+			{showSummary ? (
+				<section class="who-summary" aria-label="Who is out">
+					<div class="who-block">
+						<h2>Out today</h2>
+						{todayEntries.length === 0 ? (
+							<p class="muted">Nobody is out today.</p>
+						) : (
+							<ul class="who-list">
+								{todayEntries.map((e) => (
+									<li>
+										<span class="dot" style={`--chip: ${e.color}`} />
+										<span class="who-name">{e.display_name}</span>
+										<span class="muted">
+											{e.type_label_en}
+											{halfMark(halfOn(e, today))}
+										</span>
+									</li>
+								))}
+							</ul>
+						)}
+					</div>
+					<div class="who-block">
+						<h2>Next 7 days</h2>
+						{weekPeople.length === 0 ? (
+							<p class="muted">Nobody else is out in the next 7 days.</p>
+						) : (
+							<ul class="who-list">
+								{weekPeople.map((p) => (
+									<li>
+										<span class="dot" style={`--chip: ${p.color}`} />
+										<span class="who-name">{p.name}</span>
+										<span class="muted">
+											{p.type} ({p.days.map((d) => shortDate(d)).join(', ')})
+										</span>
+									</li>
+								))}
+							</ul>
+						)}
+					</div>
+				</section>
+			) : null}
 
 			{/* Both views are rendered; CSS picks one by width. The month grid is
 			    unreadable under ~768px once names are in the cells. */}

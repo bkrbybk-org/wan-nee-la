@@ -17,7 +17,8 @@
     "test:dates": "node --experimental-strip-types scripts/test-dates.mjs",
     "test:leave": "node --experimental-strip-types scripts/test-leave.mjs",
     "test": "npm run test:dates && npm run test:leave && npm run test:line",
-    "test:line": "node --experimental-strip-types scripts/test-line.mjs"
+    "test:line": "node --experimental-strip-types scripts/test-line.mjs",
+    "test:smoke": "node scripts/smoke.mjs"
   },
   "dependencies": {
     "hono": "^4.6.14"

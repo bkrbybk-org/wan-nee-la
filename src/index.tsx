@@ -2,6 +2,7 @@ import { Hono } from 'hono';
 import type { Context, MiddlewareHandler } from 'hono';
 import { authenticate } from './auth/access.ts';
 import {
+	addDays,
 	bangkokNow,
 	bangkokToday,
 	countLeaveDays,
@@ -172,7 +173,10 @@ app.get('/', async (c) => {
 	// vanishes from the leading week of the next.
 	const grid = monthGrid(year, month);
 	const from = grid[0];
-	const to = grid[grid.length - 1];
+	// Seven days past the grid so the "next 7 days" summary always has its full
+	// window, even when today sits in the last row of the month. Rows beyond the
+	// grid are never rendered as cells — the grid only draws dates it lists.
+	const to = addDays(grid[grid.length - 1], 7);
 
 	const [entries, holidays, types] = await Promise.all([
 		db.listLeaveInRange(c.env.DB, from, to),
@@ -234,7 +238,6 @@ app.get('/api/leave', async (c) => {
 		entries: entries.map((e) => ({
 			id: e.id,
 			name: e.display_name,
-			email: e.user_email,
 			type: e.type_code,
 			label: e.type_label_en,
 			color: e.color,

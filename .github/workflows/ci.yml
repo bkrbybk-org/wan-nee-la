@@ -44,6 +44,13 @@ jobs:
         # so nothing else would catch a break.
         run: npm run build:client
 
+      - name: Route smoke tests
+        # Boots a real worker against a scratch database and exercises the HTTP
+        # layer: CSRF, ownership, booking rules, the digest's decisions and the
+        # LINE webhook signature. Needs no secrets and makes no outbound calls,
+        # so it behaves the same here as on a laptop.
+        run: npm run test:smoke
+
       - name: Build the Worker
         # Catches bundling errors tsc cannot see — a bad import, a module that
         # does not survive the Workers runtime. --dry-run needs no credentials
