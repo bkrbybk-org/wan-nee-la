@@ -33,7 +33,9 @@ import { rmSync, mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-const PORT = Number(process.env.SMOKE_PORT ?? 8811);
+// Randomised per run so a stray worker left behind by an earlier run can never
+// be mistaken for this one's server.
+const PORT = Number(process.env.SMOKE_PORT ?? 8800 + Math.floor(Math.random() * 900));
 const BASE = `http://127.0.0.1:${PORT}`;
 const ORIGIN = `http://127.0.0.1:${PORT}`;
 const CHANNEL_SECRET = 'smoke-channel-secret';
@@ -113,12 +115,20 @@ async function startServer(devEmail) {
 			// a machine with no outbound network.
 			'--var', 'LINE_CHANNEL_ACCESS_TOKEN:',
 		],
-		{ env: { ...process.env, WRANGLER_SEND_METRICS: 'false' }, stdio: ['ignore', 'pipe', 'pipe'] },
+		{
+			env: { ...process.env, WRANGLER_SEND_METRICS: 'false' },
+			stdio: ['ignore', 'pipe', 'pipe'],
+			// Own process group. `npx` is a wrapper around wrangler, which itself
+			// runs workerd as a child; signalling only the wrapper leaves workerd
+			// alive and still holding the port, so the next boot in this suite
+			// cannot bind. Killing the group takes the whole tree down.
+			detached: true,
+		},
 	);
 	server.stdout.on('data', (b) => (serverLog += b));
 	server.stderr.on('data', (b) => (serverLog += b));
 
-	for (let i = 0; i < 60; i++) {
+	for (let i = 0; i < 120; i++) {
 		await new Promise((r) => setTimeout(r, 1000));
 		try {
 			const res = await fetch(`${BASE}/health`);
@@ -127,21 +137,59 @@ async function startServer(devEmail) {
 				// cannot silently make every later assertion meaningless.
 				const body = await res.json();
 				if (!body.devAuthBypass) throw new Error('dev auth bypass did not take effect');
+
+				// And prove this is a server signed in as `devEmail`, not some
+				// other process answering on the port. Without this an orphaned
+				// worker from an earlier session would quietly run the
+				// authorisation tests as the wrong user — and pass them.
+				const page = await (await fetch(`${BASE}/`)).text();
+				if (!page.includes(`title="${devEmail}"`)) {
+					throw new Error(`server on ${BASE} is not signed in as ${devEmail}`);
+				}
 				return;
 			}
 		} catch {
 			// not up yet
 		}
 	}
-	throw new Error(`server did not start on ${BASE}\n--- log ---\n${serverLog.slice(-2000)}`);
+	throw new Error(`server did not start on ${BASE} as ${devEmail}\n--- log ---\n${serverLog.slice(-3000)}`);
+}
+
+/** True while something is still answering on the port. */
+async function portBusy() {
+	try {
+		await fetch(`${BASE}/health`, { signal: AbortSignal.timeout(1000) });
+		return true;
+	} catch {
+		return false;
+	}
 }
 
 async function stopServer() {
 	if (!server) return;
-	const dead = new Promise((r) => server.once('exit', r));
-	server.kill('SIGTERM');
-	await Promise.race([dead, new Promise((r) => setTimeout(r, 5000))]);
+	const child = server;
 	server = null;
+
+	const dead = new Promise((r) => child.once('exit', r));
+	for (const signal of ['SIGTERM', 'SIGKILL']) {
+		try {
+			// Negative pid signals the whole process group — see `detached` above.
+			process.kill(-child.pid, signal);
+		} catch {
+			// Already gone.
+		}
+		const exited = await Promise.race([dead.then(() => true), new Promise((r) => setTimeout(() => r(false), 5000))]);
+		if (exited) break;
+	}
+
+	// The next boot reuses this port, and a listener that has not finished
+	// letting go yet fails the bind in a way that looks like "server did not
+	// start". Wait for the port to actually go quiet.
+	for (let i = 0; i < 20; i++) {
+		if (!(await portBusy())) return;
+		await new Promise((r) => setTimeout(r, 500));
+	}
+	throw new Error(`port ${PORT} still answering after the server was killed`);
 }
 
 // ---------------------------------------------------------------------------
