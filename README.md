@@ -56,7 +56,7 @@ curl "http://127.0.0.1:8787/__scheduled?cron=0+1+*+*+*"
 
 ## Deploying
 
-Not yet done. In order:
+Deployed to `leave.example.com`. For reference, the order was:
 
 1. `wrangler d1 create wan-nee-la`, paste the id into `wrangler.jsonc`.
 2. Set the hostname in `wrangler.jsonc` `routes` and uncomment it. Leave `workers_dev` at `false` — Access only protects the custom hostname, so a `workers.dev` route would be an unauthenticated bypass to everyone's leave data.

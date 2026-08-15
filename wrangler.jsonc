@@ -1,6 +1,7 @@
 {
 	"$schema": "node_modules/wrangler/config-schema.json",
 	"name": "wan-nee-la",
+	"account_id": "<account-id>",
 	"main": "src/index.tsx",
 	"compatibility_date": "2026-08-01",
 
@@ -8,8 +9,12 @@
 	// so a workers.dev route would be an unauthenticated bypass to every employee's leave data.
 	// Deploy fails until the route below is filled in — that is the intended safe default.
 	"workers_dev": false,
-	// TODO(0.6): set the hostname, then uncomment. The zone must be in the same account.
-	// "routes": [{ "pattern": "leave.example.com", "custom_domain": true }],
+	"routes": [
+		{
+			"pattern": "leave.example.com",
+			"custom_domain": true,
+		},
+	],
 
 	"observability": {
 		"enabled": true,
@@ -30,8 +35,7 @@
 		{
 			"binding": "DB",
 			"database_name": "wan-nee-la",
-			// TODO: `wrangler d1 create wan-nee-la` and paste the id here.
-			"database_id": "REPLACE_ME",
+			"database_id": "<database-id>",
 		},
 	],
 

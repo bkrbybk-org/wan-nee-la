@@ -4,9 +4,11 @@ Updated: 2026-08-15
 
 ## Status
 
-**Phases 1–3 built and verified locally.** Calendar, booking, balances, and admin all work end to end against a local D1. Phase 4 (LINE push) is deliberately not built — the owner deferred it.
+**Phases 1–3 built, verified, and deployed.** Phase 4 (LINE push) is deliberately not built — the owner deferred it.
 
-Not yet deployed. Deploy is blocked on two owner tasks: a hostname and a Cloudflare Access app (PLAN.md 0.5, 0.6).
+Live at **https://leave.example.com** — account `<account name>` (`<account-id>`), version `ee94f57f-7ad4-48d0-9716-ee02e173c20c`, D1 `<database-id>` (APAC).
+
+**The deployment currently returns 403 to everyone, by design.** `ACCESS_TEAM_DOMAIN` and `ACCESS_AUD` are empty, and `authenticate()` fails closed when they are — an unconfigured deployment must not serve leave data to whoever finds the hostname. It stays unusable until the owner creates the Access application and those two vars are set. That is the last remaining step.
 
 ## Decisions locked (2026-08-15)
 
@@ -26,7 +28,7 @@ Not yet deployed. Deploy is blocked on two owner tasks: a hostname and a Cloudfl
 | 2 — Core app | **done** |
 | 3 — Admin | **done** |
 | 4 — LINE notification | **deferred by owner**. Cron fires and logs; no message is sent. |
-| 5 — Ship (CI, deploy) | not started |
+| 5 — Ship | **deployed**; CI not set up |
 
 ## What exists
 
@@ -58,9 +60,10 @@ Against `wrangler dev` with a local D1 and `DEV_AUTH_BYPASS=1`:
 
 ## Next action
 
-1. Owner: pick the hostname, create the Access app, `wrangler d1 create wan-nee-la`, paste the database id into `wrangler.jsonc`, uncomment the route.
-2. Then phase 5: CI and first deploy.
-3. Phase 4 (LINE) whenever the owner wants it — nothing else depends on it.
+1. **Owner**: create a Cloudflare Access application on `leave.example.com` with the policy for staff. Then hand over the team domain (e.g. `<team>.cloudflareaccess.com`) and the application **AUD tag**.
+2. Put both into `vars` in `wrangler.jsonc` and redeploy. `/health` must then report `accessConfigured: true` and `devAuthBypass: false`.
+3. First person to sign in becomes the admin — make sure that is the right person.
+4. Then: CI (phase 5.2), and phase 4 (LINE) whenever the owner wants it. Nothing else depends on either.
 
 ## Log
 
