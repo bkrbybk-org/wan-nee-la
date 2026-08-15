@@ -6,6 +6,8 @@ interface BookingFormProps {
 	compact?: boolean;
 	/** When present the form edits this booking instead of creating a new one. */
 	entry?: LeaveEntry;
+	/** Start date to prefill when creating — the day the user clicked on the calendar. */
+	defaultDate?: string;
 }
 
 /**
@@ -16,7 +18,7 @@ interface BookingFormProps {
  * `type="date"` gives the native picker on both iOS and Android, which is a far
  * better mobile experience than any date-picker library and costs nothing.
  */
-export function BookingForm({ types, today, compact, entry }: BookingFormProps) {
+export function BookingForm({ types, today, compact, entry, defaultDate }: BookingFormProps) {
 	const editing = Boolean(entry);
 	const action = entry ? `/api/leave/${entry.id}/edit` : '/api/leave';
 	// On a single-day booking the end date is left blank, which is what the
@@ -47,7 +49,7 @@ export function BookingForm({ types, today, compact, entry }: BookingFormProps) 
 						id={`startDate-${entry?.id ?? 'new'}`}
 						name="startDate"
 						required
-						value={entry ? entry.start_date : today}
+						value={entry ? entry.start_date : (defaultDate ?? today)}
 						data-start
 					/>
 				</div>

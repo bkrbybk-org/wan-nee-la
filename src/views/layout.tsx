@@ -55,7 +55,7 @@ export function Layout({ title, user, active, version, children }: LayoutProps) 
 				{/* Must run before first paint — see THEME_SCRIPT. */}
 				<script dangerouslySetInnerHTML={{ __html: THEME_SCRIPT }} />
 				{/* Enhancement only — every page works with this blocked. */}
-				<script src="/booking.js" defer></script>
+				<script src="/app.js" defer></script>
 			</head>
 			<body>
 				<header class="topbar">

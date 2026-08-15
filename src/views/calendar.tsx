@@ -1,4 +1,4 @@
-import { dayOfWeek, describeRange, formatDays, monthGrid, monthName, shiftMonth } from '../domain/dates.ts';
+import { dayOfWeek, describeRange, formatDays, monthGrid, monthName, shiftMonth, shortDate } from '../domain/dates.ts';
 import { byDate, halfOn } from '../domain/leave.ts';
 import type { Half, Holiday, LeaveEntry, LeaveType, User } from '../types.ts';
 import { Layout } from './layout.tsx';
@@ -23,6 +23,27 @@ function halfMark(h: Half): string {
 	return h === 'am' ? ' ½am' : h === 'pm' ? ' ½pm' : '';
 }
 
+/**
+ * Everything the detail popup shows, hung off the element the user clicks.
+ *
+ * The popup is built from these attributes rather than fetched, so opening one
+ * costs no request and works the instant the page renders. They carry only what
+ * is already visible on the calendar — no email, no data the viewer could not
+ * read off the grid.
+ */
+function entryData(e: LeaveEntry, canEdit: boolean) {
+	return {
+		'data-entry': e.id,
+		'data-name': e.display_name,
+		'data-type': e.type_label_en,
+		'data-color': e.color,
+		'data-when': describeRange(e.start_date, e.end_date, e.start_half, e.end_half),
+		'data-days': formatDays(e.days_total),
+		'data-note': e.note ?? '',
+		'data-can-edit': canEdit ? '1' : '',
+	};
+}
+
 export function CalendarPage(props: CalendarProps) {
 	const { user, year, month, entries, holidays, types, today, version, error, notice } = props;
 	const grid = monthGrid(year, month);
@@ -30,11 +51,14 @@ export function CalendarPage(props: CalendarProps) {
 	const holidayMap = new Map(holidays.map((h) => [h.date, h.label]));
 	const prev = shiftMonth(year, month, -1);
 	const next = shiftMonth(year, month, 1);
+	const monthPrefix = `${year}-${String(month).padStart(2, '0')}`;
+
+	const canEdit = (e: LeaveEntry) => e.user_email === user.email || Boolean(user.is_admin);
 
 	// The agenda view only lists days that have something on them — a phone
 	// screen of empty date rows is scrolling for no reason.
 	const agenda = grid
-		.filter((d) => d.startsWith(`${year}-${String(month).padStart(2, '0')}`))
+		.filter((d) => d.startsWith(monthPrefix))
 		.filter((d) => map.has(d) || holidayMap.has(d))
 		.map((d) => ({ date: d, entries: map.get(d) ?? [], holiday: holidayMap.get(d) }));
 
@@ -52,10 +76,12 @@ export function CalendarPage(props: CalendarProps) {
 				<a class="btn ghost today-link" href="/">Today</a>
 			</div>
 
-			<details class="booking-disclosure">
-				<summary class="btn primary">Book leave</summary>
-				<BookingForm types={types} today={today} />
-			</details>
+			{/* A real link, so this works with scripting off. The client script
+			    intercepts it and opens the dialog instead. */}
+			<p class="calendar-actions">
+				<a class="btn primary" href="/book" data-book-link>Book leave</a>
+				<span class="muted hint">Click any day to book it, or an entry to open it.</span>
+			</p>
 
 			{/* Both views are rendered; CSS picks one by width. The month grid is
 			    unreadable under ~768px once names are in the cells. */}
@@ -67,7 +93,7 @@ export function CalendarPage(props: CalendarProps) {
 				</div>
 				<div class="grid">
 					{grid.map((date) => {
-						const inMonth = date.startsWith(`${year}-${String(month).padStart(2, '0')}`);
+						const inMonth = date.startsWith(monthPrefix);
 						const weekend = dayOfWeek(date) === 0 || dayOfWeek(date) === 6;
 						const holiday = holidayMap.get(date);
 						const dayEntries = map.get(date) ?? [];
@@ -82,20 +108,32 @@ export function CalendarPage(props: CalendarProps) {
 							.join(' ');
 						return (
 							<div class={classes}>
+								{/* Covers the cell's empty space. Sits under the chips so a
+								    click on an entry opens that entry rather than the
+								    booking form. */}
+								<a
+									class="cell-add"
+									href={`/book?date=${date}`}
+									data-book-link
+									data-date={date}
+									aria-label={`Book leave on ${shortDate(date)}`}
+								></a>
 								<div class="cell-head">
 									<span class="daynum">{Number(date.slice(8, 10))}</span>
 									{holiday ? <span class="holiday-tag" title={holiday}>{holiday}</span> : null}
 								</div>
 								<div class="chips">
 									{dayEntries.map((e) => (
-										<span
-											class="chip"
+										<a
+											class={`chip ${canEdit(e) ? 'mine' : ''}`}
+											href={canEdit(e) ? `/leave/${e.id}/edit` : '#'}
 											style={`--chip: ${e.color}`}
 											title={`${e.display_name} — ${e.type_label_en}${e.note ? `: ${e.note}` : ''}`}
+											{...entryData(e, canEdit(e))}
 										>
 											{e.display_name}
 											{halfMark(halfOn(e, date))}
-										</span>
+										</a>
 									))}
 								</div>
 							</div>
@@ -110,21 +148,25 @@ export function CalendarPage(props: CalendarProps) {
 				) : (
 					agenda.map((row) => (
 						<div class={`agenda-row ${row.date === today ? 'today' : ''}`}>
-							<div class="agenda-date">
+							<a class="agenda-date" href={`/book?date=${row.date}`} data-book-link data-date={row.date}>
 								<span class="agenda-dow">{WEEKDAYS[(dayOfWeek(row.date) + 6) % 7]}</span>
 								<span class="agenda-num">{Number(row.date.slice(8, 10))}</span>
-							</div>
+							</a>
 							<div class="agenda-body">
 								{row.holiday ? <div class="holiday-tag block">{row.holiday}</div> : null}
 								{row.entries.map((e) => (
-									<div class="agenda-item">
+									<a
+										class={`agenda-item ${canEdit(e) ? 'mine' : ''}`}
+										href={canEdit(e) ? `/leave/${e.id}/edit` : '#'}
+										{...entryData(e, canEdit(e))}
+									>
 										<span class="dot" style={`--chip: ${e.color}`} />
 										<span class="agenda-name">{e.display_name}</span>
 										<span class="agenda-type">
 											{e.type_label_en}
 											{halfMark(halfOn(e, row.date))}
 										</span>
-									</div>
+									</a>
 								))}
 							</div>
 						</div>
@@ -141,22 +183,45 @@ export function CalendarPage(props: CalendarProps) {
 				))}
 			</section>
 
-			{entries.length > 0 ? (
-				<details class="month-summary">
-					<summary>This month: {entries.length} booking(s)</summary>
-					<ul class="plain">
-						{entries.map((e) => (
-							<li>
-								<strong>{e.display_name}</strong> — {describeRange(e.start_date, e.end_date, e.start_half, e.end_half)}
-								<span class="muted">
-									{' '}
-									· {e.type_label_en} · {formatDays(e.days_total)}d
-								</span>
-							</li>
-						))}
-					</ul>
-				</details>
-			) : null}
+			{/* Both dialogs are inert markup until the client script upgrades them.
+			    Rendered once per page, not once per entry. */}
+			<dialog class="popup" data-create-dialog aria-label="Book leave">
+				<div class="popup-head">
+					<h2 data-create-title>Book leave</h2>
+					<button type="button" class="popup-x" data-popup-close aria-label="Close">✕</button>
+				</div>
+				<BookingForm types={types} today={today} compact />
+			</dialog>
+
+			<dialog class="popup" data-entry-dialog aria-label="Leave details">
+				<div class="popup-head">
+					<h2>
+						<span class="dot" data-p-dot /> <span data-p-name></span>
+					</h2>
+					<button type="button" class="popup-x" data-popup-close aria-label="Close">✕</button>
+				</div>
+				<dl class="popup-facts">
+					<dt>When</dt>
+					<dd data-p-when></dd>
+					<dt>Type</dt>
+					<dd data-p-type></dd>
+					<dt>Days</dt>
+					<dd data-p-days></dd>
+					<div data-p-note-row>
+						<dt>Note</dt>
+						<dd data-p-note></dd>
+					</div>
+				</dl>
+				<div class="popup-actions" data-p-actions>
+					<a class="btn" data-p-edit href="#">Edit</a>
+					<form method="post" data-p-cancel class="inline">
+						<button type="submit" class="btn danger">Remove</button>
+					</form>
+				</div>
+				<p class="muted" data-p-readonly hidden>
+					Only the person who booked this — or an admin — can change it.
+				</p>
+			</dialog>
 		</Layout>
 	);
 }

@@ -6,7 +6,7 @@ Updated: 2026-08-15
 
 **Phases 1–3 built, verified, and deployed.** Phase 4 (LINE push) is deliberately not built — the owner deferred it.
 
-Live at **https://leave.example.com** — account `<account name>` (`<account-id>`), version `adc9d8c4-1123-4856-810e-9a26f2803a9a`, D1 `<database-id>` (APAC).
+Live at **https://leave.example.com** — account `<account name>` (`<account-id>`), version `3483fca9-7a0c-4d78-bac1-28e080055c0b`, D1 `<database-id>` (APAC).
 
 Cloudflare Access is enforcing: team `<team>.cloudflareaccess.com`, AUD `<access-aud>`, both set in `wrangler.jsonc` vars. `/health` reports `accessConfigured: true`, `devAuthBypass: false`.
 
@@ -42,7 +42,7 @@ Cloudflare Access is enforcing: team `<team>.cloudflareaccess.com`, AUD `<access
 | D1 queries | [src/repo/db.ts](../src/repo/db.ts) |
 | Routes + cron stub | [src/index.tsx](../src/index.tsx) |
 | Views | [src/views/](../src/views/) |
-| Booking form enhancement | [src/client/booking.ts](../src/client/booking.ts) |
+| Client bundle (progressive enhancement) | [src/client/app.ts](../src/client/app.ts) → `booking.ts`, `calendar.ts` |
 | Schema + seed | [migrations/](../migrations/) |
 | Tests | [scripts/test-dates.mjs](../scripts/test-dates.mjs), [scripts/test-leave.mjs](../scripts/test-leave.mjs) |
 
@@ -79,6 +79,7 @@ Service-token claims are `aud, common_name, exp, iat, iss, sub, type` — no `em
 ## Log
 
 - **2026-08-15** — Requirements gathered. Architecture, plan, and issue list drafted. Confirmed LINE Notify EOL against LINE's own announcement; repointed the notification design at the Messaging API. Flagged per-member push billing (ISSUES.md #2).
+- **2026-08-15** — Calendar is now directly editable: click an empty day to book it, click an entry to open a detail popup with Edit and Remove. Both are real links (`/book?date=`, `/leave/:id/edit`) upgraded to dialogs by `src/client/calendar.ts`, so the calendar still works with scripting off. Client bundle renamed `booking.js` → `app.js`.
 - **2026-08-15** — Added a System/Light/Dark theme toggle, defaulting to System. Switching logic is inlined in `<head>` so a stored choice applies before first paint; the dark media query is guarded so an explicit Light choice wins on a dark-mode OS.
 - **2026-08-15** — Added edit and remove for submitted leave: `/leave/:id/edit`, `POST /api/leave/:id/edit`. Editing excludes the booking from its own overlap check and credits its days back before the balance check, so shortening or retyping is never refused by the quota the booking itself holds. Remove is the existing soft cancel, now reachable from every confirmed booking including past ones.
 - **2026-08-15** — Booking in a browser hit a Cloudflare WAF block; cause was our own query-string flash messages (ISSUES.md #15). Moved them to a cookie.

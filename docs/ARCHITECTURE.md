@@ -104,6 +104,9 @@ Self-serve model (owner's decision): a POST creates a `confirmed` row directly. 
 | Method | Path | Purpose |
 | --- | --- | --- |
 | GET | `/` | Global calendar. Month grid on ≥768px, agenda list on mobile. |
+| GET | `/book?date=` | Booking page, prefilled. The no-JS destination for the calendar's day cells. |
+| GET | `/leave/:id/edit` | Edit one booking. Also the no-JS destination for a calendar entry. |
+| POST | `/api/leave/:id/edit` | Save an edit. |
 | GET | `/api/leave?from=&to=` | JSON feed for the calendar, all users. |
 | GET | `/me` | Personal dashboard: balance per leave type, upcoming + past leave. |
 | POST | `/api/leave` | Book leave. Server computes days, checks overlap + balance. |
@@ -155,6 +158,21 @@ Three states: **System** (default), **Light**, **Dark**, cycled by a button in t
 The switching logic is **inlined into `<head>`** (`THEME_SCRIPT` in `views/layout.tsx`), not shipped in `booking.js`. A stored choice has to be applied before the first paint; a deferred or external script renders the system theme first and then flips. The same script stamps `data-js="1"`, which is what reveals the toggle — the control is useless without scripting, so it stays hidden when there is none.
 
 Dark tokens are duplicated between the media query and the `[data-theme="dark"]` block. Custom properties cannot be composed, and the alternative — a class applied by JS — reintroduces the flash.
+
+### Calendar interaction
+
+Click an empty day to book it; click an entry to open it. Both are **links first**:
+
+- a day cell contains an absolutely-positioned `<a href="/book?date=…">` filling its empty space
+- an entry is an `<a href="/leave/:id/edit">` sitting above that overlay, so a click on an entry opens the entry rather than the booking form
+
+`src/client/calendar.ts` intercepts those clicks and opens a `<dialog>` instead, so the user never loses their place in the month. With scripting off, the same clicks navigate and everything still works. Modifier- and middle-clicks are deliberately not intercepted, so "open in new tab" behaves like any other link.
+
+The detail popup is built from `data-*` attributes on the clicked element rather than a fetch — opening it costs no request. Those attributes carry only what the grid already displays; values are written with `textContent`, never parsed as markup.
+
+Native `<dialog>` + `showModal()` is used for focus trapping and Escape-to-close rather than reimplementing them.
+
+Only one booking form exists per page, inside the create dialog — two would collide on element ids.
 
 ### Layout
 

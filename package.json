@@ -8,7 +8,7 @@
     "deploy": "wrangler deploy",
     "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.client.json",
     "cf-typegen": "wrangler types",
-    "build:client": "esbuild src/client/booking.ts --bundle --format=iife --minify --target=es2020 --outfile=public/booking.js",
+    "build:client": "esbuild src/client/app.ts --bundle --format=iife --minify --target=es2020 --outfile=public/app.js",
     "predeploy": "npm run build:client",
     "db:init": "wrangler d1 execute wan-nee-la --local --file=migrations/0001_init.sql",
     "db:seed": "wrangler d1 execute wan-nee-la --local --file=migrations/0002_seed.sql",

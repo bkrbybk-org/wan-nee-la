@@ -13,6 +13,7 @@ import {
 import { parseBooking, round, validateBooking } from './domain/leave.ts';
 import * as db from './repo/db.ts';
 import { AdminPage } from './views/admin.tsx';
+import { BookPage } from './views/book.tsx';
 import { CalendarPage } from './views/calendar.tsx';
 import { EditPage } from './views/edit.tsx';
 import { ErrorPage, Layout } from './views/layout.tsx';
@@ -147,6 +148,30 @@ app.get('/', async (c) => {
 			holidays={holidays}
 			types={types}
 			today={today}
+			version={c.env.CF_VERSION_METADATA?.id}
+			error={flashOf(c.get('flash'), 'err')}
+			notice={flashOf(c.get('flash'), 'ok')}
+		/>,
+	);
+});
+
+/**
+ * Standalone booking page — the no-JS destination for the calendar's day cells
+ * and Book leave button. With scripting on, those clicks open a dialog instead
+ * and never reach this route.
+ */
+app.get('/book', async (c) => {
+	const user = c.get('user');
+	const today = c.get('today');
+	const raw = c.req.query('date');
+	const types = await db.listLeaveTypes(c.env.DB);
+
+	return c.html(
+		<BookPage
+			user={user}
+			types={types}
+			today={today}
+			date={raw && isValidDate(raw) ? raw : undefined}
 			version={c.env.CF_VERSION_METADATA?.id}
 			error={flashOf(c.get('flash'), 'err')}
 			notice={flashOf(c.get('flash'), 'ok')}

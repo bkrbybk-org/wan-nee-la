@@ -3,4 +3,4 @@ node_modules/
 .dev.vars
 dist/
 worker-configuration.d.ts
-public/booking.js
+public/app.js
