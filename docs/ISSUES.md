@@ -192,7 +192,9 @@ An Access service token authenticates fine at the edge but carries `common_name`
 
 `verifyAccessJwt` returns a typed `Rejection` for this case rather than a bare `null`, so the app can say "this is a valid service token, not a person" instead of "failed verification" — the latter sends people hunting a signature bug that does not exist.
 
-Consequence for testing: **production cannot be smoke-tested end to end with a service token.** Anything past the identity check needs a real browser session. Worth remembering before writing a synthetic uptime check against `/` — use `/health`, which sits above the auth middleware.
+Consequence for testing: **production cannot be smoke-tested end to end with a service token.** Anything past the identity check needs a real browser session.
+
+Correction to an earlier note here: `/health` is *not* usable for an anonymous uptime check either. It sits above the app's own auth middleware, but Cloudflare Access fronts every path, so an unauthenticated monitor gets a 302 to the login page — verified against production. A monitor needs either an Access Bypass rule on `/health` or an Access service token. See #18.
 
 ---
 
@@ -224,4 +226,33 @@ So:
 - CI fails if `.dev.vars`, `wrangler.local.jsonc` or the built bundle are ever tracked. Its patterns are generic on purpose: naming this company's hostname in a CI rule would put it back in the public repo.
 
 **History was rewritten** on 2026-08-15 to purge those values from all earlier commits, including one commit message, and force-pushed. Caveat recorded at the time: GitHub keeps unreferenced commits reachable by direct SHA until it garbage-collects, so the old objects were not instantly destroyed. There were 0 forks and 0 clones, and the SHAs are no longer discoverable through any branch. Deleting and recreating the repository is the only way to remove them with certainty.
+
+---
+
+## #17 — Leave notes are visible to everyone, not just the booker `open — needs owner decision`
+
+The optional free-text note on a booking is shown to **every** authenticated user, not only the owner and admins. It reaches them three ways: the chip's `title` tooltip, the `data-note` attribute the detail popup reads, and the `note` field in `GET /api/leave`.
+
+Verified live: a user who is neither the booker nor an admin loaded the calendar and the JSON feed and saw a note reading "oncology follow-up" in both.
+
+This may well be intended — it is a shared team calendar, and context for an absence is often the point. But two things suggest the exposure was not thought through:
+
+- The LINE digest deliberately omits notes, so the spread was clearly considered somewhere.
+- The comment above `entryData()` claimed these attributes "carry only what is already visible on the calendar", which was false: the grid cell shows a name, the note shows whatever the person typed. That comment has been corrected to point here.
+
+The risk is that notes are exactly where someone writes a medical or family detail, because the field is right there and looks incidental.
+
+Options: (a) leave it — a shared calendar, and people can simply not write anything private; (b) show the note only to its owner and admins; (c) keep it public but relabel the field and add a hint that everyone can read it, so the choice is informed; (d) two fields, one shared and one private.
+
+Recommendation: **(c) now, (b) if anyone objects.** (c) is small, keeps the feature's usefulness, and fixes the real problem, which is that the field does not look like a broadcast. Not decided unilaterally — this is a privacy policy question for the company, not a technical one.
+
+---
+
+## #18 — `/health` is not reachable for an anonymous uptime check `open`
+
+Access fronts every path, `/health` included, so a monitor without credentials receives a 302 to the Cloudflare Access login rather than the JSON. Confirmed against production.
+
+Options: add an Access **Bypass** rule for `/health` (it deliberately exposes nothing about who works here or when they are away — only a version string, a D1 ping and two config booleans), or point the monitor at Access with a service token.
+
+Worth doing whichever way, because right now nothing watches this deployment.
 

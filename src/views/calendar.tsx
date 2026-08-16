@@ -27,9 +27,14 @@ function halfMark(h: Half): string {
  * Everything the detail popup shows, hung off the element the user clicks.
  *
  * The popup is built from these attributes rather than fetched, so opening one
- * costs no request and works the instant the page renders. They carry only what
- * is already visible on the calendar — no email, no data the viewer could not
- * read off the grid.
+ * costs no request and works the instant the page renders.
+ *
+ * Note that `data-note` goes further than the rest: the grid cell shows only a
+ * name, but the note is free text the booker wrote, and it is emitted for every
+ * viewer regardless of `canEdit`. That is a deliberate property of a shared
+ * calendar, not an oversight — but it is the one field here that a colleague
+ * could not otherwise read off the page, so see ISSUES.md #17 before assuming
+ * notes are private.
  */
 function entryData(e: LeaveEntry, canEdit: boolean) {
 	return {

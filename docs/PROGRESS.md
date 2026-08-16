@@ -56,7 +56,7 @@ Two consequences worth remembering:
 
 | Method | Path | Notes |
 | --- | --- | --- |
-| GET | `/health` | Above auth. Version, D1 ping, config flags. Safe for uptime checks. |
+| GET | `/health` | Above the app's auth. Version, D1 ping, config flags. Still behind Access, so an anonymous monitor cannot reach it — see ISSUES.md #18. |
 | POST | `/line/webhook` | Above auth. Signature-verified; only writes the group id. |
 | GET | `/` | Calendar. Month grid ≥768px, agenda list below. Out-today / next-7-days summary. |
 | GET | `/book?date=` | Booking page — the no-JS destination for calendar day cells. |
