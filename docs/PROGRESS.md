@@ -1,100 +1,172 @@
 # wan-nee-la — Progress
 
-Updated: 2026-08-15
+Updated: 2026-08-16
+
+> This repo is **public**. Every account id, hostname, database id and Access
+> value below is a placeholder; the real ones live in `wrangler.local.jsonc`,
+> which is gitignored. See ISSUES.md #16 for why.
 
 ## Status
 
-**Phases 1–4 built, verified, and deployed.** The LINE post is built but inert until its two secrets are set.
+Deployed and serving. Version `f21afd6b-5e4f-49ee-b15b-5294ad0af810`, D1 `<database-id>` in APAC, behind Cloudflare Access on `<hostname>`. `/health` reports `accessConfigured: true`, `devAuthBypass: false`.
 
-Deployed and running. The real hostname, account id, database id and Access details are in `wrangler.local.jsonc`, which is gitignored — this repo is public, so the values below are placeholders. Version `f21afd6b-5e4f-49ee-b15b-5294ad0af810`, D1 `<database-id>` (APAC).
+Everything in phases 1–5 is built. Two things gate real use, both needing the owner rather than more code:
 
-Cloudflare Access is enforcing, with the team domain and AUD set in `wrangler.local.jsonc`. `/health` reports `accessConfigured: true`, `devAuthBypass: false`.
+1. **No human has signed in through SSO yet.** It cannot be tested from a terminal — a service token authenticates at the edge but carries no `email`, so the app correctly refuses it. Someone must open the site in a browser. **Whoever does so first becomes the admin.**
+2. **The LINE post is inert.** The code is complete and tested; it needs a Messaging API channel, an Access Bypass rule on `/line/webhook`, and two secrets.
 
-**Not yet confirmed: a human SSO login.** That cannot be tested from a terminal. Everything up to the identity claim is proven (see below) — someone needs to open the URL in a browser and confirm they land on the calendar. The first person to do so becomes the admin.
+---
 
-## Decisions locked (2026-08-15)
+## Architecture
+
+| Area | Choice | Why |
+| --- | --- | --- |
+| Runtime | Cloudflare Workers | Required. |
+| Framework | Hono + Hono JSX, server-rendered | No SPA. Pages are small; SSR is faster on a phone and keeps the client bundle at ~6kb. |
+| Data | D1 (SQLite) | Relational: users × quotas × requests. KV cannot do the date-range queries the calendar needs. |
+| Auth | Cloudflare Access, JWT **verified** in the Worker | Never trust the header alone — that assumption breaks the moment a second route exists. |
+| Dates | Bangkok-local `YYYY-MM-DD` strings | Leave is a calendar date, not an instant. UTC timestamps cause off-by-one bugs at the boundary. |
+| Notify | LINE Messaging API | LINE Notify was terminated 2025-03-31. |
+| Schedule | Cron `0 1 * * *` | 01:00 UTC = 08:00 Asia/Bangkok. Thailand has no DST, so the offset is a constant. |
+| Config | `wrangler.jsonc` template + gitignored `wrangler.local.jsonc` | Keeps one company's infrastructure out of a public clone. npm scripts prefer the local file. |
+
+### Layers
+
+```
+src/domain/    pure functions — date maths, half-days, booking rules, balances
+src/repo/      every D1 query; no SQL anywhere else
+src/auth/      Access JWT verification
+src/notify/    LINE digest + webhook signature
+src/views/     Hono JSX pages
+src/client/    progressive enhancement only (booking preview, dialogs, drag)
+```
+
+The rule that keeps this honest: **the server computes and validates everything.** `days_total` is never read from a request; the booking form's live preview asks the server rather than reimplementing the rules; drag-to-move submits to the same endpoint the edit page uses, so one set of validations covers every path.
+
+### Auth model
+
+Access sits in front of the custom hostname. The Worker verifies the JWT — RS256 signature against the team JWKS, `aud`, `exp`, `iss` — and takes identity from the `email` claim. Admin is a D1 flag, not an Access group.
+
+Two consequences worth remembering:
+
+- `workers_dev` must stay `false`. Access protects the custom hostname only.
+- `/line/webhook` sits **above** the auth middleware, because LINE cannot carry an Access token. It is the one publicly reachable route, so it verifies `X-Line-Signature` over the raw body with a constant-time compare and refuses anything unsigned.
+
+### Routes
+
+| Method | Path | Notes |
+| --- | --- | --- |
+| GET | `/health` | Above auth. Version, D1 ping, config flags. Safe for uptime checks. |
+| POST | `/line/webhook` | Above auth. Signature-verified; only writes the group id. |
+| GET | `/` | Calendar. Month grid ≥768px, agenda list below. Out-today / next-7-days summary. |
+| GET | `/book?date=` | Booking page — the no-JS destination for calendar day cells. |
+| GET | `/api/leave?from=&to=` | JSON feed. No email addresses. |
+| GET | `/api/leave/preview` | Server-side day count for the form's live preview. |
+| POST | `/api/leave` | Book. Server computes days, checks overlap and balance. |
+| GET · POST | `/leave/:id/edit` · `/api/leave/:id/edit` | Edit. Also the drag-to-move target. |
+| POST | `/api/leave/:id/cancel` | Soft cancel; idempotent. |
+| GET | `/me` | Balances, upcoming and past leave, display name. |
+| POST | `/me/name` | |
+| GET | `/admin` | Users, quotas, holidays, LINE status and run log. Admin only. |
+| POST | `/admin/quotas` · `/admin/quotas/bulk` | One person, or every active user at once. |
+| POST | `/admin/user` | Role and active flag. Last admin cannot demote itself. |
+| POST | `/admin/notify/preview` · `/admin/notify/send` | Dry-run and manual send, through the real digest job. |
+| POST | `/admin/holiday` · `/admin/holiday/delete` | |
+
+---
+
+## What is built
+
+**Calendar** — month grid on desktop, agenda on mobile. Click an empty day to book it, click an entry to open a detail popup, drag an entry to move it (desktop). Everything is a real link first; the dialogs are an upgrade, and the whole calendar works with scripting off. An out-today / next-7-days summary sits above both views, and hides itself when you browse a month that cannot contain today.
+
+**Booking** — half-day granularity, live day-count preview from the server, overlap detection, quota enforcement, weekend and holiday rejection, a 90-day backdate window and a far-future guard. Edit and remove on every confirmed booking, past ones included.
+
+**Balances** — per leave type, per year. Unpaid leave draws no quota. Editing credits a booking's own days back before checking the balance, so shortening or retyping is never refused by the quota that booking is itself holding.
+
+**Admin** — quota editing per person or in bulk across active users, holiday management, user roles, LINE status and run log.
+
+**LINE digest** — cron at 08:00 Asia/Bangkok posts who is out. Skips weekends, holidays, and days with nobody out, because LINE bills a group push per member. Double-posting is guarded twice: a `notification_log` row is claimed *before* the push, and the request carries LINE's `X-Line-Retry-Key`. `scheduled()` never throws, since a retried handler that already sent would post again.
+
+**Theme** — System (default) / Light / Dark, applied before first paint from an inline script so there is no flash.
+
+---
+
+## Verification
+
+**224 automated assertions**, all green in CI on every push and pull request.
+
+| Suite | Assertions | Covers |
+| --- | --- | --- |
+| `test-dates.mjs` | 83 | Bangkok boundary, half-days, weekends, holidays, month grids |
+| `test-leave.mjs` | 51 | Booking rules, balances, calendar placement |
+| `test-line.mjs` | 32 | Webhook signature, group-id extraction, digest text |
+| `smoke.mjs` | 58 | The HTTP layer — see below |
+
+The smoke suite boots a real worker against a scratch database and exercises what pure functions cannot reach: the CSRF guard, ownership checks on edit and cancel, booking rules over real requests, the open-redirect guard on `returnTo`, digest decisions, the webhook signature, and admin authorisation across two signed-in identities.
+
+It is built against its own worst failure mode — passing while testing nothing. The server is health-checked before any assertion; each boot proves it is signed in as the expected identity; a minimum assertion count fails the run if a section throws early. Confirmed by sabotage: removing the ownership check turns 5 assertions red, restoring the leaked email field turns 1 red, and pointing a boot at the wrong identity fails the harness.
+
+**CI** also builds the client bundle and the Worker (`--dry-run`, no credentials), and fails if `.dev.vars`, `wrangler.local.jsonc` or the built bundle are ever tracked, or if a credential-shaped string is committed. It needs no secrets, so it runs on pull requests from forks.
+
+**Verified in production** with an Access service token: unauthenticated requests redirect to the Access login, a forged assertion never reaches the Worker, the `workers.dev` URL 404s, D1 responds, and the cron is registered.
+
+---
+
+## Open items
+
+No known bugs. What follows is risk, unfinished configuration, and one real design gap.
+
+### Needs a decision
+
+- **No audit trail on retroactive changes** ([ISSUES.md](ISSUES.md) #8). An edit overwrites the old values with no record of what they were, and edit, remove and drag all reach past bookings within the 90-day window. Someone can quietly reclaim last month's sick days. This is the largest correctness gap; my recommendation is to keep editing easy and add an audit table surfaced in `/admin`.
+- **LINE cost is unverified** (#2). Billing is per group member: a 20-person group posted to daily is ~600 messages a month, and the free allowance varies by country. Check the actual allowance in the OA Manager before switching it on.
+
+### Accepted
+
+- **Concurrent booking can overdraw a quota** (#7, #12). D1 has no row locking; the window is milliseconds and an overdraw is visible and correctable in `/admin`.
+- **CSRF is an Origin check, not a token** (#11). Every mutation is a same-origin form submit. A request with no `Origin` header is allowed, which is what keeps non-browser clients working; an opaque `null` origin is rejected.
+- **Zone rules override the Worker's security headers** (#13). The app sends `X-Frame-Options: DENY` and `Referrer-Policy: no-referrer`; production serves `SAMEORIGIN` and `same-origin`. Confirmed not an app bug. Mild, but the app cannot enforce its own header policy.
+
+### Configuration outstanding
+
+- **Nobody has signed in through SSO.** See Status.
+- **LINE is not switched on.** Needs the channel, the Access Bypass rule on `/line/webhook`, and `wrangler secret put` for the token and secret.
+- **Thai lunar holidays need entering each year** (#10). Only fixed-date holidays are seeded. A missing holiday silently costs someone a quota day.
+
+### Housekeeping
+
+- `notification_log` grows one row per day and is never pruned.
+- No carry-over of unused leave into the next year — a deliberate v1 non-goal, worth reconfirming before January.
+- Deploy is manual. Deploy-on-merge would need a Cloudflare API token plus infrastructure ids in repository settings; see below.
+
+---
+
+## Next tasks
+
+1. **Owner** — sign in through a browser and confirm the calendar renders. Make sure the right person goes first; they become the admin.
+2. **Owner** — switch on LINE, if wanted. Steps are in the [README](../README.md#turning-on-the-line-post). The Access Bypass rule for `/line/webhook` is the step most likely to be missed.
+3. **Audit trail** for edits and cancellations (#8). Needs a new table.
+4. Then, roughly in value order: an iCal feed so leave appears in Google Calendar or Outlook (note: calendar clients cannot do SSO, so it needs a signed-token URL outside Access); CSV export for HR; a look-ahead in the digest; team grouping and coverage warnings once the roster is large enough to need them.
+5. Optional: deploy on merge to main. Deliberately not set up — it would put a Cloudflare API token and the infrastructure ids into repository settings, and deploying from a laptop is one command. Worth revisiting when more than one person merges.
+
+---
+
+## Decisions log
 
 - Self-serve booking. No approval workflow, no pending state. — owner
 - Per-type annual quota (annual / sick / personal / unpaid). No carry-over in v1. — owner
-- LINE notification via the Messaging API; LINE Notify is dead. Ships inert until the secrets are set.
-- Hono + JSX SSR + D1 on Workers, mirroring a sibling Workers project's stack.
-- Dates stored as Bangkok-local `YYYY-MM-DD` strings.
+- Deactivated users disappear from the calendar, feed and digest; their history stays for admins. Those three surfaces answer "who of us is out", and a former employee is not.
+- The digest is plain text, not a Flex bubble: a Flex payload is a second thing that can be rejected at 08:00 with nobody watching, and costs the same under per-member billing.
+- Flash messages travel in a cookie, never the query string — free prose in a URL was blocked by the WAF (#15).
+- "Next 7 days" rather than a Monday–Sunday week: a calendar week is mostly in the past by Thursday and useless on a Sunday.
 - Node 24 (`.nvmrc`) — the test scripts import `.ts` directly via type stripping.
 
-## Phase status
+## Change log
 
-| Phase | State |
-| --- | --- |
-| 0 — Prerequisites | hostname + Access app **done**; LINE channel still outstanding. |
-| 1 — Foundation | **done** |
-| 2 — Core app | **done** |
-| 3 — Admin | **done** |
-| 4 — LINE notification | **built**; inert until the LINE credentials are set. |
-| 5 — Ship | **deployed**; CI runs unit + route smoke tests, both builds, and a committed-secrets guard on push and PR. Deploy is manual by choice — see below. |
-
-## What exists
-
-| Area | Files |
-| --- | --- |
-| Date + half-day math | [src/domain/dates.ts](../src/domain/dates.ts) |
-| Booking rules, balances | [src/domain/leave.ts](../src/domain/leave.ts) |
-| Access JWT verification | [src/auth/access.ts](../src/auth/access.ts) |
-| D1 queries | [src/repo/db.ts](../src/repo/db.ts) |
-| Routes + cron | [src/index.tsx](../src/index.tsx) |
-| LINE digest + webhook | [src/notify/](../src/notify/) |
-| Views | [src/views/](../src/views/) |
-| Client bundle (progressive enhancement) | [src/client/app.ts](../src/client/app.ts) → `booking.ts`, `calendar.ts` |
-| Schema + seed | [migrations/](../migrations/) |
-| Tests | [scripts/](../scripts/) — dates, leave, LINE units; `smoke.mjs` covers the HTTP layer |
-
-## Verified locally (2026-08-15)
-
-Against `wrangler dev` with a local D1 and `DEV_AUTH_BYPASS=1`:
-
-- 64 date assertions + 48 leave assertions pass; both tsconfigs typecheck clean.
-- Booking a Mon–Fri range charges 5 days; balance drops 10 → 5 and returns to 10 on cancel.
-- Rejected as intended: overlapping range, weekend-only day, holiday, over-quota, backdated past the window, typo'd far-future year, invalid dates.
-- Cancel is idempotent — a second cancel reports "already cancelled" rather than rewriting the row.
-- Cross-origin POST returns 403; same-origin POST succeeds.
-- Last-admin guard blocks self-demotion; out-of-range quota values are ignored.
-- Month grid renders at desktop width; agenda list renders at 375px with half-day markers and Thai labels.
-- Live day-count preview matches the server exactly (`pm`→`am` over Tue–Fri = 3 days in both).
-- Cron skips weekends and holidays; posts only when someone is out.
-- Webhook returns 401 for unsigned, wrong and tampered bodies; 200 and captures the group id for a valid signature.
-- Digest is idempotent: a second send is refused as a duplicate, and only an explicit force retries a failed date.
-- Bulk quota touches active users only; drag preserves a booking's length and shifts from the grabbed day.
-
-## Production validation (2026-08-15, via Access service token)
-
-- Unauthenticated request → 302 to `<team>.cloudflareaccess.com` login. Access is in front of every path, `/health` included.
-- A forged `Cf-Access-Jwt-Assertion` never reaches the Worker — Access rejects it first.
-- `wan-nee-la.<sub>.workers.dev` → 404. No unauthenticated route to the same data.
-- Service token reaches the Worker and is refused with "This is a valid service token, not a person." That message only prints **after** signature, `exp`, `aud`, and `iss` have all passed, so it proves the whole Access chain is correctly configured — the token simply carries no `email`.
-- D1 reachable from production (`/health` → `db: true`), 7 tables, seed loaded.
-- Cron `0 1 * * *` registered on the deployed Worker.
-
-Service-token claims are `aud, common_name, exp, iat, iss, sub, type` — no `email`, which is why a machine credential cannot be admitted to a per-person leave record.
-
-## Next action
-
-1. **Owner**: open https://leave.example.com in a browser, sign in through Access, confirm the calendar renders. This is the one path that cannot be validated from a terminal. Whoever does this first becomes the admin — make sure it is the right person.
-2. **Owner**: to switch the LINE post on —
-   1. create a Messaging API channel, invite the bot to the group, disable auto-reply and enable webhook in the LINE OA Manager
-   2. set the webhook URL to `https://leave.example.com/line/webhook` and add an Access **Bypass** rule for that path, or LINE's requests will be sent to the login page
-   3. `wrangler secret put LINE_CHANNEL_ACCESS_TOKEN` and `wrangler secret put LINE_CHANNEL_SECRET`
-   4. post any message in the group so the webhook captures the group id, then check /admin shows it
-   5. use **Preview** on /admin, then **Send now**
-3. Optional: automated deploy on merge to main. Not set up, deliberately — it needs a Cloudflare API token in GitHub secrets plus the account id, hostname and database id as Actions variables, since `wrangler.local.jsonc` is not in the repo. Deploying from a laptop is currently one command and carries none of that. Worth revisiting when more than one person merges.
-
-## Log
-
-- **2026-08-15** — Requirements gathered. Architecture, plan, and issue list drafted. Confirmed LINE Notify EOL against LINE's own announcement; repointed the notification design at the Messaging API. Flagged per-member push billing (ISSUES.md #2).
-- **2026-08-15** — Route-level smoke tests (`npm run test:smoke`, 58 assertions) now cover the HTTP layer in CI: CSRF, ownership, booking rules over a real request, the open-redirect guard, digest decisions and the LINE webhook signature. Verified by breaking the code on purpose.
-- **2026-08-15** — Deactivated users no longer appear on the shared calendar, feed or digest; the JSON feed no longer returns emails; the calendar gained an out-today / next-7-days summary.
-- **2026-08-15** — LINE digest built (phase 4). Cron posts the day's leave to a LINE group; /line/webhook captures the group id and verifies X-Line-Signature; notification_log makes a double post impossible. Inert until the two secrets are set.
-- **2026-08-15** — Bulk quota action on /admin, and drag-to-move on the calendar.
-- **2026-08-15** — Calendar is now directly editable: click an empty day to book it, click an entry to open a detail popup with Edit and Remove. Both are real links (`/book?date=`, `/leave/:id/edit`) upgraded to dialogs by `src/client/calendar.ts`, so the calendar still works with scripting off. Client bundle renamed `booking.js` → `app.js`.
-- **2026-08-15** — Added a System/Light/Dark theme toggle, defaulting to System. Switching logic is inlined in `<head>` so a stored choice applies before first paint; the dark media query is guarded so an explicit Light choice wins on a dark-mode OS.
-- **2026-08-15** — Added edit and remove for submitted leave: `/leave/:id/edit`, `POST /api/leave/:id/edit`. Editing excludes the booking from its own overlap check and credits its days back before the balance check, so shortening or retyping is never refused by the quota the booking itself holds. Remove is the existing soft cancel, now reachable from every confirmed booking including past ones.
-- **2026-08-15** — Booking in a browser hit a Cloudflare WAF block; cause was our own query-string flash messages (ISSUES.md #15). Moved them to a cookie.
-- **2026-08-15** — Built phases 1–3. Owner deferred the LINE notification, so the `scheduled()` handler logs its decision instead of pushing. Verified every booking rule and both cron branches against a local D1.
+- **2026-08-16** — Route-level smoke tests in CI (58 assertions). Deactivated users removed from shared surfaces; emails removed from the JSON feed; out-today / next-7-days summary added.
+- **2026-08-15** — CI: typecheck, unit tests, client and Worker builds, committed-secrets guard.
+- **2026-08-15** — Repo made publishable: infrastructure ids moved to a gitignored config, git history rewritten, pushed public.
+- **2026-08-15** — LINE digest, webhook and admin controls (phase 4). Bulk quota editing. Drag-to-move on the calendar.
+- **2026-08-15** — Calendar made directly editable: click a day to book, click an entry to open it. Theme toggle. Edit and remove for submitted leave.
+- **2026-08-15** — Booking in a browser hit a Cloudflare WAF block; the cause was our own query-string flash messages (#15). Moved to a cookie.
+- **2026-08-15** — Phases 1–3 built and deployed behind Access.

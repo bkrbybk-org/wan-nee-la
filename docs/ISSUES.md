@@ -209,3 +209,19 @@ Accepted rather than a token scheme because every mutation here is a same-origin
 Restating #7 with what shipped: the balance check and the insert are separate statements, so two simultaneous submits can both pass. See #7 — same reasoning, still accepted for a small team.
 
 Cancellation *is* safe: the `UPDATE … WHERE status = 'confirmed'` guard makes a double submit a no-op rather than a second write.
+
+---
+
+## #16 — The repo is public, so infrastructure ids stay out of it `resolved`
+
+The remote is a public GitHub repository. Nothing in the app is a credential — the Access team domain and AUD tag are readable from the unauthenticated login redirect, and the account, database and zone ids are inert without account access. But together they point at exactly which host holds a given company's leave data, and scanners found the hostname within minutes of its DNS record appearing, probing `.env`, `.git/HEAD` and `.ssh/id_rsa`.
+
+So:
+
+- `wrangler.jsonc` is committed as a template with `REPLACE_ME_*` placeholders.
+- Real values live in `wrangler.local.jsonc`, gitignored. Every npm script prefers it and falls back to the template, so a fresh clone builds and a configured checkout deploys.
+- Docs use placeholders (`<account-id>`, `<hostname>`, `<team>.cloudflareaccess.com`).
+- CI fails if `.dev.vars`, `wrangler.local.jsonc` or the built bundle are ever tracked. Its patterns are generic on purpose: naming this company's hostname in a CI rule would put it back in the public repo.
+
+**History was rewritten** on 2026-08-15 to purge those values from all earlier commits, including one commit message, and force-pushed. Caveat recorded at the time: GitHub keeps unreferenced commits reachable by direct SHA until it garbage-collects, so the old objects were not instantly destroyed. There were 0 forks and 0 clones, and the SHAs are no longer discoverable through any branch. Deleting and recreating the repository is the only way to remove them with certainty.
+
