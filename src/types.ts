@@ -21,6 +21,8 @@ export interface User {
 	display_name: string;
 	is_admin: number;
 	active: number;
+	/** 0 = Sunday, 1 = Monday. Presentation only — see migrations/0003. */
+	week_start: number;
 	created_at: string;
 }
 

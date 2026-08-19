@@ -8,7 +8,7 @@ Updated: 2026-08-16
 
 ## Status
 
-Deployed and serving. Version `f21afd6b-5e4f-49ee-b15b-5294ad0af810`, D1 `<database-id>` in APAC, behind Cloudflare Access on `<hostname>`. `/health` reports `accessConfigured: true`, `devAuthBypass: false`.
+Deployed and serving. Version `40084165-22af-4845-b442-2afeb86b8117`, D1 `<database-id>` in APAC, behind Cloudflare Access on `<hostname>`. `/health` reports `accessConfigured: true`, `devAuthBypass: false`.
 
 Everything in phases 1–5 is built. Two things gate real use, both needing the owner rather than more code:
 
@@ -66,7 +66,7 @@ Two consequences worth remembering:
 | GET · POST | `/leave/:id/edit` · `/api/leave/:id/edit` | Edit. Also the drag-to-move target. |
 | POST | `/api/leave/:id/cancel` | Soft cancel; idempotent. |
 | GET | `/me` | Balances, upcoming and past leave, display name. |
-| POST | `/me/name` | |
+| POST | `/me/name` · `/me/week-start` | Display name; whether the grid starts Monday or Sunday. |
 | GET | `/admin` | Users, quotas, holidays, LINE status and run log. Admin only. |
 | POST | `/admin/quotas` · `/admin/quotas/bulk` | One person, or every active user at once. |
 | POST | `/admin/user` | Role and active flag. Last admin cannot demote itself. |
@@ -87,20 +87,22 @@ Two consequences worth remembering:
 
 **LINE digest** — cron at 08:00 Asia/Bangkok posts who is out. Skips weekends, holidays, and days with nobody out, because LINE bills a group push per member. Double-posting is guarded twice: a `notification_log` row is claimed *before* the push, and the request carries LINE's `X-Line-Retry-Key`. `scheduled()` never throws, since a retried handler that already sent would post again.
 
+**Week start** — each person chooses Monday or Sunday on `/me`. Presentation only: weekends stay Saturday and Sunday and no quota arithmetic changes. Stored per user in D1 rather than `localStorage`, because the grid is rendered on the server.
+
 **Theme** — System (default) / Light / Dark, applied before first paint from an inline script so there is no flash.
 
 ---
 
 ## Verification
 
-**224 automated assertions**, all green in CI on every push and pull request.
+**262 automated assertions**, all green in CI on every push and pull request.
 
 | Suite | Assertions | Covers |
 | --- | --- | --- |
-| `test-dates.mjs` | 83 | Bangkok boundary, half-days, weekends, holidays, month grids |
+| `test-dates.mjs` | 114 | Bangkok boundary, half-days, weekends, holidays, month grids |
 | `test-leave.mjs` | 51 | Booking rules, balances, calendar placement |
 | `test-line.mjs` | 32 | Webhook signature, group-id extraction, digest text |
-| `smoke.mjs` | 58 | The HTTP layer — see below |
+| `smoke.mjs` | 65 | The HTTP layer — see below |
 
 The smoke suite boots a real worker against a scratch database and exercises what pure functions cannot reach: the CSRF guard, ownership checks on edit and cancel, booking rules over real requests, the open-redirect guard on `returnTo`, digest decisions, the webhook signature, and admin authorisation across two signed-in identities.
 
@@ -163,6 +165,7 @@ No known bugs. What follows is risk, unfinished configuration, and one real desi
 
 ## Change log
 
+- **2026-08-19** — Per-user first-day-of-week (Monday or Sunday) on `/me`, migration 0003. `db:init` and the smoke harness now apply every migration in order rather than a hardcoded list.
 - **2026-08-16** — Route-level smoke tests in CI (58 assertions). Deactivated users removed from shared surfaces; emails removed from the JSON feed; out-today / next-7-days summary added.
 - **2026-08-15** — CI: typecheck, unit tests, client and Worker builds, committed-secrets guard.
 - **2026-08-15** — Repo made publishable: infrastructure ids moved to a gitignored config, git history rewritten, pushed public.

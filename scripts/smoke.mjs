@@ -29,7 +29,7 @@
 
 import { spawn, spawnSync } from 'node:child_process';
 import { createHmac } from 'node:crypto';
-import { rmSync, mkdtempSync } from 'node:fs';
+import { rmSync, mkdtempSync, readdirSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -44,7 +44,7 @@ const OTHER = 'other@example.com';
 const STATE = mkdtempSync(join(tmpdir(), 'wnl-smoke-'));
 
 /** Assertions that must run for the suite to be considered complete. */
-const MIN_ASSERTIONS = 56;
+const MIN_ASSERTIONS = 62;
 
 let pass = 0;
 let fail = 0;
@@ -247,8 +247,12 @@ const addDays = (iso, n) => {
 // ---------------------------------------------------------------------------
 
 async function main() {
-	d1(null, 'migrations/0001_init.sql');
-	d1(null, 'migrations/0002_seed.sql');
+	// Every migration, in filename order. Listing them individually meant a new
+	// migration silently did not reach this database, and the feature it added
+	// then failed here for a reason that looked nothing like a missing column.
+	for (const file of readdirSync('migrations').filter((f) => f.endsWith('.sql')).sort()) {
+		d1(null, `migrations/${file}`);
+	}
 
 	const MON = futureMonday();
 	const FRI = addDays(MON, 4);
@@ -429,6 +433,27 @@ async function main() {
 	eq('and their leave row is hidden, not deleted', stillThere[0]?.status, 'confirmed');
 
 	d1(`UPDATE users SET active = 1 WHERE email = '${OTHER}'`);
+
+	// --- week start ---------------------------------------------------------
+	// Presentation only, but the route builds its query range from the same
+	// grid, so a wrong setting would silently empty the first column.
+	let cal = await (await fetch(`${BASE}/`)).text();
+	check('calendar defaults to Monday first', cal.indexOf('>Mon<') < cal.indexOf('>Sun<'), 'column order not Monday-first');
+
+	res = await post('/me/week-start', { weekStart: '0' });
+	eq('week start can be set to Sunday', flashOf(res)?.kind, 'ok');
+	cal = await (await fetch(`${BASE}/`)).text();
+	check('calendar now renders Sunday first', cal.indexOf('>Sun<') < cal.indexOf('>Mon<'), 'column order did not rotate');
+
+	res = await post('/me/week-start', { weekStart: '3' });
+	eq('week start rejects a day that is not offered', flashOf(res)?.kind, 'err');
+	res = await post('/me/week-start', { weekStart: '' });
+	eq('week start rejects an empty value', flashOf(res)?.kind, 'err');
+
+	res = await post('/me/week-start', { weekStart: '1' });
+	eq('week start can be set back to Monday', flashOf(res)?.kind, 'ok');
+	cal = await (await fetch(`${BASE}/`)).text();
+	check('calendar back to Monday first', cal.indexOf('>Mon<') < cal.indexOf('>Sun<'), 'did not rotate back');
 
 	// --- "out today / this week" summary ------------------------------------
 	const todayHtml = await (await fetch(`${BASE}/`)).text();

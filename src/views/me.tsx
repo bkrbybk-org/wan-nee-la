@@ -99,6 +99,20 @@ export function MePage(props: MeProps) {
 			</section>
 
 			<section class="card">
+				<h2>Calendar</h2>
+				<p class="muted">Which day the month grid starts on. Weekends stay Saturday and Sunday either way.</p>
+				<form method="post" action="/me/week-start" class="row inline">
+					<label class="checkline">
+						<input type="radio" name="weekStart" value="1" checked={user.week_start !== 0} /> Monday first
+					</label>
+					<label class="checkline">
+						<input type="radio" name="weekStart" value="0" checked={user.week_start === 0} /> Sunday first
+					</label>
+					<button type="submit" class="btn">Save</button>
+				</form>
+			</section>
+
+			<section class="card">
 				<h2>Display name</h2>
 				<p class="muted">This is the name shown on the shared calendar.</p>
 				<form method="post" action="/me/name" class="row inline">

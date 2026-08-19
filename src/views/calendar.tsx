@@ -1,4 +1,17 @@
-import { addDays, dayOfWeek, describeRange, formatDays, monthGrid, monthName, shiftMonth, shortDate } from '../domain/dates.ts';
+import {
+	addDays,
+	dayOfWeek,
+	describeRange,
+	formatDays,
+	monthGrid,
+	monthName,
+	parseWeekStart,
+	shiftMonth,
+	shortDate,
+	weekdayLabels,
+	weekdayName,
+	MONDAY,
+} from '../domain/dates.ts';
 import { byDate, halfOn } from '../domain/leave.ts';
 import type { Half, Holiday, LeaveEntry, LeaveType, User } from '../types.ts';
 import { Layout } from './layout.tsx';
@@ -16,8 +29,6 @@ interface CalendarProps {
 	error?: string;
 	notice?: string;
 }
-
-const WEEKDAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 
 function halfMark(h: Half): string {
 	return h === 'am' ? ' ½am' : h === 'pm' ? ' ½pm' : '';
@@ -58,7 +69,11 @@ function entryData(e: LeaveEntry, canEdit: boolean) {
 
 export function CalendarPage(props: CalendarProps) {
 	const { user, year, month, entries, holidays, types, today, version, error, notice } = props;
-	const grid = monthGrid(year, month);
+	// Presentation only: rotating the columns changes no arithmetic, and Saturday
+	// and Sunday stay the weekend whichever day the week opens on.
+	const weekStart = parseWeekStart(user.week_start) ?? MONDAY;
+	const grid = monthGrid(year, month, weekStart);
+	const weekdays = weekdayLabels(weekStart);
 	const map = byDate(entries);
 	const holidayMap = new Map(holidays.map((h) => [h.date, h.label]));
 	const prev = shiftMonth(year, month, -1);
@@ -174,7 +189,7 @@ export function CalendarPage(props: CalendarProps) {
 			    unreadable under ~768px once names are in the cells. */}
 			<section class="grid-view" aria-label="Month grid">
 				<div class="weekhead">
-					{WEEKDAYS.map((w) => (
+					{weekdays.map((w) => (
 						<div class={`weekhead-cell ${w === 'Sat' || w === 'Sun' ? 'weekend' : ''}`}>{w}</div>
 					))}
 				</div>
@@ -236,7 +251,7 @@ export function CalendarPage(props: CalendarProps) {
 					agenda.map((row) => (
 						<div class={`agenda-row ${row.date === today ? 'today' : ''}`}>
 							<a class="agenda-date" href={`/book?date=${row.date}`} data-book-link data-date={row.date}>
-								<span class="agenda-dow">{WEEKDAYS[(dayOfWeek(row.date) + 6) % 7]}</span>
+								<span class="agenda-dow">{weekdayName(row.date)}</span>
 								<span class="agenda-num">{Number(row.date.slice(8, 10))}</span>
 							</a>
 							<div class="agenda-body">

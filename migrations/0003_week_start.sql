@@ -1,0 +1,11 @@
+-- Which day a calendar week starts on, per user.
+--
+-- Purely presentational: weekends are still Saturday and Sunday, and no quota
+-- arithmetic changes. It lives per user rather than in localStorage because the
+-- month grid is rendered on the server, so the preference has to reach the
+-- Worker — and per user rather than per browser so it follows someone between
+-- their laptop and their phone.
+--
+-- Stored as a JS day number so it can be compared with dayOfWeek() directly:
+-- 0 = Sunday, 1 = Monday. Monday is the default, matching the Thai working week.
+ALTER TABLE users ADD COLUMN week_start INTEGER NOT NULL DEFAULT 1;

@@ -84,6 +84,10 @@ export async function setDisplayName(db: D1Database, email: string, name: string
 	await db.prepare('UPDATE users SET display_name = ? WHERE email = ?').bind(name, email).run();
 }
 
+export async function setWeekStart(db: D1Database, email: string, weekStart: number): Promise<void> {
+	await db.prepare('UPDATE users SET week_start = ? WHERE email = ?').bind(weekStart, email).run();
+}
+
 export async function setAdmin(db: D1Database, email: string, isAdmin: boolean): Promise<void> {
 	await db.prepare('UPDATE users SET is_admin = ? WHERE email = ?').bind(isAdmin ? 1 : 0, email).run();
 }

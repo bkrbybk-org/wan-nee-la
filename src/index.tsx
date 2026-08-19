@@ -10,6 +10,7 @@ import {
 	isValidDate,
 	lastOfMonth,
 	monthGrid,
+	parseWeekStart,
 } from './domain/dates.ts';
 import { parseBooking, round, validateBooking } from './domain/leave.ts';
 import * as db from './repo/db.ts';
@@ -171,7 +172,11 @@ app.get('/', async (c) => {
 	// The grid is padded to whole weeks, so the query has to cover the padding
 	// days too — otherwise leave shows in the trailing week of one month and
 	// vanishes from the leading week of the next.
-	const grid = monthGrid(year, month);
+	//
+	// It must be built with the viewer's own week start. A Sunday-first grid
+	// begins a day earlier than a Monday-first one, and fetching the Monday-first
+	// range would leave that first column silently empty.
+	const grid = monthGrid(year, month, parseWeekStart(user.week_start) ?? undefined);
 	const from = grid[0];
 	// Seven days past the grid so the "next 7 days" summary always has its full
 	// window, even when today sits in the last row of the month. Rows beyond the
@@ -483,6 +488,17 @@ app.get('/me', async (c) => {
 			notice={flashOf(c.get('flash'), 'ok')}
 		/>,
 	);
+});
+
+app.post('/me/week-start', async (c) => {
+	const user = c.get('user');
+	const form = await c.req.parseBody();
+	const weekStart = parseWeekStart(form.weekStart);
+	// Only Sunday and Monday are offered; anything else is a crafted request,
+	// and silently storing it would rotate the grid to an arbitrary column.
+	if (weekStart === null) return redirectWithFlash('/me', 'err', 'Pick either Monday or Sunday.');
+	await db.setWeekStart(c.env.DB, user.email, weekStart);
+	return redirectWithFlash('/me', 'ok', weekStart === 1 ? 'Weeks now start on Monday.' : 'Weeks now start on Sunday.');
 });
 
 app.post('/me/name', async (c) => {

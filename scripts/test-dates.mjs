@@ -14,6 +14,10 @@ import {
 	isWorkday,
 	lastOfMonth,
 	monthGrid,
+	indexInWeek,
+	weekdayLabels,
+	weekdayName,
+	parseWeekStart,
 	rangesOverlap,
 	shiftMonth,
 	workdaysIn,
@@ -167,6 +171,59 @@ check('monthGrid: contains the 1st', grid.includes('2026-08-01'), 'missing 2026-
 check('monthGrid: contains the last day', grid.includes('2026-08-31'), 'missing 2026-08-31');
 // 1 Feb 2027 is a Monday, so a Monday-first grid needs no leading pad.
 eq('monthGrid: Feb 2027 needs no lead pad', monthGrid(2027, 2)[0], '2027-02-01');
+
+// ---------------------------------------------------------------------------------------
+// Week start — presentation only. Rotating the columns must not drop or duplicate a day.
+// ---------------------------------------------------------------------------------------
+
+const sunGrid = monthGrid(2026, 8, 0);
+eq('monthGrid Sunday-first: whole weeks', sunGrid.length % 7, 0);
+eq('monthGrid Sunday-first: starts on a Sunday', dayOfWeek(sunGrid[0]), 0);
+eq('monthGrid Sunday-first: ends on a Saturday', dayOfWeek(sunGrid[sunGrid.length - 1]), 6);
+check('monthGrid Sunday-first: contains the 1st', sunGrid.includes('2026-08-01'), 'missing 2026-08-01');
+check('monthGrid Sunday-first: contains the last day', sunGrid.includes('2026-08-31'), 'missing 2026-08-31');
+
+// Every day of the month appears exactly once whichever way the week starts.
+for (const [label, g] of [['Monday', monthGrid(2026, 8, 1)], ['Sunday', sunGrid]]) {
+	const inMonth = g.filter((d) => d.startsWith('2026-08'));
+	eq(`monthGrid ${label}-first: all 31 days present`, inMonth.length, 31);
+	eq(`monthGrid ${label}-first: no duplicates`, new Set(inMonth).size, 31);
+}
+
+// The two grids are not the same range — this is exactly why the route has to
+// build its query with the viewer's own week start rather than a fixed one.
+check(
+	'monthGrid: Sunday-first starts earlier than Monday-first for Aug 2026',
+	sunGrid[0] < monthGrid(2026, 8, 1)[0],
+	`${sunGrid[0]} vs ${monthGrid(2026, 8, 1)[0]}`,
+);
+
+// A month whose 1st is a Sunday is the case where the two disagree most.
+// 2026-11-01 is a Sunday: Sunday-first needs no lead pad, Monday-first needs six.
+eq('monthGrid: Nov 2026 Sunday-first needs no lead pad', monthGrid(2026, 11, 0)[0], '2026-11-01');
+eq('monthGrid: Nov 2026 Monday-first pads back to Oct 26', monthGrid(2026, 11, 1)[0], '2026-10-26');
+
+// 2026-08-17 is a Monday.
+eq('indexInWeek: Monday is column 0 when weeks start Monday', indexInWeek('2026-08-17', 1), 0);
+eq('indexInWeek: Monday is column 1 when weeks start Sunday', indexInWeek('2026-08-17', 0), 1);
+eq('indexInWeek: Sunday is column 6 when weeks start Monday', indexInWeek('2026-08-16', 1), 6);
+eq('indexInWeek: Sunday is column 0 when weeks start Sunday', indexInWeek('2026-08-16', 0), 0);
+
+eq('weekdayLabels: Monday first', weekdayLabels(1).join(','), 'Mon,Tue,Wed,Thu,Fri,Sat,Sun');
+eq('weekdayLabels: Sunday first', weekdayLabels(0).join(','), 'Sun,Mon,Tue,Wed,Thu,Fri,Sat');
+eq('weekdayLabels: default is Monday', weekdayLabels().join(','), 'Mon,Tue,Wed,Thu,Fri,Sat,Sun');
+
+// The agenda labels a date by its own weekday, which must not move with the setting.
+eq('weekdayName: independent of week start', weekdayName('2026-08-16'), 'Sun');
+eq('weekdayName: Monday', weekdayName('2026-08-17'), 'Mon');
+
+eq('parseWeekStart: "0"', parseWeekStart('0'), 0);
+eq('parseWeekStart: "1"', parseWeekStart('1'), 1);
+eq('parseWeekStart: number 0', parseWeekStart(0), 0);
+eq('parseWeekStart: rejects Tuesday', parseWeekStart('2'), null);
+eq('parseWeekStart: rejects nonsense', parseWeekStart('monday'), null);
+eq('parseWeekStart: rejects empty', parseWeekStart(''), null);
+eq('parseWeekStart: rejects undefined', parseWeekStart(undefined), null);
 
 eq('shiftMonth: forward within year', JSON.stringify(shiftMonth(2026, 8, 1)), JSON.stringify({ year: 2026, month: 9 }));
 eq('shiftMonth: over December', JSON.stringify(shiftMonth(2026, 12, 1)), JSON.stringify({ year: 2027, month: 1 }));

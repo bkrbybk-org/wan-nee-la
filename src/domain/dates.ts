@@ -160,17 +160,53 @@ export function lastOfMonth(year: number, month: number): string {
 }
 
 /**
- * Dates for a month grid, padded to whole weeks starting Monday — Thai work
- * weeks read Mon–Sun, and a Monday-first grid puts the weekend together at the
- * right where it is easy to skip over.
+ * Which day a week starts on, as a JS day number so it compares directly with
+ * `dayOfWeek()`. Monday is the default: a Mon-first grid puts Saturday and
+ * Sunday together at the right, where the eye can skip them.
  */
-export function monthGrid(year: number, month: number): string[] {
+export type WeekStart = 0 | 1;
+export const MONDAY: WeekStart = 1;
+export const SUNDAY: WeekStart = 0;
+
+export function parseWeekStart(v: unknown): WeekStart | null {
+	// `Number('')` is 0, so an empty or whitespace-only field would otherwise be
+	// read as Sunday and silently rotate someone's calendar.
+	if (typeof v === 'string' && v.trim() === '') return null;
+	const n = typeof v === 'string' ? Number(v) : v;
+	return n === 0 || n === 1 ? (n as WeekStart) : null;
+}
+
+/** Position of `date` within its week, 0-indexed from `weekStart`. */
+export function indexInWeek(date: string, weekStart: WeekStart = MONDAY): number {
+	return (dayOfWeek(date) - weekStart + 7) % 7;
+}
+
+/**
+ * Dates for a month grid, padded to whole weeks.
+ *
+ * `weekStart` only rotates the columns. Weekends stay Saturday and Sunday and
+ * no quota arithmetic depends on this — it is presentation, not policy.
+ */
+export function monthGrid(year: number, month: number, weekStart: WeekStart = MONDAY): string[] {
 	const first = firstOfMonth(year, month);
-	const lead = (dayOfWeek(first) + 6) % 7; // Monday = 0
-	const startAt = addDays(first, -lead);
+	const startAt = addDays(first, -indexInWeek(first, weekStart));
 	const last = lastOfMonth(year, month);
-	const trail = (7 - ((dayOfWeek(last) + 6) % 7) - 1 + 7) % 7;
+	// Pad forward to the last day of that week: the column index of the final
+	// day subtracted from the last column.
+	const trail = 6 - indexInWeek(last, weekStart);
 	return eachDate(startAt, addDays(last, trail));
+}
+
+const DAY_NAMES = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+
+/** Column headings in the order the grid renders them. */
+export function weekdayLabels(weekStart: WeekStart = MONDAY): string[] {
+	return Array.from({ length: 7 }, (_, i) => DAY_NAMES[(weekStart + i) % 7]);
+}
+
+/** The short name of a date's own weekday, independent of column order. */
+export function weekdayName(date: string): string {
+	return DAY_NAMES[dayOfWeek(date)];
 }
 
 export function shiftMonth(year: number, month: number, delta: number): { year: number; month: number } {
