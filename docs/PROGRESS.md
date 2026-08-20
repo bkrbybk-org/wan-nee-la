@@ -1,6 +1,6 @@
 # wan-nee-la — Progress
 
-Updated: 2026-08-16
+Updated: 2026-08-19
 
 > This repo is **public**. Every account id, hostname, database id and Access
 > value below is a placeholder; the real ones live in `wrangler.local.jsonc`,
@@ -116,10 +116,14 @@ It is built against its own worst failure mode — passing while testing nothing
 
 ## Open items
 
-No known bugs. What follows is risk, unfinished configuration, and one real design gap.
+**No known bugs.** 262 assertions are green, `npm audit` is clean, and a security review on 2026-08-16 found nothing critical or high. Three real bugs were found and fixed while building the week-start setting; all three are now covered by tests.
+
+What follows is decisions, unfinished configuration, accepted trade-offs and debt — not defects.
 
 ### Needs a decision
 
+- **Leave notes are readable by everyone** ([ISSUES.md](ISSUES.md) #17). Verified live: a user who is neither the booker nor an admin sees the note text in the calendar HTML and in the JSON feed. Plausibly fine for a shared calendar — but notes are exactly where someone writes a medical or family detail, because the field looks incidental. Recommendation: relabel it so it reads as shared; restrict to owner and admins if anyone objects.
+- **Nothing monitors the deployment** ([ISSUES.md](ISSUES.md) #18). `/health` is above the app's own auth but still behind Access, so an anonymous check gets a 302 to the login page. An earlier version of this document claimed otherwise; that was wrong. Needs an Access Bypass rule on `/health`, which exposes only a version string, a D1 ping and two booleans.
 - **No audit trail on retroactive changes** ([ISSUES.md](ISSUES.md) #8). An edit overwrites the old values with no record of what they were, and edit, remove and drag all reach past bookings within the 90-day window. Someone can quietly reclaim last month's sick days. This is the largest correctness gap; my recommendation is to keep editing easy and add an audit table surfaced in `/admin`.
 - **LINE cost is unverified** (#2). Billing is per group member: a 20-person group posted to daily is ~600 messages a month, and the free allowance varies by country. Check the actual allowance in the OA Manager before switching it on.
 
@@ -135,21 +139,35 @@ No known bugs. What follows is risk, unfinished configuration, and one real desi
 - **LINE is not switched on.** Needs the channel, the Access Bypass rule on `/line/webhook`, and `wrangler secret put` for the token and secret.
 - **Thai lunar holidays need entering each year** (#10). Only fixed-date holidays are seeded. A missing holiday silently costs someone a quota day.
 
-### Housekeeping
+### Technical debt
 
+From a sweep on 2026-08-16. Nothing here is urgent; all of it is confirmed present. Ordered by cost-to-benefit, with owners, in [PLAN.md](PLAN.md) section 4.
+
+- `ensureUser` calls `ensureQuotas` on **both** branches, so every authenticated page load runs a write that only a new user or a new year needs.
+- `/admin` issues one quota query per user — 40 staff is 41 round trips.
 - `notification_log` grows one row per day and is never pruned.
+- `leave_types` is static seed data, re-queried on every page load.
+- `ARCHITECTURE.md` documents a `line_user_id` column and a partial index that the migration does not create.
+- No linter or formatter. Style has been held by hand across ~20 files and five subagents; it will not survive many more.
+- Smoke covers 16 of 20 routes. Untested: `/book`, `/api/leave/preview`, `/me/name`, `/admin/holiday` and its delete, and the success path of `GET /leave/:id/edit`.
 - No carry-over of unused leave into the next year — a deliberate v1 non-goal, worth reconfirming before January.
-- Deploy is manual. Deploy-on-merge would need a Cloudflare API token plus infrastructure ids in repository settings; see below.
+- Deploy is manual, by choice. Deploy-on-merge would put a Cloudflare API token and the infrastructure ids into a public repo's settings.
+
+Dependencies are clean: `npm audit` reports zero vulnerabilities. Hono is pinned `^4.6.14` against a current 4.13.2 — hygiene, not risk.
 
 ---
 
 ## Next tasks
 
-1. **Owner** — sign in through a browser and confirm the calendar renders. Make sure the right person goes first; they become the admin.
-2. **Owner** — switch on LINE, if wanted. Steps are in the [README](../README.md#turning-on-the-line-post). The Access Bypass rule for `/line/webhook` is the step most likely to be missed.
-3. **Audit trail** for edits and cancellations (#8). Needs a new table.
-4. Then, roughly in value order: an iCal feed so leave appears in Google Calendar or Outlook (note: calendar clients cannot do SSO, so it needs a signed-token URL outside Access); CSV export for HR; a look-ahead in the digest; team grouping and coverage warnings once the roster is large enough to need them.
-5. Optional: deploy on merge to main. Deliberately not set up — it would put a Cloudflare API token and the infrastructure ids into repository settings, and deploying from a laptop is one command. Worth revisiting when more than one person merges.
+[PLAN.md](PLAN.md) is the full backlog, with an owner and a reason per item. The short version:
+
+1. **Owner** — sign in through a browser and confirm the calendar renders. Everything else is theoretical until someone has actually used it, and whoever signs in first becomes the admin.
+2. **Owner** — two cheap decisions: notes visibility (#17) and a Bypass rule so something can monitor `/health` (#18).
+3. **Owner** — switch on LINE, if wanted. The Access Bypass rule for `/line/webhook` is the step most likely to be missed.
+4. One batch of debt: the per-request write, the `/admin` N+1, and the four uncovered routes. Low risk, and the last of those protects the rest.
+5. **Audit trail** for edits and cancellations (#8), once the policy in item 2 is settled.
+
+Features — iCal, CSV export, a digest look-ahead, team grouping and coverage warnings — are in PLAN.md section 5. None are needed for the app to do its job.
 
 ---
 
@@ -161,6 +179,7 @@ No known bugs. What follows is risk, unfinished configuration, and one real desi
 - The digest is plain text, not a Flex bubble: a Flex payload is a second thing that can be rejected at 08:00 with nobody watching, and costs the same under per-member billing.
 - Flash messages travel in a cookie, never the query string — free prose in a URL was blocked by the WAF (#15).
 - "Next 7 days" rather than a Monday–Sunday week: a calendar week is mostly in the past by Thursday and useless on a Sunday.
+- First day of week is per user in D1, not `localStorage` like the theme: the month grid is server-rendered, so the preference has to reach the Worker, and per user it follows someone between devices.
 - Node 24 (`.nvmrc`) — the test scripts import `.ts` directly via type stripping.
 
 ## Change log
