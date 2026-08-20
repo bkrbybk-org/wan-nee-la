@@ -70,7 +70,7 @@ export function AdminPage(props: AdminProps) {
 										<form method="post" action="/admin/user" class="inline">
 											<input type="hidden" name="email" value={u.email} />
 											<div class="person">
-												<strong>{u.display_name}</strong>
+												<a href={`/u/${encodeURIComponent(u.email)}`}><strong>{u.display_name}</strong></a>
 												<span class="muted mono">{u.email}</span>
 											</div>
 											<label class="checkline">

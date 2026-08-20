@@ -20,6 +20,7 @@ import { CalendarPage } from './views/calendar.tsx';
 import { EditPage } from './views/edit.tsx';
 import { ErrorPage, Layout } from './views/layout.tsx';
 import { MePage } from './views/me.tsx';
+import { UserPage } from './views/user.tsx';
 import { groupIdFromWebhook, verifyLineSignature } from './notify/line.ts';
 import { GROUP_ID_KEY, lineConfigured, resolveGroupId, runDigest } from './notify/digest.ts';
 import type { Env, LeaveRequest, User } from './types.ts';
@@ -467,7 +468,9 @@ app.post('/api/leave/:id/cancel', async (c) => {
 app.get('/me', async (c) => {
 	const user = c.get('user');
 	const today = c.get('today');
-	const year = clampInt(c.req.query('y'), Number(today.slice(0, 4)), 2000, 2100);
+	const nowYear = Number(today.slice(0, 4));
+	const year = clampInt(c.req.query('y'), nowYear, 2000, 2100);
+	const { minYear, maxYear } = yearNavBounds(nowYear);
 
 	const types = await db.listLeaveTypes(c.env.DB);
 	const [balances, entries] = await Promise.all([
@@ -479,6 +482,8 @@ app.get('/me', async (c) => {
 		<MePage
 			user={user}
 			year={year}
+			minYear={minYear}
+			maxYear={maxYear}
 			balances={balances}
 			entries={entries}
 			types={types}
@@ -486,6 +491,53 @@ app.get('/me', async (c) => {
 			version={c.env.CF_VERSION_METADATA?.id}
 			error={flashOf(c.get('flash'), 'err')}
 			notice={flashOf(c.get('flash'), 'ok')}
+		/>,
+	);
+});
+
+/**
+ * One person's leave, keyed by email rather than an internal id — the same
+ * address Access already authenticates them with, and what the admin table
+ * and the calendar both key off of.
+ *
+ * Privacy rule lives entirely here: the schedule (`entries`) is fetched and
+ * shown regardless of who's asking, since it already sits on the shared
+ * calendar. `balances` is only fetched, and only rendered, when the viewer is
+ * the subject themselves or an admin — everyone else gets the section omitted
+ * by never receiving the prop, not by receiving zeros. An unknown email gets
+ * the exact same 404 as a real-but-mistyped one, so this route can't be used
+ * to enumerate who has an account.
+ */
+app.get('/u/:email', async (c) => {
+	const viewer = c.get('user');
+	const today = c.get('today');
+	const email = decodeURIComponent(c.req.param('email')).trim().toLowerCase();
+
+	const subject = await db.getUser(c.env.DB, email);
+	if (!subject) {
+		return c.html(<ErrorPage title="Not found" detail="No such page." />, 404);
+	}
+
+	const nowYear = Number(today.slice(0, 4));
+	const year = clampInt(c.req.query('y'), nowYear, 2000, 2100);
+	const { minYear, maxYear } = yearNavBounds(nowYear);
+
+	const canSeeBalances = viewer.email === subject.email || viewer.is_admin;
+	const [entries, balances] = await Promise.all([
+		db.listUserLeave(c.env.DB, subject.email, year),
+		canSeeBalances ? db.balancesFor(c.env.DB, subject.email, year, await db.listLeaveTypes(c.env.DB)) : Promise.resolve(undefined),
+	]);
+
+	return c.html(
+		<UserPage
+			viewer={viewer}
+			subject={subject}
+			year={year}
+			minYear={minYear}
+			maxYear={maxYear}
+			entries={entries}
+			balances={balances}
+			version={c.env.CF_VERSION_METADATA?.id}
 		/>,
 	);
 });
@@ -692,6 +744,20 @@ function clampInt(raw: string | undefined, fallback: number, min: number, max: n
 	const n = Number(raw);
 	if (!Number.isInteger(n) || n < min || n > max) return fallback;
 	return n;
+}
+
+/**
+ * Bounds for the prev/next year links on /me and /u/:email.
+ *
+ * `clampInt` above still allows a hand-edited `?y=` anywhere from 2000 to
+ * 2100 — those routes work fine given a request for a year that far off, they
+ * just have nothing to show. The links shouldn't invite that walk one click
+ * at a time, so they stop five years either side of the current year, which
+ * covers "last year's balances" and then some without wandering into empty
+ * years.
+ */
+function yearNavBounds(nowYear: number): { minYear: number; maxYear: number } {
+	return { minYear: nowYear - 5, maxYear: nowYear + 5 };
 }
 
 function validDateOr(raw: string | undefined, fallback: string): string {

@@ -58,6 +58,7 @@ export function Layout({ title, user, active, version, children }: LayoutProps) 
 				<script src="/app.js" defer></script>
 			</head>
 			<body>
+				<a class="skip-link" href="#main">Skip to content</a>
 				<header class="topbar">
 					<a class="brand" href="/">
 						<span class="brand-mark">🌴</span>
@@ -74,7 +75,7 @@ export function Layout({ title, user, active, version, children }: LayoutProps) 
 					<span class="who" title={user.email}>{user.display_name}</span>
 				</header>
 
-				<main class="wrap">{children}</main>
+				<main class="wrap" id="main">{children}</main>
 
 				<footer class="foot">
 					<span>wan-nee-la</span>
@@ -82,6 +83,25 @@ export function Layout({ title, user, active, version, children }: LayoutProps) 
 				</footer>
 			</body>
 		</html>
+	);
+}
+
+/** Previous / next year links, shared by /me and /u/:email. */
+export function YearNav({ basePath, year, minYear, maxYear }: { basePath: string; year: number; minYear: number; maxYear: number }) {
+	return (
+		<div class="year-nav">
+			{year > minYear ? (
+				<a href={`${basePath}?y=${year - 1}`} class="btn small">‹ {year - 1}</a>
+			) : (
+				<span class="btn small disabled" aria-disabled="true">‹ {year - 1}</span>
+			)}
+			<span class="year-nav-current">{year}</span>
+			{year < maxYear ? (
+				<a href={`${basePath}?y=${year + 1}`} class="btn small">{year + 1} ›</a>
+			) : (
+				<span class="btn small disabled" aria-disabled="true">{year + 1} ›</span>
+			)}
+		</div>
 	);
 }
 

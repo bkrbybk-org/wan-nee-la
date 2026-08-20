@@ -1,11 +1,13 @@
 import { describeRange, formatDays } from '../domain/dates.ts';
 import type { Balance, LeaveEntry, LeaveType, User } from '../types.ts';
-import { Layout } from './layout.tsx';
+import { Layout, YearNav } from './layout.tsx';
 import { BookingForm } from './booking.tsx';
 
 interface MeProps {
 	user: User;
 	year: number;
+	minYear: number;
+	maxYear: number;
 	balances: Balance[];
 	entries: LeaveEntry[];
 	types: LeaveType[];
@@ -16,7 +18,7 @@ interface MeProps {
 }
 
 export function MePage(props: MeProps) {
-	const { user, year, balances, entries, types, today, version, error, notice } = props;
+	const { user, year, minYear, maxYear, balances, entries, types, today, version, error, notice } = props;
 	const upcoming = entries.filter((e) => e.status === 'confirmed' && e.end_date >= today);
 	const past = entries.filter((e) => e.status !== 'confirmed' || e.end_date < today);
 
@@ -27,7 +29,7 @@ export function MePage(props: MeProps) {
 
 			<div class="page-head">
 				<h1>My leave</h1>
-				<span class="muted">{year}</span>
+				<YearNav basePath="/me" year={year} minYear={minYear} maxYear={maxYear} />
 			</div>
 
 			<section class="balances">

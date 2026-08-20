@@ -256,3 +256,23 @@ Options: add an Access **Bypass** rule for `/health` (it deliberately exposes no
 
 Worth doing whichever way, because right now nothing watches this deployment.
 
+---
+
+## #19 — `/u/:email` confirms whether an address exists `accepted`
+
+The per-person page returns 200 for a real user and 404 for an unknown one, so any signed-in employee can test whether an email address belongs to a colleague.
+
+This was briefly specified as "return the same response either way", which is incoherent: the page's whole purpose is to render for people who exist. The distinction cannot be removed without removing the feature.
+
+Accepted. Everyone who can probe it is an authenticated colleague, the staff **names** are already on the shared calendar, and the marginal gain is confirming an address someone had already guessed. If this ever matters, the fix is an opaque per-user id in the URL instead of the email — which would also keep addresses out of logs and referrers.
+
+---
+
+## #20 — Leave notes stay out of the per-person page `resolved by design`
+
+`/u/:email` never renders the free-text note, for anyone, including the person themselves and admins.
+
+The calendar already shows notes team-wide, which is #17's open question. A page that gathered one person's notes into a single chronological list would make that materially worse — scattered context across a month is not the same as a readable history of why someone was away. Until #17 is decided, this page shows schedule and nothing else.
+
+Balances follow a different rule and are visible to the person and to admins only: "12 of 30 sick days used" is an aggregate the calendar does not reveal, and is closer to a medical fact than a scheduling one. Enforced in the route, which passes `undefined` to the view rather than letting the template decide, and covered by the smoke suite.
+

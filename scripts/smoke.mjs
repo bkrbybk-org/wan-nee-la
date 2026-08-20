@@ -44,7 +44,7 @@ const OTHER = 'other@example.com';
 const STATE = mkdtempSync(join(tmpdir(), 'wnl-smoke-'));
 
 /** Assertions that must run for the suite to be considered complete. */
-const MIN_ASSERTIONS = 62;
+const MIN_ASSERTIONS = 67;
 
 let pass = 0;
 let fail = 0;
@@ -279,7 +279,7 @@ async function main() {
 	eq('CSRF: opaque (null) origin rejected', res.status, 403);
 
 	// --- booking rules over HTTP -------------------------------------------
-	res = await post('/api/leave', { leaveTypeId: '1', startDate: MON, endDate: FRI, note: 'Trip' });
+	res = await post('/api/leave', { leaveTypeId: '1', startDate: MON, endDate: FRI, note: 'smoke-private-note' });
 	eq('book Mon-Fri: accepted', res.status, 303);
 	eq('book Mon-Fri: charged 5 days', flashOf(res)?.message, 'Booked 5 day(s) of annual leave.');
 
@@ -304,12 +304,12 @@ async function main() {
 
 	// --- editing own booking ------------------------------------------------
 	res = await post(`/api/leave/${bookingId}/edit`, {
-		leaveTypeId: '1', startDate: MON, endDate: FRI, startHalf: 'full', endHalf: 'full', note: 'Trip',
+		leaveTypeId: '1', startDate: MON, endDate: FRI, startHalf: 'full', endHalf: 'full', note: 'smoke-private-note',
 	});
 	check('edit with unchanged dates does not self-overlap', flashOf(res)?.kind === 'ok', flashOf(res)?.message);
 
 	res = await post(`/api/leave/${bookingId}/edit`, {
-		leaveTypeId: '1', startDate: MON, endDate: addDays(MON, 2), note: 'Trip',
+		leaveTypeId: '1', startDate: MON, endDate: addDays(MON, 2), note: 'smoke-private-note',
 	});
 	eq('shortening credits its own days back', flashOf(res)?.message, 'Updated to 3 day(s) of annual leave.');
 
@@ -379,6 +379,17 @@ async function main() {
 
 	eq('second user is not admin', (await fetch(`${BASE}/admin`)).status, 403);
 	eq('second user cannot reach an admin action', (await post('/admin/quotas/bulk', { year: '2027', leaveTypeId: '1', days: '1' })).status, 403);
+
+	// --- per-person page: schedule is shared, balances are not ---------------
+	const otherViewsAdmin = await (await fetch(`${BASE}/u/${encodeURIComponent(ADMIN)}`)).text();
+	check('a colleague can see someone\'s schedule', otherViewsAdmin.includes('leave-row'), 'schedule missing');
+	check('but not their balances', !otherViewsAdmin.includes('class="balances"'), 'balances leaked to a colleague');
+	check('and never their note', !otherViewsAdmin.includes('smoke-private-note'), 'note leaked');
+
+	const ownPage = await (await fetch(`${BASE}/u/${encodeURIComponent(OTHER)}`)).text();
+	check('a person sees their own balances', ownPage.includes('class="balances"'), 'own balances missing');
+
+	eq('unknown person 404s', (await fetch(`${BASE}/u/nobody%40example.com`)).status, 404);
 
 	res = await post(`/api/leave/${bookingId}/cancel`);
 	eq("cannot cancel another user's booking", flashOf(res)?.message, 'That is not your booking.');

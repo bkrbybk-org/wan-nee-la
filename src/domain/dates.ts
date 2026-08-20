@@ -204,6 +204,26 @@ export function weekdayLabels(weekStart: WeekStart = MONDAY): string[] {
 	return Array.from({ length: 7 }, (_, i) => DAY_NAMES[(weekStart + i) % 7]);
 }
 
+const DAY_NAMES_FULL = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+
+/**
+ * "Monday 17 August 2026" — spoken form.
+ *
+ * A calendar cell shows a bare number, which reads as a stray digit out of
+ * context. Assistive technology gets this instead.
+ */
+export function longDate(iso: string): string {
+	const [y, m, dd] = iso.split('-').map(Number);
+	return `${DAY_NAMES_FULL[dayOfWeek(iso)]} ${dd} ${monthName(m)} ${y}`;
+}
+
+/** Split a run of dates into rows of seven, for a month table. */
+export function intoWeeks(dates: readonly string[]): string[][] {
+	const weeks: string[][] = [];
+	for (let i = 0; i < dates.length; i += 7) weeks.push(dates.slice(i, i + 7));
+	return weeks;
+}
+
 /** The short name of a date's own weekday, independent of column order. */
 export function weekdayName(date: string): string {
 	return DAY_NAMES[dayOfWeek(date)];

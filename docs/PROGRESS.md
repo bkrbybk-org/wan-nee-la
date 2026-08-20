@@ -1,6 +1,6 @@
 # wan-nee-la — Progress
 
-Updated: 2026-08-19
+Updated: 2026-08-20
 
 > This repo is **public**. Every account id, hostname, database id and Access
 > value below is a placeholder; the real ones live in `wrangler.local.jsonc`,
@@ -8,7 +8,7 @@ Updated: 2026-08-19
 
 ## Status
 
-Deployed and serving. Version `40084165-22af-4845-b442-2afeb86b8117`, D1 `<database-id>` in APAC, behind Cloudflare Access on `<hostname>`. `/health` reports `accessConfigured: true`, `devAuthBypass: false`.
+Deployed and serving. Version `bb1d786a-756e-40e7-86c2-5fb156b0d303`, D1 `<database-id>` in APAC, behind Cloudflare Access on `<hostname>`. `/health` reports `accessConfigured: true`, `devAuthBypass: false`.
 
 Everything in phases 1–5 is built. Two things gate real use, both needing the owner rather than more code:
 
@@ -65,7 +65,8 @@ Two consequences worth remembering:
 | POST | `/api/leave` | Book. Server computes days, checks overlap and balance. |
 | GET · POST | `/leave/:id/edit` · `/api/leave/:id/edit` | Edit. Also the drag-to-move target. |
 | POST | `/api/leave/:id/cancel` | Soft cancel; idempotent. |
-| GET | `/me` | Balances, upcoming and past leave, display name. |
+| GET | `/me` | Balances, upcoming and past leave, settings. Year navigation. |
+| GET | `/u/:email` | One person's leave. Schedule is shared; balances only for that person and admins; notes never. |
 | POST | `/me/name` · `/me/week-start` | Display name; whether the grid starts Monday or Sunday. |
 | GET | `/admin` | Users, quotas, holidays, LINE status and run log. Admin only. |
 | POST | `/admin/quotas` · `/admin/quotas/bulk` | One person, or every active user at once. |
@@ -89,20 +90,24 @@ Two consequences worth remembering:
 
 **Week start** — each person chooses Monday or Sunday on `/me`. Presentation only: weekends stay Saturday and Sunday and no quota arithmetic changes. Stored per user in D1 rather than `localStorage`, because the grid is rendered on the server.
 
+**Per-person page** — `/u/:email` shows one person's leave for a year. Their schedule is visible to everyone, because it is already on the shared calendar; their balances only to themselves and admins, because "12 of 30 sick days used" is an aggregate the calendar does not reveal; their notes to nobody, while ISSUES #17 is undecided.
+
+**Accessibility** — the month grid is a real `<table>` with column headers, so a screen reader gets row and column relationships without a JS keyboard model. Each cell announces its full date rather than a bare digit, each entry announces name, type, half-day and date rather than a repeated name, today carries `aria-current="date"`, and there is a skip link. Contrast measured at AA or better in both themes.
+
 **Theme** — System (default) / Light / Dark, applied before first paint from an inline script so there is no flash.
 
 ---
 
 ## Verification
 
-**262 automated assertions**, all green in CI on every push and pull request.
+**267 automated assertions**, all green in CI on every push and pull request.
 
 | Suite | Assertions | Covers |
 | --- | --- | --- |
 | `test-dates.mjs` | 114 | Bangkok boundary, half-days, weekends, holidays, month grids |
 | `test-leave.mjs` | 51 | Booking rules, balances, calendar placement |
 | `test-line.mjs` | 32 | Webhook signature, group-id extraction, digest text |
-| `smoke.mjs` | 65 | The HTTP layer — see below |
+| `smoke.mjs` | 70 | The HTTP layer — see below |
 
 The smoke suite boots a real worker against a scratch database and exercises what pure functions cannot reach: the CSRF guard, ownership checks on edit and cancel, booking rules over real requests, the open-redirect guard on `returnTo`, digest decisions, the webhook signature, and admin authorisation across two signed-in identities.
 
@@ -184,6 +189,7 @@ Features — iCal, CSV export, a digest look-ahead, team grouping and coverage w
 
 ## Change log
 
+- **2026-08-20** — Per-person page `/u/:email` with year navigation, and an accessibility pass on the calendar: the grid is now a table with proper headers and spoken dates. Contrast measured; all pairs pass AA.
 - **2026-08-19** — Per-user first-day-of-week (Monday or Sunday) on `/me`, migration 0003. `db:init` and the smoke harness now apply every migration in order rather than a hardcoded list.
 - **2026-08-16** — Route-level smoke tests in CI (58 assertions). Deactivated users removed from shared surfaces; emails removed from the JSON feed; out-today / next-7-days summary added.
 - **2026-08-15** — CI: typecheck, unit tests, client and Worker builds, committed-secrets guard.

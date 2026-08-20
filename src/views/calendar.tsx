@@ -8,6 +8,8 @@ import {
 	parseWeekStart,
 	shiftMonth,
 	shortDate,
+	longDate,
+	intoWeeks,
 	weekdayLabels,
 	weekdayName,
 	MONDAY,
@@ -32,6 +34,19 @@ interface CalendarProps {
 
 function halfMark(h: Half): string {
 	return h === 'am' ? ' ½am' : h === 'pm' ? ' ½pm' : '';
+}
+
+/**
+ * What a screen reader hears for one entry.
+ *
+ * The visible chip is just a name, which is enough when you can see which cell
+ * it sits in. Read aloud in a list of links, five identical names carry no
+ * information at all, so the date and leave type are spoken too.
+ */
+function entryLabel(e: LeaveEntry, date: string): string {
+	const half = halfOn(e, date);
+	const part = half === 'am' ? ', morning only' : half === 'pm' ? ', afternoon only' : '';
+	return `${e.display_name} — ${e.type_label_en}${part}, ${longDate(date)}`;
 }
 
 /**
@@ -74,6 +89,7 @@ export function CalendarPage(props: CalendarProps) {
 	const weekStart = parseWeekStart(user.week_start) ?? MONDAY;
 	const grid = monthGrid(year, month, weekStart);
 	const weekdays = weekdayLabels(weekStart);
+	const weeks = intoWeeks(grid);
 	const map = byDate(entries);
 	const holidayMap = new Map(holidays.map((h) => [h.date, h.label]));
 	const prev = shiftMonth(year, month, -1);
@@ -186,71 +202,102 @@ export function CalendarPage(props: CalendarProps) {
 			) : null}
 
 			{/* Both views are rendered; CSS picks one by width. The month grid is
-			    unreadable under ~768px once names are in the cells. */}
-			<section class="grid-view" aria-label="Month grid">
-				<div class="weekhead">
-					{weekdays.map((w) => (
-						<div class={`weekhead-cell ${w === 'Sat' || w === 'Sun' ? 'weekend' : ''}`}>{w}</div>
-					))}
-				</div>
-				<div class="grid">
-					{grid.map((date) => {
-						const inMonth = date.startsWith(monthPrefix);
-						const weekend = dayOfWeek(date) === 0 || dayOfWeek(date) === 6;
-						const holiday = holidayMap.get(date);
-						const dayEntries = map.get(date) ?? [];
-						const classes = [
-							'cell',
-							inMonth ? '' : 'out',
-							weekend ? 'weekend' : '',
-							holiday ? 'holiday' : '',
-							date === today ? 'today' : '',
-						]
-							.filter(Boolean)
-							.join(' ');
-						return (
-							<div class={classes}>
-								{/* Covers the cell's empty space. Sits under the chips so a
-								    click on an entry opens that entry rather than the
-								    booking form. */}
-								<a
-									class="cell-add"
-									href={`/book?date=${date}`}
-									data-book-link
-									data-date={date}
-									aria-label={`Book leave on ${shortDate(date)}`}
-								></a>
-								<div class="cell-head">
-									<span class="daynum">{Number(date.slice(8, 10))}</span>
-									{holiday ? <span class="holiday-tag" title={holiday}>{holiday}</span> : null}
-								</div>
-								<div class="chips">
-									{dayEntries.map((e) => (
-										<a
-											class={`chip ${canEdit(e) ? 'mine' : ''}`}
-											href={canEdit(e) ? `/leave/${e.id}/edit` : '#'}
-											style={`--chip: ${e.color}`}
-											title={`${e.display_name} — ${e.type_label_en}${e.note ? `: ${e.note}` : ''}`}
-											{...entryData(e, canEdit(e))}
-										>
-											{e.display_name}
-											{halfMark(halfOn(e, date))}
-										</a>
-									))}
-								</div>
-							</div>
-						);
-					})}
-				</div>
+			    unreadable under ~768px once names are in the cells.
+
+			    A real <table>, not a lattice of divs: a month genuinely is tabular
+			    data, and the table element gives a screen reader the row and column
+			    relationships for free. The ARIA grid role would need an arrow-key
+			    navigation model to be honest, and announcing "grid" without one is
+			    worse than saying nothing. */}
+			<section class="grid-view">
+				<table class="grid">
+					<caption class="visually-hidden">
+						Leave for {monthName(month)} {year}, one column per day of the week.
+					</caption>
+					<thead>
+						<tr>
+							{weekdays.map((w) => (
+								<th scope="col" class={`weekhead-cell ${w === 'Sat' || w === 'Sun' ? 'weekend' : ''}`}>
+									{w}
+								</th>
+							))}
+						</tr>
+					</thead>
+					<tbody>
+						{weeks.map((week) => (
+							<tr>
+								{week.map((date) => {
+									const inMonth = date.startsWith(monthPrefix);
+									const weekend = dayOfWeek(date) === 0 || dayOfWeek(date) === 6;
+									const holiday = holidayMap.get(date);
+									const dayEntries = map.get(date) ?? [];
+									const classes = [
+										'cell',
+										inMonth ? '' : 'out',
+										weekend ? 'weekend' : '',
+										holiday ? 'holiday' : '',
+										date === today ? 'today' : '',
+									]
+										.filter(Boolean)
+										.join(' ');
+									return (
+										<td class={classes} aria-current={date === today ? 'date' : undefined}>
+											{/* Covers the cell's empty space. Sits under the chips so a
+											    click on an entry opens that entry rather than the
+											    booking form. */}
+											<a
+												class="cell-add"
+												href={`/book?date=${date}`}
+												data-book-link
+												data-date={date}
+												aria-label={`Book leave on ${longDate(date)}`}
+											></a>
+											<div class="cell-head">
+												<span class="daynum" aria-hidden="true">{Number(date.slice(8, 10))}</span>
+												{/* The number alone reads as a bare digit out of context, so the
+												    full date is announced instead and the digit is hidden. */}
+												<span class="visually-hidden">{longDate(date)}</span>
+												{holiday ? <span class="holiday-tag">{holiday}</span> : null}
+											</div>
+											<div class="chips">
+												{dayEntries.map((e) => (
+													<a
+														class={`chip ${canEdit(e) ? 'mine' : ''}`}
+														href={canEdit(e) ? `/leave/${e.id}/edit` : '#'}
+														style={`--chip: ${e.color}`}
+														title={`${e.display_name} — ${e.type_label_en}${e.note ? `: ${e.note}` : ''}`}
+														aria-label={entryLabel(e, date)}
+														{...entryData(e, canEdit(e))}
+													>
+														<span aria-hidden="true">
+															{e.display_name}
+															{halfMark(halfOn(e, date))}
+														</span>
+													</a>
+												))}
+											</div>
+										</td>
+									);
+								})}
+							</tr>
+						))}
+					</tbody>
+				</table>
 			</section>
 
-			<section class="agenda-view" aria-label="Agenda">
+			<section class="agenda-view" aria-label="Leave by day">
 				{agenda.length === 0 ? (
 					<p class="muted pad">Nobody is on leave this month.</p>
 				) : (
 					agenda.map((row) => (
 						<div class={`agenda-row ${row.date === today ? 'today' : ''}`}>
-							<a class="agenda-date" href={`/book?date=${row.date}`} data-book-link data-date={row.date}>
+							<a
+								class="agenda-date"
+								href={`/book?date=${row.date}`}
+								data-book-link
+								data-date={row.date}
+								aria-label={`Book leave on ${longDate(row.date)}`}
+							>
 								<span class="agenda-dow">{weekdayName(row.date)}</span>
 								<span class="agenda-num">{Number(row.date.slice(8, 10))}</span>
 							</a>
@@ -260,6 +307,7 @@ export function CalendarPage(props: CalendarProps) {
 									<a
 										class={`agenda-item ${canEdit(e) ? 'mine' : ''}`}
 										href={canEdit(e) ? `/leave/${e.id}/edit` : '#'}
+										aria-label={entryLabel(e, row.date)}
 										{...entryData(e, canEdit(e))}
 									>
 										<span class="dot" style={`--chip: ${e.color}`} />
