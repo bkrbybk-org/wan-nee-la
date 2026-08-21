@@ -2,6 +2,7 @@ import { shortDate } from '../domain/dates.ts';
 import type { LeaveType, User } from '../types.ts';
 import { Layout } from './layout.tsx';
 import { BookingForm } from './booking.tsx';
+import { ChevronLeftIcon } from './icons.tsx';
 
 /**
  * Standalone booking page.
@@ -35,6 +36,9 @@ export function BookPage({
 			{notice ? <div class="banner ok">{notice}</div> : null}
 
 			<div class="page-head">
+				<a class="icon-btn" href="/" aria-label="Back to calendar">
+					<ChevronLeftIcon />
+				</a>
 				<h1>Book leave</h1>
 				{date ? <span class="muted">{shortDate(date)}</span> : null}
 			</div>
@@ -44,7 +48,7 @@ export function BookPage({
 			</section>
 
 			<p>
-				<a class="btn" href="/">Back to calendar</a>
+				<a class="btn text" href="/">Back to calendar</a>
 			</p>
 		</Layout>
 	);

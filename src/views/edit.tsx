@@ -2,6 +2,7 @@ import { describeRange, formatDays } from '../domain/dates.ts';
 import type { LeaveEntry, LeaveType, User } from '../types.ts';
 import { Layout } from './layout.tsx';
 import { BookingForm } from './booking.tsx';
+import { ChevronLeftIcon, DeleteIcon } from './icons.tsx';
 
 interface EditProps {
 	user: User;
@@ -22,6 +23,9 @@ export function EditPage({ user, entry, types, today, onBehalfOf, version, error
 			{notice ? <div class="banner ok">{notice}</div> : null}
 
 			<div class="page-head">
+				<a class="icon-btn" href="/me" aria-label="Back to my leave">
+					<ChevronLeftIcon />
+				</a>
 				<h1>Edit leave</h1>
 			</div>
 
@@ -56,7 +60,10 @@ export function EditPage({ user, entry, types, today, onBehalfOf, version, error
 					calendar. The record is kept, marked cancelled, rather than deleted.
 				</p>
 				<form method="post" action={`/api/leave/${entry.id}/cancel`}>
-					<button type="submit" class="btn danger">Remove this leave</button>
+					<button type="submit" class="btn danger">
+						<DeleteIcon class="sm" />
+						Remove this leave
+					</button>
 				</form>
 			</section>
 		</Layout>

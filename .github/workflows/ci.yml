@@ -35,6 +35,12 @@ jobs:
         # Two configs: the Worker and the browser bundle have different libs.
         run: npm run typecheck
 
+      - name: Colour contrast
+        # Regenerates the Material 3 tonal palettes and checks every foreground
+        # /background pair the stylesheet paints against WCAG AA. Exits non-zero
+        # if one falls short, so a token edit cannot quietly break contrast.
+        run: node scripts/palette.mjs > /dev/null
+
       - name: Unit tests
         # Date maths, booking rules, LINE webhook signature and digest.
         run: npm test

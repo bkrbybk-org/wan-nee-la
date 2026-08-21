@@ -152,6 +152,26 @@ The Bangkok offset is a constant in `src/domain/dates.ts`, not a binding — Tha
 
 ## Frontend
 
+### Design system — Material 3
+
+The UI follows Material Design 3. Colour is the part that matters most, because M3's rules are what keep it coherent:
+
+- Every surface and every piece of text on it is a **named role** (`--md-surface-container`, `--md-on-surface-variant`, `--md-primary-container`, …), never a raw hex outside the token block. A component says what it *is*; the theme decides what that looks like.
+- The roles are derived from six **tonal palettes** — primary, secondary, tertiary, error, neutral, neutral-variant — sampled at fixed tones. `scripts/palette.mjs` generates them and prints the CSS. It works in OKLCh rather than Google's HCT (no dependency, and perceptually uniform either way), converting M3's L\* tones through luminance, since OKLab's L is a different scale — read tone 6 as OKLab 0.06 and a dark surface comes out nearly black.
+- The same script **checks every pair the stylesheet actually paints** against WCAG AA and exits non-zero if one fails. Contrast is measured, not eyeballed. Re-run it after touching a token: `node scripts/palette.mjs`.
+
+The rest of the system:
+
+| Piece | Where |
+| --- | --- |
+| Shape scale (4/8/12/16/28/full), elevation levels 1–3, motion easing and durations | tokens in `public/app.css` |
+| State layers — the translucent overlay every M3 control shows on hover, focus and press | `.state-layer` / per-component `::before`, at `z-index: -1` under `isolation: isolate` so it sits behind the label without a wrapper element |
+| Touch ripple | `src/client/ripple.ts`, delegated from `document`; decoration only, and skipped under `prefers-reduced-motion` |
+| Filled text fields with floating labels | `src/views/fields.tsx` + `.tf*` rules |
+| Icons | `src/views/icons.tsx` — drawn by hand on the 24px grid rather than pulling Material Symbols, which would mean a request to `fonts.googleapis.com` on every page for eight glyphs |
+
+Two deliberate deviations. `<input type="date">` and `<select>` never match `:placeholder-shown` — they always display something — so their labels are pinned up (`tf-fixed`) instead of flickering. And the month grid keeps `<table>` semantics rather than taking `role="grid"`: an ARIA grid promises an arrow-key navigation model, and announcing one without it is worse than saying nothing.
+
 ### Theme
 
 Three states: **System** (default), **Light**, **Dark**, cycled by a button in the top bar and remembered in `localStorage` under `wnl-theme`.
@@ -182,7 +202,14 @@ Only one booking form exists per page, inside the create dialog — two would co
 
 ### Layout
 
-One `public/app.css`, mobile-first. Breakpoint 768px: below it the calendar renders as a scrollable agenda list (a 7×5 grid with names is unreadable on a phone); above it, a month grid with colored chips. Booking form is a `<form>` that works without JS; JS only adds the date-range picker and live day-count preview.
+One `public/app.css`, mobile-first, single breakpoint at 768px. Below it the calendar renders as a scrollable agenda list (a 7×5 grid with names is unreadable on a phone); above it, a month grid with coloured chips. The booking form is a `<form>` that works without JS; JS only adds the live day-count preview and the half-day field toggling.
+
+Navigation changes shape at the same breakpoint, following M3's own guidance rather than shrinking one control:
+
+- **Phone** — an M3 navigation bar fixed to the bottom, with the active destination marked by a filled pill behind its icon, and an **extended FAB** for "Book leave" in the bottom-right, where a thumb reaches. `body` reserves room for both so the last row of a list can still scroll clear.
+- **Desktop** — the same destinations as primary tabs in the top app bar, marked by an indicator under the label, and the booking action inline. The FAB is hidden; the month grid already offers a target on every day.
+
+Both are rendered on every page and chosen by CSS, so there is no JS in the navigation.
 
 ## Non-goals (v1)
 

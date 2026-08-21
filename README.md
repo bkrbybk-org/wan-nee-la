@@ -8,7 +8,7 @@ Employee leave tracker on Cloudflare Workers. "wan nee la" is Thai for *on leave
 - Self-serve booking with half-day granularity. Edit or remove afterwards.
 - Personal dashboard — days remaining per leave type.
 - A LINE group post every morning at 08:00 Asia/Bangkok listing who is out.
-- Behind Cloudflare Access. Mobile and laptop layouts. System/Light/Dark themes.
+- Behind Cloudflare Access. Material 3 interface, mobile and laptop layouts, System/Light/Dark themes.
 
 Hono + Hono JSX (SSR) + D1. No frontend framework; the client bundle is ~6kb of progressive enhancement and every page works without it.
 

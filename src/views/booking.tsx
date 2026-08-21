@@ -1,4 +1,5 @@
 import type { LeaveEntry, LeaveType } from '../types.ts';
+import { SelectField, TextField } from './fields.tsx';
 
 interface BookingFormProps {
 	types: readonly LeaveType[];
@@ -24,85 +25,76 @@ export function BookingForm({ types, today, compact, entry, defaultDate }: Booki
 	// On a single-day booking the end date is left blank, which is what the
 	// create form defaults to — keeps the two modes rendering identically.
 	const endValue = entry && entry.end_date !== entry.start_date ? entry.end_date : '';
+	const uid = entry?.id ?? 'new';
 
 	const half = (want: string, current: string | undefined, fallback: string) =>
 		(current ?? fallback) === want;
 
 	return (
 		<form method="post" action={action} class={`booking ${compact ? 'compact' : ''}`} data-booking>
-			<div class="field">
-				<label for={`leaveTypeId-${entry?.id ?? 'new'}`}>Leave type</label>
-				<select id={`leaveTypeId-${entry?.id ?? 'new'}`} name="leaveTypeId" required>
-					{types.map((t) => (
-						<option value={String(t.id)} selected={entry ? t.id === entry.leave_type_id : undefined}>
-							{t.label_en} · {t.label_th}
-						</option>
-					))}
-				</select>
-			</div>
+			<SelectField id={`leaveTypeId-${uid}`} name="leaveTypeId" label="Leave type" required>
+				{types.map((t) => (
+					<option value={String(t.id)} selected={entry ? t.id === entry.leave_type_id : undefined}>
+						{t.label_en} · {t.label_th}
+					</option>
+				))}
+			</SelectField>
 
 			<div class="row">
-				<div class="field">
-					<label for={`startDate-${entry?.id ?? 'new'}`}>From</label>
-					<input
-						type="date"
-						id={`startDate-${entry?.id ?? 'new'}`}
-						name="startDate"
-						required
-						value={entry ? entry.start_date : (defaultDate ?? today)}
-						data-start
-					/>
-				</div>
-				<div class="field">
-					<label for={`startHalf-${entry?.id ?? 'new'}`}>
-						Start <span class="muted">half</span>
-					</label>
-					<select id={`startHalf-${entry?.id ?? 'new'}`} name="startHalf" data-start-half>
-						<option value="full" selected={half('full', entry?.start_half, 'full')}>Full day</option>
-						<option value="am" selected={half('am', entry?.start_half, 'full')}>Morning only</option>
-						<option value="pm" selected={half('pm', entry?.start_half, 'full')}>Afternoon only</option>
-					</select>
-				</div>
-			</div>
-
-			<div class="row">
-				<div class="field">
-					<label for={`endDate-${entry?.id ?? 'new'}`}>
-						To <span class="muted">(blank = same day)</span>
-					</label>
-					<input type="date" id={`endDate-${entry?.id ?? 'new'}`} name="endDate" value={endValue} data-end />
-				</div>
-				<div class="field" data-end-half-field>
-					<label for={`endHalf-${entry?.id ?? 'new'}`}>
-						End <span class="muted">half</span>
-					</label>
-					<select id={`endHalf-${entry?.id ?? 'new'}`} name="endHalf" data-end-half>
-						<option value="full" selected={half('full', entry?.end_half, 'full')}>Full day</option>
-						<option value="am" selected={half('am', entry?.end_half, 'full')}>Morning only</option>
-					</select>
-				</div>
-			</div>
-
-			<div class="field">
-				<label for={`note-${entry?.id ?? 'new'}`}>
-					Note <span class="muted">(optional)</span>
-				</label>
-				<input
-					type="text"
-					id={`note-${entry?.id ?? 'new'}`}
-					name="note"
-					maxlength={500}
-					placeholder="Family trip"
-					value={entry?.note ?? ''}
+				<TextField
+					id={`startDate-${uid}`}
+					name="startDate"
+					label="From"
+					type="date"
+					required
+					value={entry ? entry.start_date : (defaultDate ?? today)}
+					extra={{ 'data-start': '' }}
 				/>
+				<SelectField id={`startHalf-${uid}`} name="startHalf" label="Start half" extra={{ 'data-start-half': '' }}>
+					<option value="full" selected={half('full', entry?.start_half, 'full')}>Full day</option>
+					<option value="am" selected={half('am', entry?.start_half, 'full')}>Morning only</option>
+					<option value="pm" selected={half('pm', entry?.start_half, 'full')}>Afternoon only</option>
+				</SelectField>
 			</div>
+
+			<div class="row">
+				<TextField
+					id={`endDate-${uid}`}
+					name="endDate"
+					label="To"
+					type="date"
+					value={endValue}
+					support="Leave blank for a single day"
+					extra={{ 'data-end': '' }}
+				/>
+				<SelectField
+					id={`endHalf-${uid}`}
+					name="endHalf"
+					label="End half"
+					class="end-half-field"
+					extra={{ 'data-end-half': '' }}
+					fieldExtra={{ 'data-end-half-field': '' }}
+				>
+					<option value="full" selected={half('full', entry?.end_half, 'full')}>Full day</option>
+					<option value="am" selected={half('am', entry?.end_half, 'full')}>Morning only</option>
+				</SelectField>
+			</div>
+
+			<TextField
+				id={`note-${uid}`}
+				name="note"
+				label="Note (optional)"
+				maxlength={500}
+				value={entry?.note ?? ''}
+				support="Visible to everyone on the calendar"
+			/>
 
 			<div class="actions">
 				<button type="submit" class="btn primary">{editing ? 'Save changes' : 'Book leave'}</button>
 				{/* "Discard", not "Cancel" — this page also has a button that cancels
 				    the leave itself, and two different meanings of Cancel side by
 				    side is how someone deletes a booking they meant to keep. */}
-				{editing ? <a class="btn" href="/me">Discard changes</a> : null}
+				{editing ? <a class="btn text" href="/me">Discard changes</a> : null}
 				{/* Filled in by booking.js; stays empty and harmless without it. */}
 				<span class="preview" data-preview aria-live="polite"></span>
 			</div>

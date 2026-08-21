@@ -2,6 +2,8 @@ import { formatDays } from '../domain/dates.ts';
 import type { Holiday, LeaveType, Quota, User } from '../types.ts';
 import type { NotificationLog } from '../repo/db.ts';
 import { Layout } from './layout.tsx';
+import { SelectField, TextField } from './fields.tsx';
+import { DeleteIcon } from './icons.tsx';
 
 interface AdminProps {
 	user: User;
@@ -38,19 +40,13 @@ export function AdminPage(props: AdminProps) {
 				<p class="muted">Days allotted per person for {year}. Blank rows default from the leave type.</p>
 				<form method="post" action="/admin/quotas/bulk" class="quota-form bulk-quota-form">
 					<input type="hidden" name="year" value={String(year)} />
-					<label class="quota-cell">
-						<span class="muted">Leave type</span>
-						<select name="leaveTypeId" required>
-							{types.map((t) => (
-								<option value={String(t.id)}>{t.label_en}</option>
-							))}
-						</select>
-					</label>
-					<label class="quota-cell">
-						<span class="muted">Days</span>
-						<input type="number" name="days" step="0.5" min="0" max="365" required />
-					</label>
-					<button type="submit" class="btn small">Set for everyone (active)</button>
+					<SelectField id="bulk-type" name="leaveTypeId" label="Leave type" required>
+						{types.map((t) => (
+							<option value={String(t.id)}>{t.label_en}</option>
+						))}
+					</SelectField>
+					<TextField id="bulk-days" name="days" label="Days" type="number" step="0.5" min="0" max="365" required class="quota-cell" />
+					<button type="submit" class="btn tonal">Set for everyone (active)</button>
 				</form>
 				<div class="table-scroll">
 					<table class="grid-table">
@@ -79,7 +75,7 @@ export function AdminPage(props: AdminProps) {
 											<label class="checkline">
 												<input type="checkbox" name="active" value="1" checked={!!u.active} /> active
 											</label>
-											<button type="submit" class="btn small">Save</button>
+											<button type="submit" class="btn small tonal">Save</button>
 										</form>
 									</td>
 									<td>
@@ -87,19 +83,19 @@ export function AdminPage(props: AdminProps) {
 											<input type="hidden" name="email" value={u.email} />
 											<input type="hidden" name="year" value={String(year)} />
 											{types.map((t) => (
-												<label class="quota-cell">
-													<span class="muted">{t.label_en}</span>
-													<input
-														type="number"
-														name={`q_${t.id}`}
-														value={formatDays(quotaFor(u.email, t.id))}
-														step="0.5"
-														min="0"
-														max="365"
-													/>
-												</label>
+												<TextField
+													id={`q-${t.id}-${u.email}`}
+													name={`q_${t.id}`}
+													label={t.label_en}
+													type="number"
+													value={formatDays(quotaFor(u.email, t.id))}
+													step="0.5"
+													min="0"
+													max="365"
+													class="quota-cell"
+												/>
 											))}
-											<button type="submit" class="btn small">Save quotas</button>
+											<button type="submit" class="btn small tonal">Save quotas</button>
 										</form>
 									</td>
 								</tr>
@@ -116,9 +112,9 @@ export function AdminPage(props: AdminProps) {
 					add them here as they land.
 				</p>
 				<form method="post" action="/admin/holiday" class="row inline">
-					<input type="date" name="date" required />
-					<input type="text" name="label" placeholder="Makha Bucha" maxlength={80} required />
-					<button type="submit" class="btn">Add</button>
+					<TextField id="holiday-date" name="date" label="Date" type="date" required />
+					<TextField id="holiday-label" name="label" label="Name" maxlength={80} required support="For example, Makha Bucha" />
+					<button type="submit" class="btn tonal">Add</button>
 				</form>
 				<ul class="holiday-list">
 					{holidays.map((h) => (
@@ -127,7 +123,9 @@ export function AdminPage(props: AdminProps) {
 							<span>{h.label}</span>
 							<form method="post" action="/admin/holiday/delete" class="inline">
 								<input type="hidden" name="date" value={h.date} />
-								<button type="submit" class="btn small danger">Remove</button>
+								<button type="submit" class="icon-btn" aria-label={`Remove ${h.label} on ${h.date}`}>
+									<DeleteIcon />
+								</button>
 							</form>
 						</li>
 					))}
@@ -150,15 +148,15 @@ export function AdminPage(props: AdminProps) {
 				</dl>
 
 				<form method="post" action="/admin/notify/preview" class="row inline">
-					<input type="date" name="date" value={today} />
-					<button type="submit" class="btn">Preview</button>
+					<TextField id="preview-date" name="date" label="Date" type="date" value={today} />
+					<button type="submit" class="btn tonal">Preview</button>
 				</form>
 				<form method="post" action="/admin/notify/send" class="row inline">
-					<input type="date" name="date" value={today} />
+					<TextField id="send-date" name="date" label="Date" type="date" value={today} />
 					<label class="checkline">
 						<input type="checkbox" name="force" value="1" /> resend if already logged
 					</label>
-					<button type="submit" class="btn" disabled={!line.ready}>Send now</button>
+					<button type="submit" class="btn primary" disabled={!line.ready}>Send now</button>
 				</form>
 				{!line.ready ? (
 					<p class="muted">Sending is disabled until both the channel token and the group are in place.</p>

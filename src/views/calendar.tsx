@@ -18,6 +18,7 @@ import { byDate, halfOn } from '../domain/leave.ts';
 import type { Half, Holiday, LeaveEntry, LeaveType, User } from '../types.ts';
 import { Layout } from './layout.tsx';
 import { BookingForm } from './booking.tsx';
+import { ChevronLeftIcon, ChevronRightIcon, CloseIcon, DeleteIcon, EditIcon, PlusIcon } from './icons.tsx';
 
 interface CalendarProps {
 	user: User;
@@ -144,20 +145,34 @@ export function CalendarPage(props: CalendarProps) {
 			{notice ? <div class="banner ok">{notice}</div> : null}
 
 			<div class="month-head">
-				<a class="btn ghost" href={`/?y=${prev.year}&m=${prev.month}`} aria-label="Previous month">←</a>
 				<h1>
 					{monthName(month)} <span class="muted">{year}</span>
 				</h1>
-				<a class="btn ghost" href={`/?y=${next.year}&m=${next.month}`} aria-label="Next month">→</a>
-				<a class="btn ghost today-link" href="/">Today</a>
+				<a class="icon-btn" href={`/?y=${prev.year}&m=${prev.month}`} aria-label="Previous month">
+					<ChevronLeftIcon />
+				</a>
+				<a class="icon-btn" href={`/?y=${next.year}&m=${next.month}`} aria-label="Next month">
+					<ChevronRightIcon />
+				</a>
+				<a class="btn text today-link" href="/">Today</a>
 			</div>
 
 			{/* A real link, so this works with scripting off. The client script
-			    intercepts it and opens the dialog instead. */}
+			    intercepts it and opens the dialog instead. The same link is drawn
+			    twice: inline on a wide screen, and as an extended FAB on a phone,
+			    where the bottom-right corner is where Material puts the primary
+			    action and where a thumb can reach it. */}
 			<p class="calendar-actions">
-				<a class="btn primary" href="/book" data-book-link>Book leave</a>
+				<a class="btn primary book-inline" href="/book" data-book-link>
+					<PlusIcon class="sm" />
+					Book leave
+				</a>
 				<span class="muted hint">Click any day to book it, or an entry to open it.</span>
 			</p>
+			<a class="fab" href="/book" data-book-link>
+				<PlusIcon />
+				Book leave
+			</a>
 
 			{showSummary ? (
 				<section class="who-summary" aria-label="Who is out">
@@ -338,7 +353,9 @@ export function CalendarPage(props: CalendarProps) {
 			<dialog class="popup" data-create-dialog aria-label="Book leave">
 				<div class="popup-head">
 					<h2 data-create-title>Book leave</h2>
-					<button type="button" class="popup-x" data-popup-close aria-label="Close">✕</button>
+					<button type="button" class="icon-btn popup-x" data-popup-close aria-label="Close">
+						<CloseIcon />
+					</button>
 				</div>
 				<BookingForm types={types} today={today} compact />
 			</dialog>
@@ -348,7 +365,9 @@ export function CalendarPage(props: CalendarProps) {
 					<h2>
 						<span class="dot" data-p-dot /> <span data-p-name></span>
 					</h2>
-					<button type="button" class="popup-x" data-popup-close aria-label="Close">✕</button>
+					<button type="button" class="icon-btn popup-x" data-popup-close aria-label="Close">
+						<CloseIcon />
+					</button>
 				</div>
 				<dl class="popup-facts">
 					<dt>When</dt>
@@ -363,10 +382,16 @@ export function CalendarPage(props: CalendarProps) {
 					</div>
 				</dl>
 				<div class="popup-actions" data-p-actions>
-					<a class="btn" data-p-edit href="#">Edit</a>
 					<form method="post" data-p-cancel class="inline">
-						<button type="submit" class="btn danger">Remove</button>
+						<button type="submit" class="btn text danger">
+							<DeleteIcon class="sm" />
+							Remove
+						</button>
 					</form>
+					<a class="btn tonal" data-p-edit href="#">
+						<EditIcon class="sm" />
+						Edit
+					</a>
 				</div>
 				<p class="muted" data-p-readonly hidden>
 					Only the person who booked this — or an admin — can change it.
