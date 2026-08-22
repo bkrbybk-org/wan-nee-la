@@ -80,6 +80,13 @@ export function Layout({ title, user, active, version, children }: LayoutProps) 
 				<title>{title} · wan-nee-la</title>
 				<link rel="stylesheet" href="/app.css" />
 				<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><text y='14' font-size='14'>🌴</text></svg>" />
+				{/* `use-credentials` is not optional here: the manifest is same-origin
+				    but behind Cloudflare Access, and without it the browser fetches
+				    it anonymously, gets the login redirect, and quietly treats the
+				    app as uninstallable — which on iOS means no notifications at
+				    all, since only an installed web app may subscribe. */}
+				<link rel="manifest" href="/manifest.webmanifest" crossorigin="use-credentials" />
+				<link rel="apple-touch-icon" href="/icon-180.png" />
 				{/* Must run before first paint — see THEME_SCRIPT. */}
 				<script dangerouslySetInnerHTML={{ __html: THEME_SCRIPT }} />
 				{/* Enhancement only — every page works with this blocked. */}

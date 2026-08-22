@@ -1,6 +1,6 @@
 import { formatDays } from '../domain/dates.ts';
 import type { Holiday, LeaveType, Quota, User } from '../types.ts';
-import type { NotificationLog } from '../repo/db.ts';
+import type { NotificationRun } from '../repo/db.ts';
 import { Layout } from './layout.tsx';
 import { SelectField, TextField } from './fields.tsx';
 import { DeleteIcon } from './icons.tsx';
@@ -14,7 +14,7 @@ interface AdminProps {
 	holidays: Holiday[];
 	today: string;
 	line: { configured: boolean; groupId: string | null; ready: boolean };
-	log: NotificationLog[];
+	log: NotificationRun[];
 	version?: string;
 	error?: string;
 	notice?: string;
@@ -170,6 +170,7 @@ export function AdminPage(props: AdminProps) {
 						{log.map((row) => (
 							<li>
 								<span class="mono">{row.date}</span>
+								<span class="tag">{row.channel}</span>
 								<span class={`tag ${row.status === 'failed' ? 'bad' : ''}`}>{row.status}</span>
 								<span class="muted">{row.people} out</span>
 								{row.error ? <span class="muted">{row.error}</span> : null}

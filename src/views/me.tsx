@@ -3,7 +3,7 @@ import type { Balance, LeaveEntry, LeaveType, User } from '../types.ts';
 import { Layout, YearNav } from './layout.tsx';
 import { BookingForm } from './booking.tsx';
 import { TextField } from './fields.tsx';
-import { CheckIcon, DeleteIcon, EditIcon } from './icons.tsx';
+import { BellIcon, CheckIcon, DeleteIcon, EditIcon } from './icons.tsx';
 
 interface MeProps {
 	user: User;
@@ -14,13 +14,15 @@ interface MeProps {
 	entries: LeaveEntry[];
 	types: LeaveType[];
 	today: string;
+	/** Absent when the server has no VAPID pair — the whole card is hidden then. */
+	vapidPublicKey?: string;
 	version?: string;
 	error?: string;
 	notice?: string;
 }
 
 export function MePage(props: MeProps) {
-	const { user, year, minYear, maxYear, balances, entries, types, today, version, error, notice } = props;
+	const { user, year, minYear, maxYear, balances, entries, types, today, vapidPublicKey, version, error, notice } = props;
 	const upcoming = entries.filter((e) => e.status === 'confirmed' && e.end_date >= today);
 	const past = entries.filter((e) => e.status !== 'confirmed' || e.end_date < today);
 
@@ -102,6 +104,8 @@ export function MePage(props: MeProps) {
 				)}
 			</section>
 
+			{vapidPublicKey ? <PushCard vapidPublicKey={vapidPublicKey} /> : null}
+
 			<section class="card">
 				<h2>Calendar</h2>
 				<p class="muted">Which day the month grid starts on. Weekends stay Saturday and Sunday either way.</p>
@@ -134,6 +138,44 @@ export function MePage(props: MeProps) {
 				</form>
 			</section>
 		</Layout>
+	);
+}
+
+/**
+ * Browser notifications for the 08:00 digest.
+ *
+ * Entirely script-driven, and deliberately inert without JS: there is no
+ * server-rendered "on" or "off" state to show, because the answer is per
+ * browser and only that browser knows it. `push.ts` fills in the status,
+ * enables the buttons, and — on iOS, where the Push API exists only inside an
+ * installed web app — replaces the controls with the install instructions.
+ */
+function PushCard({ vapidPublicKey }: { vapidPublicKey: string }) {
+	return (
+		<section class="card" data-push-card hidden>
+			<h2>Browser notifications</h2>
+			<p class="muted">
+				One notification each working morning at 08:00, listing who is out that day. Nothing is sent on weekends,
+				public holidays, or days when nobody is away.
+			</p>
+
+			<p class="push-status" data-push-status aria-live="polite"></p>
+
+			<div class="actions" data-vapid-key={vapidPublicKey}>
+				<button type="button" class="btn primary" data-push-enable hidden>
+					<BellIcon class="sm" />
+					Turn on
+				</button>
+				<button type="button" class="btn" data-push-disable hidden>Turn off</button>
+				<button type="button" class="btn text" data-push-test hidden>Send a test</button>
+			</div>
+
+			{/* Shown only on iOS, where a tab cannot subscribe at all. */}
+			<p class="muted" data-push-ios hidden>
+				On iPhone and iPad, notifications work only once this site is installed: tap Share, then <strong>Add to
+				Home Screen</strong>, and turn them on from there.
+			</p>
+		</section>
 	);
 }
 

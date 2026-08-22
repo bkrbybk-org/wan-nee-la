@@ -96,6 +96,13 @@ export const DeleteIcon = (p: IconProps) => (
 	</Svg>
 );
 
+export const BellIcon = (p: IconProps) => (
+	<Svg {...p}>
+		<path d="M6 9a6 6 0 0 1 12 0c0 4 1.5 5.5 2 6H4c.5-.5 2-2 2-6z" />
+		<path d="M10 19a2 2 0 0 0 4 0" />
+	</Svg>
+);
+
 export const CheckIcon = (p: IconProps) => (
 	<Svg {...p}>
 		<path d="M5 13l4 4 10-10" />

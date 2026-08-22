@@ -276,3 +276,41 @@ The calendar already shows notes team-wide, which is #17's open question. A page
 
 Balances follow a different rule and are visible to the person and to admins only: "12 of 30 sick days used" is an aggregate the calendar does not reveal, and is closer to a medical fact than a scheduling one. Enforced in the route, which passes `undefined` to the view rather than letting the template decide, and covered by the smoke suite.
 
+
+---
+
+## #21 — Browser notifications need an installed web app on iPhone `accepted`
+
+Safari exposes the Push API only to a web app added to the Home Screen. In an ordinary Safari tab there is no `PushManager` at all, so nothing on `/me` can turn notifications on — and this is still true in 2026, three years after iOS 16.4 introduced web push.
+
+Android Chrome has no such requirement: a normal tab can subscribe.
+
+Accepted, because the alternative is a native app. The mitigation is to say so plainly rather than show a button that cannot work: on iOS the card hides its controls and gives the Share → **Add to Home Screen** instruction instead. A web app manifest and real icons ship for exactly this reason, and the manifest link carries `crossorigin="use-credentials"` — without it the browser fetches the manifest anonymously, Access answers with a login redirect, and the app silently becomes uninstallable.
+
+---
+
+## #22 — A digest notification shows names on a lock screen `accepted`
+
+The message is encrypted end to end: the push service forwards bytes it cannot read, and only the subscribed browser holds the key. What it cannot control is where the browser then displays it — a phone shows notification text on the lock screen by default, so "Somchai — Sick leave" can be read by anyone holding the handset.
+
+Accepted. It is the same information the shared calendar shows to every colleague, and the recipient chose to subscribe. Free-text notes are never included, which is the one field that could carry something genuinely private. Anyone who would rather not have it on a lock screen can turn the notification off, or configure their phone to hide contents until unlocked.
+
+---
+
+## #23 — Delivery to a real push service is unverified `open`
+
+The encryption is checked against RFC 8291's own worked example byte for byte, and the VAPID token is verified against its own key, so the bytes leaving the Worker are right. What has not been observed is a push service — FCM, Mozilla, Apple — accepting one and a device showing it.
+
+It cannot be tested from a terminal: it needs a real browser subscription, which needs a real person granting permission. The automation browser used during development has notifications denied at the profile level.
+
+Closing this is one click: sign in, turn notifications on from `/me`, press **Send a test**. If a push service rejects the request its status and body are surfaced verbatim in the response and in `/admin`, which is where a wrong `VAPID_SUBJECT` or a malformed key would show up.
+
+---
+
+## #24 — `npm run db:init` fails on a second run `open`
+
+`migrations/0003_week_start.sql` is a bare `ALTER TABLE users ADD COLUMN week_start`, which errors with "duplicate column name" if the column is already there. Since `db:init` replays every file in `migrations/` and stops at the first failure, running it twice against the same database fails.
+
+Harmless in practice — the schema is already correct when it happens — but it makes a real failure indistinguishable from a no-op, and it means the command cannot be used to bring an existing database up to date.
+
+Found while checking that `0004_push.sql`, which rebuilds a table, survives being replayed; it does. The fix for 0003 is to rebuild the table the same way, or to move to a migration runner that records what it has applied.

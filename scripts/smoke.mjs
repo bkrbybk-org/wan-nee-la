@@ -44,7 +44,7 @@ const OTHER = 'other@example.com';
 const STATE = mkdtempSync(join(tmpdir(), 'wnl-smoke-'));
 
 /** Assertions that must run for the suite to be considered complete. */
-const MIN_ASSERTIONS = 67;
+const MIN_ASSERTIONS = 82;
 
 let pass = 0;
 let fail = 0;
@@ -209,6 +209,18 @@ function post(path, fields, { origin = ORIGIN, referer = `${BASE}/` } = {}) {
 	});
 }
 
+/** POST JSON the way the push client does. */
+function postJson(path, body, { origin = ORIGIN } = {}) {
+	const headers = { 'Content-Type': 'application/json' };
+	if (origin !== null) headers.Origin = origin;
+	return fetch(`${BASE}${path}`, {
+		method: 'POST',
+		headers,
+		body: JSON.stringify(body),
+		redirect: 'manual',
+	});
+}
+
 /**
  * The flash message a redirect carries.
  *
@@ -355,7 +367,58 @@ async function main() {
 
 	res = await post('/admin/notify/send', { date: MON });
 	check('digest: refuses to send with no channel token', /not configured/i.test(flashOf(res)?.message ?? ''), flashOf(res)?.message);
-	eq('digest: nothing logged when nothing was sent', d1Rows('SELECT COUNT(*) AS n FROM notification_log')[0]?.n, 0);
+	eq('digest: nothing logged when nothing was sent', d1Rows('SELECT COUNT(*) AS n FROM notification_runs')[0]?.n, 0);
+
+	// --- browser push ------------------------------------------------------
+	//
+	// No VAPID pair is configured here, so nothing is ever sent: what is under
+	// test is the subscription store and its ownership rules, plus the digest's
+	// decision not to attempt a channel it cannot sign for.
+
+	// A real-looking subscription: the key sizes are checked on the way in, so
+	// these are the RFC 8291 example's, which are the right shape.
+	const P256DH = 'BCVxsr7N_eNgVRqvHtD0zTZsEc6-VV-JvLexhqUzORcxaOzi6-AYWXvTBHm4bjyPjs7Vd8pZGH6SRpkNtoIAiw4';
+	const AUTH = 'BTBZMqHH6r4Tts7J_aSIgg';
+	const endpointOf = (id) => `https://push.example.net/wpush/v2/${id}`;
+	const sub = (id) => ({ endpoint: endpointOf(id), keys: { p256dh: P256DH, auth: AUTH } });
+
+	eq('push: subscribe accepted', (await postJson('/api/push/subscribe', sub('admin-laptop'))).status, 200);
+	eq(
+		'push: subscription stored against the caller',
+		d1Rows(`SELECT user_email FROM push_subscriptions WHERE endpoint = '${endpointOf('admin-laptop')}'`)[0]?.user_email,
+		ADMIN,
+	);
+
+	// Re-subscribing the same browser must not create a second row — the
+	// endpoint is the identity, and duplicates would push twice to one device.
+	await postJson('/api/push/subscribe', sub('admin-laptop'));
+	eq('push: re-subscribing updates rather than duplicates', d1Rows('SELECT COUNT(*) AS n FROM push_subscriptions')[0]?.n, 1);
+
+	eq(
+		'push: rejects a non-https endpoint',
+		(await postJson('/api/push/subscribe', { endpoint: 'http://push.example.net/x', keys: { p256dh: P256DH, auth: AUTH } })).status,
+		400,
+	);
+	eq(
+		'push: rejects a wrong-sized key',
+		(await postJson('/api/push/subscribe', { endpoint: endpointOf('bad'), keys: { p256dh: 'AAAA', auth: AUTH } })).status,
+		400,
+	);
+	eq('push: rejects an empty body', (await postJson('/api/push/subscribe', {})).status, 400);
+	eq(
+		'push: cross-origin subscribe rejected',
+		(await postJson('/api/push/subscribe', sub('evil'), { origin: 'https://evil.example' })).status,
+		403,
+	);
+	eq('push: nothing stored by the rejected calls', d1Rows('SELECT COUNT(*) AS n FROM push_subscriptions')[0]?.n, 1);
+
+	eq('push: test send refused with no VAPID pair', (await postJson('/api/push/test', {})).status, 503);
+
+	// A subscription exists, but the server cannot sign a push without a VAPID
+	// pair, so the digest must report that rather than claiming the date.
+	res = await post('/admin/notify/send', { date: MON });
+	check('digest: still not configured for push', /not configured/i.test(flashOf(res)?.message ?? ''), flashOf(res)?.message);
+	eq('digest: no run claimed for an unsendable channel', d1Rows('SELECT COUNT(*) AS n FROM notification_runs')[0]?.n, 0);
 
 	// --- admin actions ------------------------------------------------------
 	res = await post('/admin/quotas/bulk', { year: '2027', leaveTypeId: '1', days: '12' });
@@ -390,6 +453,37 @@ async function main() {
 	check('a person sees their own balances', ownPage.includes('class="balances"'), 'own balances missing');
 
 	eq('unknown person 404s', (await fetch(`${BASE}/u/nobody%40example.com`)).status, 404);
+
+	// --- push subscriptions belong to someone -------------------------------
+	const adminEndpoint = 'https://push.example.net/wpush/v2/admin-laptop';
+	await postJson('/api/push/unsubscribe', { endpoint: adminEndpoint });
+	eq(
+		"cannot unsubscribe another user's browser",
+		d1Rows(`SELECT COUNT(*) AS n FROM push_subscriptions WHERE endpoint = '${adminEndpoint}'`)[0]?.n,
+		1,
+	);
+	eq(
+		'and it still belongs to them',
+		d1Rows(`SELECT user_email FROM push_subscriptions WHERE endpoint = '${adminEndpoint}'`)[0]?.user_email,
+		ADMIN,
+	);
+
+	// Re-subscribing the same browser as a different person reassigns it. That
+	// is deliberate — a shared machine where the previous person signed out must
+	// not keep sending their colleague's digest to them.
+	await postJson('/api/push/subscribe', {
+		endpoint: adminEndpoint,
+		keys: {
+			p256dh: 'BCVxsr7N_eNgVRqvHtD0zTZsEc6-VV-JvLexhqUzORcxaOzi6-AYWXvTBHm4bjyPjs7Vd8pZGH6SRpkNtoIAiw4',
+			auth: 'BTBZMqHH6r4Tts7J_aSIgg',
+		},
+	});
+	eq(
+		'a browser re-subscribed by someone else changes hands',
+		d1Rows(`SELECT user_email FROM push_subscriptions WHERE endpoint = '${adminEndpoint}'`)[0]?.user_email,
+		OTHER,
+	);
+	eq('and is still one row', d1Rows('SELECT COUNT(*) AS n FROM push_subscriptions')[0]?.n, 1);
 
 	res = await post(`/api/leave/${bookingId}/cancel`);
 	eq("cannot cancel another user's booking", flashOf(res)?.message, 'That is not your booking.');

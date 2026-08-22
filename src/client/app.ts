@@ -9,5 +9,6 @@
  */
 import './booking.ts';
 import './ripple.ts';
+import './push.ts';
 import './calendar.ts';
 import './drag.ts';

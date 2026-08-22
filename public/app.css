@@ -980,6 +980,11 @@ form.inline { display: inline-flex; gap: 8px; align-items: center; }
 .row-actions { display: inline-flex; gap: 4px; align-items: center; }
 .leave-current { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin: 0; }
 
+/* ---------- browser notifications ---------- */
+
+.push-status { font-weight: 500; }
+[data-push-card] .actions { margin-top: 12px; }
+
 /* ---------- admin ---------- */
 
 .table-scroll { overflow-x: auto; }

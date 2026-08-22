@@ -22,7 +22,8 @@ import { ErrorPage, Layout } from './views/layout.tsx';
 import { MePage } from './views/me.tsx';
 import { UserPage } from './views/user.tsx';
 import { groupIdFromWebhook, verifyLineSignature } from './notify/line.ts';
-import { GROUP_ID_KEY, lineConfigured, resolveGroupId, runDigest } from './notify/digest.ts';
+import { GROUP_ID_KEY, lineConfigured, pushConfigured, resolveGroupId, runDigest, vapidKeys } from './notify/digest.ts';
+import { parseSubscription, sendPush } from './notify/push.ts';
 import type { Env, LeaveRequest, User } from './types.ts';
 
 type Vars = { user: User; today: string; flash: Flash };
@@ -488,6 +489,10 @@ app.get('/me', async (c) => {
 			entries={entries}
 			types={types}
 			today={today}
+			// The VAPID public key is meant to be handed out — the browser needs
+			// it to subscribe, and it can only be used to verify our signature,
+			// never to make one.
+			vapidPublicKey={pushConfigured(c.env) ? c.env.VAPID_PUBLIC_KEY : undefined}
 			version={c.env.CF_VERSION_METADATA?.id}
 			error={flashOf(c.get('flash'), 'err')}
 			notice={flashOf(c.get('flash'), 'ok')}
@@ -560,6 +565,78 @@ app.post('/me/name', async (c) => {
 	if (!name) return redirectWithFlash('/me', 'err', 'Display name cannot be empty.');
 	await db.setDisplayName(c.env.DB, user.email, name);
 	return redirectWithFlash('/me', 'ok', 'Name updated.');
+});
+
+// ---------------------------------------------------------------------------
+// Browser push
+// ---------------------------------------------------------------------------
+
+/**
+ * Register this browser for the 08:00 digest.
+ *
+ * The subscription is owned by whoever is signed in now. That matters on a
+ * shared machine: the browser hands back the same endpoint after a different
+ * person signs in, and `saveSubscription` reassigns it rather than leaving
+ * someone else's name on it.
+ */
+app.post('/api/push/subscribe', async (c) => {
+	const user = c.get('user');
+	const sub = parseSubscription(await c.req.json().catch(() => null));
+	if (!sub) return c.json({ ok: false, error: 'Not a usable push subscription.' }, 400);
+
+	await db.saveSubscription(c.env.DB, sub, user.email);
+	return c.json({ ok: true });
+});
+
+/**
+ * Stop pushing to this browser.
+ *
+ * Scoped to the owner, so knowing someone else's endpoint — which is not
+ * secret; it travels to the push service on every send — does not let you
+ * silence their notifications.
+ */
+app.post('/api/push/unsubscribe', async (c) => {
+	const user = c.get('user');
+	const body = (await c.req.json().catch(() => null)) as { endpoint?: unknown } | null;
+	const endpoint = typeof body?.endpoint === 'string' ? body.endpoint : '';
+	if (!endpoint) return c.json({ ok: false, error: 'No endpoint.' }, 400);
+
+	await db.deleteSubscription(c.env.DB, endpoint, user.email);
+	// Deliberately 200 whether or not a row was deleted. The browser has already
+	// unsubscribed locally by this point, so an error here would only invite it
+	// to retry something that can never succeed.
+	return c.json({ ok: true });
+});
+
+/**
+ * Send a test notification to the caller's own browsers.
+ *
+ * Without this the only way to find out whether push works is to wait until
+ * 08:00 the next working day, which is how a broken setup stays broken.
+ */
+app.post('/api/push/test', async (c) => {
+	const user = c.get('user');
+	if (!pushConfigured(c.env)) return c.json({ ok: false, error: 'Push is not configured on the server.' }, 503);
+
+	const subs = await db.subscriptionsFor(c.env.DB, user.email);
+	if (subs.length === 0) return c.json({ ok: false, error: 'This browser is not subscribed yet.' }, 409);
+
+	const payload = JSON.stringify({
+		title: 'wan-nee-la',
+		body: 'Test notification. The daily digest will look like this, at 08:00.',
+		url: '/me',
+		tag: 'wnl-test',
+	});
+	const results = await Promise.all(subs.map((s) => sendPush(s, payload, vapidKeys(c.env))));
+
+	// Prune here too: a test is exactly when a stale subscription surfaces.
+	await Promise.all(results.filter((r) => r.gone).map((r) => db.deleteSubscriptionByEndpoint(c.env.DB, r.endpoint)));
+
+	const delivered = results.filter((r) => r.ok).length;
+	if (delivered === 0) {
+		return c.json({ ok: false, error: results.find((r) => r.error)?.error ?? 'No browser accepted the push.' }, 502);
+	}
+	return c.json({ ok: true, delivered });
 });
 
 // ---------------------------------------------------------------------------

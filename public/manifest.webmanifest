@@ -1,0 +1,15 @@
+{
+	"name": "wan-nee-la",
+	"short_name": "wan-nee-la",
+	"description": "Who is on leave today",
+	"start_url": "/",
+	"scope": "/",
+	"display": "standalone",
+	"background_color": "#f8f9fb",
+	"theme_color": "#f8f9fb",
+	"icons": [
+		{ "src": "/icon-192.png", "sizes": "192x192", "type": "image/png" },
+		{ "src": "/icon-512.png", "sizes": "512x512", "type": "image/png" },
+		{ "src": "/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+	]
+}

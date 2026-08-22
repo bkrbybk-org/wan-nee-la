@@ -355,8 +355,11 @@ export async function setConfig(db: D1Database, key: string, value: string): Pro
 // Notification log
 // ---------------------------------------------------------------------------
 
-export interface NotificationLog {
+export type NotifyChannel = 'line' | 'push';
+
+export interface NotificationRun {
 	date: string;
+	channel: NotifyChannel;
 	sent_at: string;
 	people: number;
 	status: string;
@@ -364,20 +367,32 @@ export interface NotificationLog {
 }
 
 /**
- * Claim the right to notify for `date`.
+ * Claim the right to notify for `date` on `channel`.
  *
  * Returns false when a row already exists, which means some earlier run already
- * handled this date. This is the guard against posting twice to a company group
- * chat — cron can fire more than once, and a manual re-run is one curl away.
+ * handled this date on this channel. This is the guard against posting twice to
+ * a company group chat — cron can fire more than once, and a manual re-run is
+ * one curl away.
  *
  * The row is claimed *before* the push is attempted, so a crash mid-send fails
  * closed (no message) rather than open (two messages). A genuinely failed send
  * is visible in /admin and can be retried deliberately via `clearNotification`.
+ *
+ * Per channel, not per date: a LINE failure must not stop the browsers being
+ * told, and a LINE success must not claim the date out from under them.
  */
-export async function claimNotification(db: D1Database, date: string, people: number): Promise<boolean> {
+export async function claimNotification(
+	db: D1Database,
+	date: string,
+	channel: NotifyChannel,
+	people: number,
+): Promise<boolean> {
 	const res = await db
-		.prepare(`INSERT OR IGNORE INTO notification_log (date, sent_at, people, status) VALUES (?, ?, ?, 'pending')`)
-		.bind(date, bangkokNow(), people)
+		.prepare(
+			`INSERT OR IGNORE INTO notification_runs (date, channel, sent_at, people, status)
+			 VALUES (?, ?, ?, ?, 'pending')`,
+		)
+		.bind(date, channel, bangkokNow(), people)
 		.run();
 	return (res.meta.changes ?? 0) > 0;
 }
@@ -385,26 +400,111 @@ export async function claimNotification(db: D1Database, date: string, people: nu
 export async function finishNotification(
 	db: D1Database,
 	date: string,
+	channel: NotifyChannel,
 	status: 'sent' | 'skipped_empty' | 'failed',
 	error?: string,
 ): Promise<void> {
 	await db
-		.prepare('UPDATE notification_log SET status = ?, error = ?, sent_at = ? WHERE date = ?')
-		.bind(status, error ?? null, bangkokNow(), date)
+		.prepare('UPDATE notification_runs SET status = ?, error = ?, sent_at = ? WHERE date = ? AND channel = ?')
+		.bind(status, error ?? null, bangkokNow(), date, channel)
 		.run();
 }
 
-/** Drop a log row so a failed date can be retried. */
-export async function clearNotification(db: D1Database, date: string): Promise<void> {
-	await db.prepare('DELETE FROM notification_log WHERE date = ?').bind(date).run();
+/** Drop a log row so a failed date can be retried. Both channels when unspecified. */
+export async function clearNotification(db: D1Database, date: string, channel?: NotifyChannel): Promise<void> {
+	if (channel) {
+		await db.prepare('DELETE FROM notification_runs WHERE date = ? AND channel = ?').bind(date, channel).run();
+		return;
+	}
+	await db.prepare('DELETE FROM notification_runs WHERE date = ?').bind(date).run();
 }
 
-export async function recentNotifications(db: D1Database, limit = 14): Promise<NotificationLog[]> {
+export async function recentNotifications(db: D1Database, limit = 14): Promise<NotificationRun[]> {
 	const res = await db
-		.prepare('SELECT * FROM notification_log ORDER BY date DESC LIMIT ?')
+		.prepare('SELECT * FROM notification_runs ORDER BY date DESC, channel LIMIT ?')
 		.bind(limit)
-		.all<NotificationLog>();
+		.all<NotificationRun>();
 	return res.results ?? [];
+}
+
+// ---------------------------------------------------------------------------
+// Push subscriptions
+// ---------------------------------------------------------------------------
+
+export interface StoredSubscription {
+	endpoint: string;
+	user_email: string;
+	p256dh: string;
+	auth: string;
+}
+
+/**
+ * Store a browser's subscription.
+ *
+ * Keyed on the endpoint, and the owner is overwritten along with the keys: the
+ * same browser profile re-subscribing after a different person signed in must
+ * end up owned by whoever is signed in now, not by whoever registered it first.
+ */
+export async function saveSubscription(
+	db: D1Database,
+	sub: { endpoint: string; p256dh: string; auth: string },
+	email: string,
+): Promise<void> {
+	await db
+		.prepare(
+			`INSERT INTO push_subscriptions (endpoint, user_email, p256dh, auth, created_at)
+			 VALUES (?, ?, ?, ?, ?)
+			 ON CONFLICT(endpoint) DO UPDATE SET user_email = excluded.user_email,
+			                                     p256dh = excluded.p256dh,
+			                                     auth = excluded.auth`,
+		)
+		.bind(sub.endpoint, email, sub.p256dh, sub.auth, bangkokNow())
+		.run();
+}
+
+/** Remove one subscription. Scoped to its owner so an endpoint cannot be unsubscribed by someone else. */
+export async function deleteSubscription(db: D1Database, endpoint: string, email: string): Promise<boolean> {
+	const res = await db
+		.prepare('DELETE FROM push_subscriptions WHERE endpoint = ? AND user_email = ?')
+		.bind(endpoint, email)
+		.run();
+	return (res.meta.changes ?? 0) > 0;
+}
+
+/** Dropped by the sender when a push service reports the subscription gone. */
+export async function deleteSubscriptionByEndpoint(db: D1Database, endpoint: string): Promise<void> {
+	await db.prepare('DELETE FROM push_subscriptions WHERE endpoint = ?').bind(endpoint).run();
+}
+
+export async function subscriptionsFor(db: D1Database, email: string): Promise<StoredSubscription[]> {
+	const res = await db
+		.prepare('SELECT endpoint, user_email, p256dh, auth FROM push_subscriptions WHERE user_email = ?')
+		.bind(email)
+		.all<StoredSubscription>();
+	return res.results ?? [];
+}
+
+/**
+ * Every subscription belonging to someone still active.
+ *
+ * Deactivated people drop off the digest the same way they drop off the shared
+ * calendar — one rule, applied in the query rather than remembered at each call
+ * site.
+ */
+export async function activeSubscriptions(db: D1Database): Promise<StoredSubscription[]> {
+	const res = await db
+		.prepare(
+			`SELECT s.endpoint, s.user_email, s.p256dh, s.auth
+			   FROM push_subscriptions s
+			   JOIN users u ON u.email = s.user_email
+			  WHERE u.active = 1`,
+		)
+		.all<StoredSubscription>();
+	return res.results ?? [];
+}
+
+export async function markSubscriptionSeen(db: D1Database, endpoint: string): Promise<void> {
+	await db.prepare('UPDATE push_subscriptions SET last_seen = ? WHERE endpoint = ?').bind(bangkokNow(), endpoint).run();
 }
 
 // ---------------------------------------------------------------------------

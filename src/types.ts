@@ -11,6 +11,16 @@ export interface Env {
 	LINE_CHANNEL_SECRET: string;
 	/** Optional pin. Normally the group id is captured by /line/webhook into app_config. */
 	LINE_GROUP_ID: string;
+	/**
+	 * Web Push (VAPID). The public key is not a secret — it is handed to every
+	 * browser that subscribes — so it lives in wrangler.jsonc. The private key
+	 * is set with `wrangler secret put`; anyone holding it can push to every
+	 * subscriber. Generate a pair with `node scripts/vapid-keys.mjs`.
+	 */
+	VAPID_PUBLIC_KEY: string;
+	VAPID_PRIVATE_KEY: string;
+	/** Contact for the push services, e.g. `mailto:ops@example.com`. */
+	VAPID_SUBJECT: string;
 }
 
 export type Half = 'full' | 'am' | 'pm';

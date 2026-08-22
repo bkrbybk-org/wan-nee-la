@@ -107,6 +107,35 @@ Optional — the app is fully functional without it. LINE Notify was shut down o
 
 LINE bills a group push **per member**, so a 20-person group posted to daily is ~600 messages a month. The job skips weekends, public holidays, and days with nobody on leave. See [docs/ISSUES.md](docs/ISSUES.md) #2.
 
+## Turning on browser notifications
+
+Optional, free, and independent of LINE: subscribers get one notification each working morning at 08:00 listing who is out, from the same job that would post to LINE.
+
+1. Generate a VAPID keypair. Once, ever — regenerating it silently invalidates every existing subscription, because a browser binds its subscription to the key that created it.
+
+   ```
+   npm run vapid
+   ```
+
+2. Put the **public** key and a contact address in `wrangler.local.jsonc`. The public key is not a secret; every subscribing browser is given it.
+
+   ```jsonc
+   "VAPID_PUBLIC_KEY": "B...",
+   "VAPID_SUBJECT": "mailto:you@example.com"
+   ```
+
+3. Store the **private** key as a secret. Anyone holding it can push to every subscriber.
+
+   ```
+   npx wrangler secret put VAPID_PRIVATE_KEY --config wrangler.local.jsonc
+   ```
+
+4. Deploy, then open `/me` and turn notifications on. **Send a test** proves the whole path without waiting for 08:00.
+
+Leave `VAPID_PUBLIC_KEY` empty to keep the feature off: the card disappears from `/me` and the digest skips the channel.
+
+**On iPhone and iPad** this only works from an installed web app — Share → *Add to Home Screen*, then turn notifications on from there. Safari tabs have no Push API at all (docs/ISSUES.md #21). Android Chrome works in an ordinary tab.
+
 ## Docs
 
 | File | What |

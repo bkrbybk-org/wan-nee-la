@@ -24,6 +24,7 @@ Nothing here needs code.
 | 1.1 | Sign in through a browser | Nobody has completed an SSO login. It cannot be tested from a terminal: a service token authenticates at the edge but carries no `email`. **Whoever signs in first becomes the admin.** |
 | 1.2 | Switch on LINE, if wanted | Channel, bot in the group, Access **Bypass** rule on `/line/webhook`, then two `wrangler secret put` calls. Steps in the [README](../README.md#turning-on-the-line-post). |
 | 1.3 | Check the LINE message allowance | Billing is per group member. ~600 messages/month for a 20-person group, and the free tier varies by country ([ISSUES.md](ISSUES.md) #2). |
+| 1.4 | Switch on browser notifications, if wanted | `npm run vapid`, public key into `wrangler.local.jsonc`, `wrangler secret put VAPID_PRIVATE_KEY`, then turn them on from `/me` and press **Send a test**. Free, and independent of LINE. Steps in the [README](../README.md#turning-on-browser-notifications). On iPhone the site must be installed to the Home Screen first ([ISSUES.md](ISSUES.md) #21). |
 
 ---
 

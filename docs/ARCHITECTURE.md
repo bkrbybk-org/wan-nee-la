@@ -211,6 +211,29 @@ Navigation changes shape at the same breakpoint, following M3's own guidance rat
 
 Both are rendered on every page and chosen by CSS, so there is no JS in the navigation.
 
+## Notifications
+
+Two channels, one job. `runDigest` decides *whether* to notify once — skipping weekends, public holidays, and days with nobody out — builds the text once, then fans out. An admin's preview runs the same function in dry-run mode, so what they see is produced by the code that sends.
+
+| Channel | Reaches | Cost | Configured by |
+| --- | --- | --- | --- |
+| LINE | one group chat | billed per member, per push | channel token + group id |
+| Browser push | each person who opted in, per browser | free | VAPID keypair |
+
+`notification_runs` is keyed on **(date, channel)**, not date alone. With one row per date, a LINE row would claim the day and silently suppress the push, and one status column could not say "LINE failed but the browsers got it". Each channel claims its own row *before* sending, so a crash fails closed — no message — rather than open, with two.
+
+### Web Push
+
+Implemented directly against RFC 8291 (`aes128gcm` payload encryption) and RFC 8292 (VAPID) in `src/notify/push.ts`, using only WebCrypto. No dependency: every primitive is in the runtime, and the alternative is handing the VAPID private key to an unaudited package. RFC 8291 §5 publishes a complete worked example, so the implementation is asserted against the spec's own bytes rather than against a reading of it.
+
+Three consequences worth knowing:
+
+- **The message travels inside the payload.** A service worker wakes with no page open, and a fetch to an origin behind Access returns a login redirect — so it cannot pull the digest itself. The text is encrypted end to end; the push service forwards bytes it cannot read.
+- **Subscriptions are per browser, not per person.** The endpoint is the primary key. Re-subscribing reassigns ownership to whoever is signed in, which is what makes a shared machine safe after someone signs out.
+- **Dead endpoints are pruned on send.** 404 and 410 mean gone for good and the row is deleted; anything else may be transient and is retried tomorrow.
+
+The service worker (`public/sw.js`) deliberately caches nothing. Every page here is behind Access and rendered per user; a cached page served to the wrong person, or after their access was revoked, is a far worse failure than a page that will not load offline.
+
 ## Non-goals (v1)
 
 Approval workflow, carry-over quota, attachments/medical certs, half-hour granularity, per-team filtering, i18n toggle (Thai labels inline), export to payroll.

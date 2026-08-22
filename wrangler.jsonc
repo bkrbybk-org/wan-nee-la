@@ -82,5 +82,18 @@
 		//   wrangler secret put LINE_CHANNEL_ACCESS_TOKEN
 		//   wrangler secret put LINE_CHANNEL_SECRET
 		"LINE_GROUP_ID": "",
+
+		// Browser push (VAPID). Generate a pair with `npm run vapid`.
+		//
+		// The public key is handed to every browser that subscribes, so it belongs
+		// here rather than in a secret. The private key is what signs pushes and
+		// must be stored as one:
+		//   wrangler secret put VAPID_PRIVATE_KEY
+		//
+		// Leave both empty to keep browser notifications switched off — the card
+		// on /me disappears and the digest simply skips the channel.
+		"VAPID_PUBLIC_KEY": "",
+		// Contact address for the push services, e.g. "mailto:ops@example.com".
+		"VAPID_SUBJECT": "",
 	},
 }
