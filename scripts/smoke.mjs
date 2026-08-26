@@ -44,7 +44,7 @@ const OTHER = 'other@example.com';
 const STATE = mkdtempSync(join(tmpdir(), 'wnl-smoke-'));
 
 /** Assertions that must run for the suite to be considered complete. */
-const MIN_ASSERTIONS = 132;
+const MIN_ASSERTIONS = 135;
 
 let pass = 0;
 let fail = 0;
@@ -765,6 +765,24 @@ async function main() {
 	);
 	check('and still offers booking', gridHtml.includes(`/book?date=${TODAY}`), 'booking link missing');
 	d1("DELETE FROM leave_requests WHERE id = 'smoke-grid'");
+
+	// --- the sidebar's upcoming list ----------------------------------------
+	//
+	// It answers "what is coming up", anchored to today, so it must survive
+	// paging to another month — that is the whole reason it is fetched
+	// separately from the grid.
+	insertLeave('smoke-soon-2', OTHER, addDays(TODAY, 3));
+	const sideHtml = await (await fetch(`${BASE}/`)).text();
+	check('the sidebar lists what is coming up', sideHtml.includes('cal-upcoming'), 'sidebar missing');
+	check('and names who', sideHtml.includes('upcoming-name'), 'upcoming entries missing');
+
+	const otherMonth = await (await fetch(`${BASE}/?y=2030&m=6`)).text();
+	check(
+		'the upcoming list stays anchored to today when paging months',
+		otherMonth.includes('upcoming-name'),
+		'sidebar emptied by paging',
+	);
+	d1("DELETE FROM leave_requests WHERE id = 'smoke-soon-2'");
 
 	// Browsing a month that cannot contain today: the summary must be absent
 	// rather than rendering a misleading "nobody is out today".

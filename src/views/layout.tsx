@@ -48,6 +48,12 @@ interface LayoutProps {
 	user: User;
 	active: Section;
 	version?: string;
+	/**
+	 * Lets the page own the window's height instead of growing past it. Only
+	 * the calendar asks for this: a month that runs off the bottom of the
+	 * screen is not a month you can read at a glance.
+	 */
+	fitViewport?: boolean;
 	children?: Child;
 }
 
@@ -68,13 +74,21 @@ function sections(user: User): { href: string; label: StringKey; key: Section; I
 		: items;
 }
 
-export function Layout({ title, user, active, version, children }: LayoutProps) {
+export function Layout({ title, user, active, version, fitViewport, children }: LayoutProps) {
 	const nav = sections(user);
 	const lang = toLang(user.lang);
 
 	return (
 		<LangProvider value={lang}>
-			<LayoutShell title={title} user={user} active={active} version={version} nav={nav} lang={lang}>
+			<LayoutShell
+				title={title}
+				user={user}
+				active={active}
+				version={version}
+				fitViewport={fitViewport}
+				nav={nav}
+				lang={lang}
+			>
 				{children}
 			</LayoutShell>
 		</LangProvider>
@@ -92,6 +106,7 @@ function LayoutShell({
 	user,
 	active,
 	version,
+	fitViewport,
 	nav,
 	lang,
 	children,
@@ -123,7 +138,7 @@ function LayoutShell({
 				{/* Enhancement only — every page works with this blocked. */}
 				<script src="/app.js" defer></script>
 			</head>
-			<body>
+			<body class={fitViewport ? 'fit-viewport' : ''}>
 				<a class="skip-link" href="#main">{t('nav.skip')}</a>
 
 				{/* M3 small top app bar. The tabs in it are for desktop; on a phone

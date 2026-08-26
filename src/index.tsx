@@ -251,6 +251,9 @@ function sayMessage(c: Ctx, m: Message): string {
 // Calendar
 // ---------------------------------------------------------------------------
 
+/** How far ahead the calendar's sidebar looks. A quarter is plenty of notice. */
+const UPCOMING_DAYS = 90;
+
 app.get('/', async (c) => {
 	const user = c.get('user');
 	const today = c.get('today');
@@ -272,10 +275,15 @@ app.get('/', async (c) => {
 	// grid are never rendered as cells — the grid only draws dates it lists.
 	const to = addDays(grid[grid.length - 1], 7);
 
-	const [entries, holidays, types] = await Promise.all([
+	// The sidebar answers "what is coming up", which is not the same question as
+	// "what is in this month" — it stays anchored to today while someone pages
+	// through months, so it is fetched on its own rather than filtered out of
+	// the grid's data.
+	const [entries, holidays, types, upcoming] = await Promise.all([
 		db.listLeaveInRange(c.env.DB, from, to),
 		db.listHolidays(c.env.DB, from, to),
 		db.listLeaveTypes(c.env.DB),
+		db.listLeaveInRange(c.env.DB, today, addDays(today, UPCOMING_DAYS)),
 	]);
 
 	return c.html(
@@ -286,6 +294,7 @@ app.get('/', async (c) => {
 			entries={entries}
 			holidays={holidays}
 			types={types}
+			upcoming={upcoming}
 			today={today}
 			version={c.env.CF_VERSION_METADATA?.id}
 			error={flashOf(c.get('flash'), 'err')}

@@ -1,5 +1,6 @@
 import {
 	addDays,
+	isWeekend,
 	dayOfWeek,
 	describeRange,
 	formatDays,
@@ -27,6 +28,8 @@ interface CalendarProps {
 	year: number;
 	month: number;
 	entries: LeaveEntry[];
+	/** Everything from today forward, independent of the month being browsed. */
+	upcoming: LeaveEntry[];
 	holidays: Holiday[];
 	types: LeaveType[];
 	today: string;
@@ -44,6 +47,86 @@ interface CalendarProps {
  */
 function typeLabel(e: { type_label_en: string; type_label_th: string }, lang: Lang): string {
 	return lang === 'th' ? e.type_label_th : e.type_label_en;
+}
+
+/**
+ * How many names a cell draws before it counts the rest instead.
+ *
+ * Kept in step with the `nth-of-type` rule in app.css that hides the others —
+ * change one and the count stops matching what is on screen.
+ */
+const CELL_CHIPS = 3;
+
+/** How far ahead the sidebar looks. Must match UPCOMING_DAYS in index.tsx. */
+const UPCOMING_DAYS = 90;
+
+/**
+ * What is coming up, in the sidebar.
+ *
+ * Anchored to today rather than to the month on screen: paging back to April
+ * should not change the answer to "who is away soon". Grouped by day, because
+ * a flat list repeats the same date down the column and the question is
+ * usually about a day rather than about a person.
+ *
+ * Each row carries the same data attributes as a calendar chip, so the detail
+ * popup opens from here too without a second code path.
+ */
+function UpcomingList({
+	entries,
+	today,
+	user,
+	lang,
+}: {
+	entries: readonly LeaveEntry[];
+	today: string;
+	user: User;
+	lang: Lang;
+}) {
+	const t = useT();
+	const canEdit = (e: LeaveEntry) => e.user_email === user.email || Boolean(user.is_admin);
+
+	// One row per person per day they are away, from today forward. A booking
+	// that started last week still appears, on its remaining days only.
+	const byDay = new Map<string, LeaveEntry[]>();
+	for (const e of entries) {
+		for (let d = e.start_date > today ? e.start_date : today; d <= e.end_date; d = addDays(d, 1)) {
+			if (isWeekend(d)) continue;
+			byDay.set(d, [...(byDay.get(d) ?? []), e]);
+		}
+	}
+	const days = [...byDay.entries()].sort((a, b) => a[0].localeCompare(b[0]));
+
+	return (
+		<section class="cal-upcoming">
+			<h2>{t('cal.upcoming')}</h2>
+			{days.length === 0 ? (
+				<p class="muted">{t('cal.nothingUpcoming', { days: UPCOMING_DAYS })}</p>
+			) : (
+				<ol class="upcoming-list">
+					{days.map(([date, dayEntries]) => (
+						<li class={`upcoming-day ${date === today ? 'today' : ''}`}>
+							<p class="upcoming-date">{date === today ? t('cal.today') : longDate(date, lang)}</p>
+							{dayEntries.map((e) => (
+								<a
+									class={`upcoming-item ${canEdit(e) ? 'mine' : ''}`}
+									href={canEdit(e) ? `/leave/${e.id}/edit` : '#'}
+									aria-label={entryLabel(e, date, lang)}
+									{...entryData(e, canEdit(e), visibleNote(e, user), lang)}
+								>
+									<span class="dot" style={`--chip: ${e.color}`} />
+									<span class="upcoming-name">{e.display_name}</span>
+									<span class="upcoming-type">
+										{typeLabel(e, lang)}
+										{halfMark(halfOn(e, date), lang)}
+									</span>
+								</a>
+							))}
+						</li>
+					))}
+				</ol>
+			)}
+		</section>
+	);
 }
 
 function halfMark(h: Half, lang: Lang): string {
@@ -107,7 +190,13 @@ function entryData(e: LeaveEntry, canEdit: boolean, note: string | null, lang: L
 
 export function CalendarPage(props: CalendarProps) {
 	return (
-		<Layout title={`${monthName(props.month, toLang(props.user.lang))} ${props.year}`} user={props.user} active="calendar" version={props.version}>
+		<Layout
+			title={`${monthName(props.month, toLang(props.user.lang))} ${props.year}`}
+			user={props.user}
+			active="calendar"
+			version={props.version}
+			fitViewport
+		>
 			<CalendarBody {...props} />
 		</Layout>
 	);
@@ -115,7 +204,7 @@ export function CalendarPage(props: CalendarProps) {
 
 /** Inside the Layout, so `useT` sees the language the Layout provides. */
 function CalendarBody(props: CalendarProps) {
-	const { user, year, month, entries, holidays, types, today, error, notice } = props;
+	const { user, year, month, entries, upcoming, holidays, types, today, error, notice } = props;
 	const t = useT();
 	const lang = useLang();
 	// Presentation only: rotating the columns changes no arithmetic, and Saturday
@@ -211,202 +300,222 @@ function CalendarBody(props: CalendarProps) {
 			</a>
 
 			{/* Both halves empty is the common case in a quiet week, and two cards
-			    saying almost the same nothing filled the top of a phone screen.
-			    One line covers it — and "nobody *else*" needs somebody to be else
-			    to, which there isn't. */}
-			{showSummary && todayEntries.length === 0 && weekPeople.length === 0 ? (
-				<section class="who-summary quiet" aria-label={t('cal.whoIsOut')}>
-					<p class="muted">{t('cal.nobodyAtAll')}</p>
-				</section>
-			) : null}
-
-			{showSummary && (todayEntries.length > 0 || weekPeople.length > 0) ? (
-				<section class="who-summary" aria-label={t('cal.whoIsOut')}>
-					<div class="who-block">
-						<h2>{t('cal.outToday')}</h2>
-						{todayEntries.length === 0 ? (
-							<p class="muted">{t('cal.nobodyToday')}</p>
-						) : (
-							<ul class="who-list">
-								{todayEntries.map((e) => (
-									<li>
-										<span class="dot" style={`--chip: ${e.color}`} />
-										<span class="who-name">{e.display_name}</span>
-										<span class="muted">
-											{typeLabel(e, lang)}
-											{halfMark(halfOn(e, today), lang)}
-										</span>
-									</li>
-								))}
-							</ul>
-						)}
-					</div>
-					<div class="who-block">
-						<h2>{t('cal.next7')}</h2>
-						{weekPeople.length === 0 ? (
-							<p class="muted">{t('cal.nobodyWeek')}</p>
-						) : (
-							<ul class="who-list">
-								{weekPeople.map((p) => (
-									<li>
-										<span class="dot" style={`--chip: ${p.color}`} />
-										<span class="who-name">{p.name}</span>
-										<span class="muted">
-											{p.type} ({p.days.map((d) => shortDate(d, lang)).join(', ')})
-										</span>
-									</li>
-								))}
-							</ul>
-						)}
-					</div>
-				</section>
-			) : null}
-
-			{/* Both views are rendered; CSS picks one by width. The month grid is
-			    unreadable under ~768px once names are in the cells.
-
-			    A real <table>, not a lattice of divs: a month genuinely is tabular
-			    data, and the table element gives a screen reader the row and column
-			    relationships for free. The ARIA grid role would need an arrow-key
-			    navigation model to be honest, and announcing "grid" without one is
-			    worse than saying nothing. */}
-			<section class="grid-view">
-				<table class="grid">
-					<caption class="visually-hidden">{t('cal.title', { month: monthName(month, lang), year })}</caption>
-					<thead>
-						<tr>
-							{weekdays.map((w) => (
-								<th scope="col" class={`weekhead-cell ${w === 'Sat' || w === 'Sun' ? 'weekend' : ''}`}>
-									{w}
-								</th>
-							))}
-						</tr>
-					</thead>
-					<tbody>
-						{weeks.map((week) => (
+			{/* Two columns on a wide screen: the month on the left, and what is
+			    coming up on the right. On a phone they stack, the month first —
+			    the sidebar is where a laptop's spare width goes, not something a
+			    narrow screen has to make room for. */}
+			<div class="cal-layout">
+				<div class="cal-main">
+				<section class="grid-view">
+					<table class="grid">
+						<caption class="visually-hidden">{t('cal.title', { month: monthName(month, lang), year })}</caption>
+						<thead>
 							<tr>
-								{week.map((date) => {
-									const inMonth = date.startsWith(monthPrefix);
-									const weekend = dayOfWeek(date) === 0 || dayOfWeek(date) === 6;
-									const holiday = holidayMap.get(date);
-									const dayEntries = map.get(date) ?? [];
-									const classes = [
-										'cell',
-										inMonth ? '' : 'out',
-										weekend ? 'weekend' : '',
-										holiday ? 'holiday' : '',
-										date === today ? 'today' : '',
-									]
-										.filter(Boolean)
-										.join(' ');
-									return (
-										<td class={classes} aria-current={date === today ? 'date' : undefined}>
-											{/* Covers the cell's empty space. Sits under the chips so a
-											    click on an entry opens that entry rather than the
-											    booking form. */}
-											<a
-												class="cell-add"
-												href={`/book?date=${date}`}
-												data-book-link
-												data-date={date}
-												aria-label={t('cal.bookOn', { date: longDate(date, lang) })}
-											></a>
-											{/* Phones only, and only where there is something to see. A
-											    cell is about 48px wide there — too narrow for names, and
-											    far too narrow to tap one of several. So the whole cell
-											    becomes one target that jumps to this day in the list
-											    below, which is where the names, types and controls live.
-											    An anchor, not a script: it works with JS off and it can
-											    be opened in a new tab like any other link. */}
-											{dayEntries.length > 0 ? (
-												<a
-													class="cell-day"
-													href={`#d-${date}`}
-													aria-label={t('cal.seeDay', { date: longDate(date, lang) })}
-												></a>
-											) : null}
-											<div class="cell-head">
-												<span class="daynum" aria-hidden="true">{Number(date.slice(8, 10))}</span>
-												{/* The number alone reads as a bare digit out of context, so the
-												    full date is announced instead and the digit is hidden. */}
-												<span class="visually-hidden">{longDate(date, lang)}</span>
-												{holiday ? <span class="holiday-tag">{holiday}</span> : null}
-											</div>
-											<div class="chips">
-												{dayEntries.map((e) => (
-													<a
-														class={`chip ${canEdit(e) ? 'mine' : ''}`}
-														href={canEdit(e) ? `/leave/${e.id}/edit` : '#'}
-														style={`--chip: ${e.color}`}
-														title={`${e.display_name} — ${typeLabel(e, lang)}${noteFor(e) ? `: ${noteFor(e)}` : ''}`}
-														aria-label={entryLabel(e, date, lang)}
-														{...entryData(e, canEdit(e), noteFor(e), lang)}
-													>
-														<span aria-hidden="true">
-															{e.display_name}
-															{halfMark(halfOn(e, date), lang)}
-														</span>
-													</a>
-												))}
-											</div>
-										</td>
-									);
-								})}
-							</tr>
-						))}
-					</tbody>
-				</table>
-			</section>
-
-			<section class="agenda-view" aria-label={t('cal.byDay')}>
-				{agenda.length === 0 ? (
-					<p class="muted pad">{t('cal.emptyMonth')}</p>
-				) : (
-					agenda.map((row) => (
-						<div class={`agenda-row ${row.date === today ? 'today' : ''}`} id={`d-${row.date}`}>
-							<a
-								class="agenda-date"
-								href={`/book?date=${row.date}`}
-								data-book-link
-								data-date={row.date}
-								aria-label={t('cal.bookOn', { date: longDate(row.date, lang) })}
-							>
-								<span class="agenda-dow">{weekdayName(row.date, lang)}</span>
-								<span class="agenda-num">{Number(row.date.slice(8, 10))}</span>
-							</a>
-							<div class="agenda-body">
-								{row.holiday ? <div class="holiday-tag block">{row.holiday}</div> : null}
-								{row.entries.map((e) => (
-									<a
-										class={`agenda-item ${canEdit(e) ? 'mine' : ''}`}
-										href={canEdit(e) ? `/leave/${e.id}/edit` : '#'}
-										aria-label={entryLabel(e, row.date, lang)}
-										{...entryData(e, canEdit(e), noteFor(e), lang)}
-									>
-										<span class="dot" style={`--chip: ${e.color}`} />
-										<span class="agenda-name">{e.display_name}</span>
-										<span class="agenda-type">
-											{typeLabel(e, lang)}
-											{halfMark(halfOn(e, row.date), lang)}
-										</span>
-									</a>
+								{weekdays.map((w) => (
+									<th scope="col" class={`weekhead-cell ${w === 'Sat' || w === 'Sun' ? 'weekend' : ''}`}>
+										{w}
+									</th>
 								))}
-							</div>
-						</div>
-					))
-				)}
-			</section>
+							</tr>
+						</thead>
+						<tbody>
+							{weeks.map((week) => (
+								<tr>
+									{week.map((date) => {
+										const inMonth = date.startsWith(monthPrefix);
+										const weekend = dayOfWeek(date) === 0 || dayOfWeek(date) === 6;
+										const holiday = holidayMap.get(date);
+										const dayEntries = map.get(date) ?? [];
+										const classes = [
+											'cell',
+											inMonth ? '' : 'out',
+											weekend ? 'weekend' : '',
+											holiday ? 'holiday' : '',
+											date === today ? 'today' : '',
+										]
+											.filter(Boolean)
+											.join(' ');
+										return (
+											<td class={classes} aria-current={date === today ? 'date' : undefined}>
+												{/* Covers the cell's empty space. Sits under the chips so a
+												    click on an entry opens that entry rather than the
+												    booking form. */}
+												<a
+													class="cell-add"
+													href={`/book?date=${date}`}
+													data-book-link
+													data-date={date}
+													aria-label={t('cal.bookOn', { date: longDate(date, lang) })}
+												></a>
+												{/* Phones only, and only where there is something to see. A
+												    cell is about 48px wide there — too narrow for names, and
+												    far too narrow to tap one of several. So the whole cell
+												    becomes one target that jumps to this day in the list
+												    below, which is where the names, types and controls live.
+												    An anchor, not a script: it works with JS off and it can
+												    be opened in a new tab like any other link. */}
+												{dayEntries.length > 0 ? (
+													<a
+														class="cell-day"
+														href={`#d-${date}`}
+														aria-label={t('cal.seeDay', { date: longDate(date, lang) })}
+													></a>
+												) : null}
+												<div class="cell-head">
+													<span class="daynum" aria-hidden="true">{Number(date.slice(8, 10))}</span>
+													{/* The number alone reads as a bare digit out of context, so the
+													    full date is announced instead and the digit is hidden. */}
+													<span class="visually-hidden">{longDate(date, lang)}</span>
+													{holiday ? <span class="holiday-tag">{holiday}</span> : null}
+												</div>
+												{/* A cell is only as tall as the month allows once the grid
+												    has to fit the window, so it shows the first few and says
+												    how many it kept back. The day is still one click from the
+												    booking form, and the sidebar lists what is coming. */}
+												<div class="chips">
+													{dayEntries.map((e) => (
+														<a
+															class={`chip ${canEdit(e) ? 'mine' : ''}`}
+															href={canEdit(e) ? `/leave/${e.id}/edit` : '#'}
+															style={`--chip: ${e.color}`}
+															title={`${e.display_name} — ${typeLabel(e, lang)}${noteFor(e) ? `: ${noteFor(e)}` : ''}`}
+															aria-label={entryLabel(e, date, lang)}
+															{...entryData(e, canEdit(e), noteFor(e), lang)}
+														>
+															<span aria-hidden="true">
+																{e.display_name}
+																{halfMark(halfOn(e, date), lang)}
+															</span>
+														</a>
+													))}
+													{dayEntries.length > CELL_CHIPS ? (
+														<span class="chip-more">{t('cal.more', { n: dayEntries.length - CELL_CHIPS })}</span>
+													) : null}
+												</div>
+											</td>
+										);
+									})}
+								</tr>
+							))}
+						</tbody>
+					</table>
+				</section>
 
-			{/* Both languages, whichever the reader has chosen: the legend is where
-			    someone learns that ลาป่วย and Sick leave are the same chip colour. */}
-			<section class="legend">
-				{types.map((type) => (
-					<span class="legend-item">
-						<span class="dot" style={`--chip: ${type.color}`} /> {lang === 'th' ? type.label_th : type.label_en}
-						<span class="muted"> · {lang === 'th' ? type.label_en : type.label_th}</span>
-					</span>
-				))}
-			</section>
+				<section class="agenda-view" aria-label={t('cal.byDay')}>
+					{agenda.length === 0 ? (
+						<p class="muted pad">{t('cal.emptyMonth')}</p>
+					) : (
+						agenda.map((row) => (
+							<div class={`agenda-row ${row.date === today ? 'today' : ''}`} id={`d-${row.date}`}>
+								<a
+									class="agenda-date"
+									href={`/book?date=${row.date}`}
+									data-book-link
+									data-date={row.date}
+									aria-label={t('cal.bookOn', { date: longDate(row.date, lang) })}
+								>
+									<span class="agenda-dow">{weekdayName(row.date, lang)}</span>
+									<span class="agenda-num">{Number(row.date.slice(8, 10))}</span>
+								</a>
+								<div class="agenda-body">
+									{row.holiday ? <div class="holiday-tag block">{row.holiday}</div> : null}
+									{row.entries.map((e) => (
+										<a
+											class={`agenda-item ${canEdit(e) ? 'mine' : ''}`}
+											href={canEdit(e) ? `/leave/${e.id}/edit` : '#'}
+											aria-label={entryLabel(e, row.date, lang)}
+											{...entryData(e, canEdit(e), noteFor(e), lang)}
+										>
+											<span class="dot" style={`--chip: ${e.color}`} />
+											<span class="agenda-name">{e.display_name}</span>
+											<span class="agenda-type">
+												{typeLabel(e, lang)}
+												{halfMark(halfOn(e, row.date), lang)}
+											</span>
+										</a>
+									))}
+								</div>
+							</div>
+						))
+					)}
+				</section>
+
+				{/* Both languages, whichever the reader has chosen: the legend is where
+				    someone learns that ลาป่วย and Sick leave are the same chip colour. */}
+				<section class="legend">
+					{types.map((type) => (
+						<span class="legend-item">
+							<span class="dot" style={`--chip: ${type.color}`} /> {lang === 'th' ? type.label_th : type.label_en}
+							<span class="muted"> · {lang === 'th' ? type.label_en : type.label_th}</span>
+						</span>
+					))}
+				</section>
+				</div>
+
+				<aside class="cal-side" aria-label={t('cal.whoIsOut')}>
+					{/* Both halves empty is the common case in a quiet week, and two
+					    cards saying almost the same nothing is a poor use of the space.
+					    One line covers it — and "nobody *else*" needs somebody to be
+					    else to, which there isn't. */}
+					{showSummary && todayEntries.length === 0 && weekPeople.length === 0 ? (
+					<section class="who-summary quiet" aria-label={t('cal.whoIsOut')}>
+						<p class="muted">{t('cal.nobodyAtAll')}</p>
+					</section>
+				) : null}
+
+				{showSummary && (todayEntries.length > 0 || weekPeople.length > 0) ? (
+					<section class="who-summary" aria-label={t('cal.whoIsOut')}>
+						<div class="who-block">
+							<h2>{t('cal.outToday')}</h2>
+							{todayEntries.length === 0 ? (
+								<p class="muted">{t('cal.nobodyToday')}</p>
+							) : (
+								<ul class="who-list">
+									{todayEntries.map((e) => (
+										<li>
+											<span class="dot" style={`--chip: ${e.color}`} />
+											<span class="who-name">{e.display_name}</span>
+											<span class="muted">
+												{typeLabel(e, lang)}
+												{halfMark(halfOn(e, today), lang)}
+											</span>
+										</li>
+									))}
+								</ul>
+							)}
+						</div>
+						<div class="who-block">
+							<h2>{t('cal.next7')}</h2>
+							{weekPeople.length === 0 ? (
+								<p class="muted">{t('cal.nobodyWeek')}</p>
+							) : (
+								<ul class="who-list">
+									{weekPeople.map((p) => (
+										<li>
+											<span class="dot" style={`--chip: ${p.color}`} />
+											<span class="who-name">{p.name}</span>
+											<span class="muted">
+												{p.type} ({p.days.map((d) => shortDate(d, lang)).join(', ')})
+											</span>
+										</li>
+									))}
+								</ul>
+							)}
+						</div>
+					</section>
+				) : null}
+
+				{/* Both views are rendered; CSS picks one by width. The month grid is
+				    unreadable under ~768px once names are in the cells.
+
+				    A real <table>, not a lattice of divs: a month genuinely is tabular
+				    data, and the table element gives a screen reader the row and column
+				    relationships for free. The ARIA grid role would need an arrow-key
+				    navigation model to be honest, and announcing "grid" without one is
+				    worse than saying nothing. */}
+					<UpcomingList entries={upcoming} today={today} user={user} lang={lang} />
+				</aside>
+			</div>
 
 			{/* Both dialogs are inert markup until the client script upgrades them.
 			    Rendered once per page, not once per entry. */}
