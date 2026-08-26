@@ -109,8 +109,8 @@ export const STRINGS = {
 
 	// --- my leave -------------------------------------------------------
 	'me.title': { en: 'My leave', th: 'การลาของฉัน' },
-	'me.daysLeft': { en: 'days left', th: 'วันคงเหลือ' },
-	'me.daysTaken': { en: 'days taken', th: 'วันที่ใช้ไป' },
+	'me.daysLeft': { en: 'day left|days left', th: 'วันคงเหลือ' },
+	'me.daysTaken': { en: 'day taken|days taken', th: 'วันที่ใช้ไป' },
 	'me.noAllowance': { en: 'No annual allowance', th: 'ไม่มีโควตาประจำปี' },
 	'me.usedOf': { en: '{used} used of {allotted}', th: 'ใช้ไป {used} จาก {allotted}' },
 	'me.meterLabel': { en: '{used} of {allotted} days used', th: 'ใช้ไป {used} จาก {allotted} วัน' },

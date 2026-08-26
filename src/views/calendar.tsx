@@ -170,7 +170,7 @@ function entryData(e: LeaveEntry, canEdit: boolean, note: string | null, lang: L
 		'data-name': e.display_name,
 		'data-type': typeLabel(e, lang),
 		'data-color': e.color,
-		'data-when': describeRange(e.start_date, e.end_date, e.start_half, e.end_half),
+		'data-when': describeRange(e.start_date, e.end_date, e.start_half, e.end_half, lang),
 		'data-days': formatDays(e.days_total),
 		'data-note': note ?? '',
 		// Carried so drag-to-move can preserve it; without this every dragged

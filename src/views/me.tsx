@@ -62,7 +62,7 @@ function MeBody(props: MeProps) {
 								<>
 									<div class="balance-big">
 										{formatDays(b.remaining)}
-										<span class="unit">{t('me.daysLeft')}</span>
+										<span class="unit">{t('me.daysLeft', { count: b.remaining })}</span>
 									</div>
 									<div
 										class="meter"
@@ -79,7 +79,7 @@ function MeBody(props: MeProps) {
 								<>
 									<div class="balance-big">
 										{formatDays(b.used)}
-										<span class="unit">{t('me.daysTaken')}</span>
+										<span class="unit">{t('me.daysTaken', { count: b.used })}</span>
 									</div>
 									<div class="balance-sub muted">{t('me.noAllowance')}</div>
 								</>
