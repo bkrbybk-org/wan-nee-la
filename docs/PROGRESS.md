@@ -1,6 +1,6 @@
 # wan-nee-la — Progress
 
-Updated: 2026-08-25
+Updated: 2026-08-26
 
 > This repo is **public**. Every account id, hostname, database id and Access
 > value below is a placeholder; the real ones live in `wrangler.local.jsonc`,
@@ -8,12 +8,14 @@ Updated: 2026-08-25
 
 ## Status
 
-Deployed and serving. Version `28926458-72a0-4a96-9bad-d3a469130fc0`, D1 `<database-id>` in APAC, behind Cloudflare Access on `<hostname>`. `/health` reports `accessConfigured: true`, `devAuthBypass: false`.
+Deployed and serving. Version `ac830e92-d514-4a35-90ac-7c2c5c49db29`, D1 `<database-id>` in APAC, behind Cloudflare Access on `<hostname>`. `/health` reports `accessConfigured: true`, `devAuthBypass: false`.
 
-Everything in phases 1–5 is built. Two things gate real use, both needing the owner rather than more code:
+Everything in phases 1–5 is built, and the app is **in real use** — the first SSO sign-in has happened, leave has been booked, and holidays have been entered through `/admin`.
 
-1. **No human has signed in through SSO yet.** It cannot be tested from a terminal — a service token authenticates at the edge but carries no `email`, so the app correctly refuses it. Someone must open the site in a browser. **Whoever does so first becomes the admin.**
-2. **The LINE post is inert.** The code is complete and tested; it needs a Messaging API channel, an Access Bypass rule on `/line/webhook`, and two secrets.
+Two optional channels are still inert, both needing the owner rather than more code:
+
+1. **The LINE post.** Needs a Messaging API channel, an Access Bypass rule on `/line/webhook`, and two secrets.
+2. **Browser notifications.** Need a VAPID pair (`npm run vapid`) and one secret. Free, unlike LINE. Until then the card is hidden and the digest skips the channel.
 
 ---
 

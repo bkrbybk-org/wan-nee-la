@@ -194,6 +194,13 @@ Impact is mild: `SAMEORIGIN` still blocks third-party framing, and `same-origin`
 
 Owner's call: leave it, or find the zone rule and exempt this hostname. Fighting it from the Worker is not possible — the rewrite happens after the response leaves.
 
+
+**Confirmed in production, 2026-08-26.** The Worker sends `X-Frame-Options: DENY`; the edge delivers `SAMEORIGIN`. Verified by comparing the same request against `wrangler dev` and against the live hostname.
+
+Mitigated rather than urgent: the Content-Security-Policy added in #30 carries `frame-ancestors 'none'`, which modern browsers honour in preference to `X-Frame-Options`, and that header arrives intact. So framing is still refused; it is the legacy header, and only that, which the zone weakens.
+
+Worth knowing because it applies to anything else the Worker sets. If a security header ever needs to be exact, check it at the hostname rather than trusting the code — a Transform Rule or the zone's "Security Headers" setting is rewriting on the way out.
+
 ---
 
 ## #14 — Service tokens cannot use the app `resolved by design`
