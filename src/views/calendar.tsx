@@ -19,7 +19,8 @@ import { byDate, halfOn, visibleNote } from '../domain/leave.ts';
 import type { Half, Holiday, LeaveEntry, LeaveType, User } from '../types.ts';
 import { Layout } from './layout.tsx';
 import { BookingForm } from './booking.tsx';
-import { ChevronLeftIcon, ChevronRightIcon, CloseIcon, DeleteIcon, EditIcon, PlusIcon } from './icons.tsx';
+import { SelectField } from './fields.tsx';
+import { ChevronDownIcon, ChevronLeftIcon, ChevronRightIcon, CloseIcon, DeleteIcon, EditIcon, PlusIcon } from './icons.tsx';
 import { useLang, useT } from '../i18n/context.tsx';
 import { t as translate, toLang, type Lang } from '../i18n/strings.ts';
 
@@ -218,6 +219,10 @@ function CalendarBody(props: CalendarProps) {
 	const prev = shiftMonth(year, month, -1);
 	const next = shiftMonth(year, month, 1);
 	const monthPrefix = `${year}-${String(month).padStart(2, '0')}`;
+	// Enough to cover a year already booked and the one being planned. The
+	// route clamps anything outside this anyway.
+	const thisYear = Number(today.slice(0, 4));
+	const years = Array.from({ length: 5 }, (_, i) => thisYear - 1 + i);
 
 	const canEdit = (e: LeaveEntry) => e.user_email === user.email || Boolean(user.is_admin);
 	// Resolved once per entry, here, so the chip's tooltip and the popup's data
@@ -270,9 +275,44 @@ function CalendarBody(props: CalendarProps) {
 			{notice ? <div class="banner ok">{notice}</div> : null}
 
 			<div class="month-head">
+				{/* The heading is the control. Stepping a month at a time is fine for
+				    next week and useless for next January — five clicks to get
+				    there, and five back. A disclosure keeps the header as quiet as
+				    it was while putting any month one interaction away.
+
+				    A plain GET form, so it works with scripting off, the result is
+				    a URL that can be bookmarked or shared, and the browser's own
+				    back button undoes it. */}
 				<h1>
 					{monthName(month, lang)} <span class="muted">{year}</span>
 				</h1>
+				{/* The heading stays a heading. Wrapping it in the summary made the
+				    control ambiguous to assistive technology — the disclosure was
+				    exposed as a plain container, so neither its purpose nor its
+				    expanded state was announced. A named control beside it is
+				    unambiguous and just as easy to find. */}
+				<details class="month-jump">
+					<summary class="icon-btn" aria-label={t('cal.jump')} title={t('cal.jump')}>
+						<ChevronDownIcon />
+					</summary>
+					<form method="get" action="/" class="month-jump-form">
+						<SelectField id="jump-month" name="m" label={t('cal.month')}>
+							{Array.from({ length: 12 }, (_, i) => (
+								<option value={String(i + 1)} selected={i + 1 === month}>
+									{monthName(i + 1, lang)}
+								</option>
+							))}
+						</SelectField>
+						<SelectField id="jump-year" name="y" label={t('cal.year')}>
+							{years.map((y) => (
+								<option value={String(y)} selected={y === year}>
+									{y}
+								</option>
+							))}
+						</SelectField>
+						<button type="submit" class="btn tonal">{t('cal.go')}</button>
+					</form>
+				</details>
 				<a class="icon-btn" href={`/?y=${prev.year}&m=${prev.month}`} aria-label={t('cal.prevMonth')}>
 					<ChevronLeftIcon />
 				</a>

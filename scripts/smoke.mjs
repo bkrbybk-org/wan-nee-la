@@ -44,7 +44,7 @@ const OTHER = 'other@example.com';
 const STATE = mkdtempSync(join(tmpdir(), 'wnl-smoke-'));
 
 /** Assertions that must run for the suite to be considered complete. */
-const MIN_ASSERTIONS = 135;
+const MIN_ASSERTIONS = 139;
 
 let pass = 0;
 let fail = 0;
@@ -715,6 +715,10 @@ async function main() {
 	// about what the summary renders, and a booking would be refused or not
 	// depending on which day of the week the suite happens to run.
 	const TODAY = (await (await fetch(`${BASE}/health`)).json()).bangkokToday;
+	const MONTH_NAMES = [
+		'January', 'February', 'March', 'April', 'May', 'June',
+		'July', 'August', 'September', 'October', 'November', 'December',
+	];
 	const SOON = addDays(TODAY, 2);
 	const insertLeave = (id, email, date) =>
 		d1(
@@ -765,6 +769,23 @@ async function main() {
 	);
 	check('and still offers booking', gridHtml.includes(`/book?date=${TODAY}`), 'booking link missing');
 	d1("DELETE FROM leave_requests WHERE id = 'smoke-grid'");
+
+	// --- jumping to a month -------------------------------------------------
+	//
+	// A plain GET form, so what is checked is that the URL it produces lands on
+	// the right month and that a crafted one cannot take the grid somewhere
+	// absurd.
+	const jumpHtml = await (await fetch(`${BASE}/`)).text();
+	check('the month can be jumped to', jumpHtml.includes('month-jump-form'), 'jump form missing');
+
+	const jan = await (await fetch(`${BASE}/?y=2027&m=1`)).text();
+	check('jumping lands on the month asked for', jan.includes('<title>January 2027'), 'wrong month');
+	check('and the picker shows where it landed', jan.includes('value="1" selected'), 'month not preselected');
+
+	// Out of range falls back to the current month rather than rendering a
+	// grid for the year 1200.
+	const silly = await (await fetch(`${BASE}/?y=1200&m=99`)).text();
+	check('a nonsense month falls back to today\'s', silly.includes(`<title>${MONTH_NAMES[Number(TODAY.slice(5, 7)) - 1]}`), 'not clamped');
 
 	// --- the sidebar's upcoming list ----------------------------------------
 	//

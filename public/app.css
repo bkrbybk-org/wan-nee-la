@@ -534,6 +534,29 @@ a { color: var(--md-primary); }
 .card > p:first-of-type { margin-top: 0; }
 
 .page-head, .month-head { display: flex; align-items: center; gap: 8px; margin-bottom: var(--pad); }
+
+/* Jump to any month, next to the heading. */
+.month-jump { position: relative; }
+.month-jump > summary { list-style: none; cursor: pointer; }
+.month-jump > summary::-webkit-details-marker { display: none; }
+.month-jump[open] > summary .icon { transform: rotate(180deg); }
+.month-jump > summary .icon { transition: transform var(--md-dur-short) var(--md-ease); }
+
+.month-jump-form {
+	position: absolute;
+	z-index: 12;
+	top: calc(100% + 4px);
+	left: 0;
+	display: flex;
+	align-items: flex-start;
+	gap: 8px;
+	padding: var(--pad);
+	border-radius: var(--md-shape-md);
+	background: var(--md-surface-container-high);
+	box-shadow: var(--md-shadow-2);
+}
+.month-jump-form .tf { flex: 0 0 128px; }
+.month-jump-form .btn { align-self: center; }
 .month-head .today-link { margin-left: auto; }
 h3.sub { margin: 20px 0 8px; color: var(--md-on-surface-variant); }
 
