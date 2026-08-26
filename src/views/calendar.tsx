@@ -14,11 +14,13 @@ import {
 	weekdayName,
 	MONDAY,
 } from '../domain/dates.ts';
-import { byDate, halfOn } from '../domain/leave.ts';
+import { byDate, halfOn, visibleNote } from '../domain/leave.ts';
 import type { Half, Holiday, LeaveEntry, LeaveType, User } from '../types.ts';
 import { Layout } from './layout.tsx';
 import { BookingForm } from './booking.tsx';
 import { ChevronLeftIcon, ChevronRightIcon, CloseIcon, DeleteIcon, EditIcon, PlusIcon } from './icons.tsx';
+import { useLang, useT } from '../i18n/context.tsx';
+import { t as translate, toLang, type Lang } from '../i18n/strings.ts';
 
 interface CalendarProps {
 	user: User;
@@ -33,8 +35,19 @@ interface CalendarProps {
 	notice?: string;
 }
 
-function halfMark(h: Half): string {
-	return h === 'am' ? ' ½am' : h === 'pm' ? ' ½pm' : '';
+/**
+ * A leave type's own name, in the reader's language.
+ *
+ * These come from the seed data, not from the string catalogue — they are the
+ * admin's to rename, and both languages are already stored alongside each
+ * other.
+ */
+function typeLabel(e: { type_label_en: string; type_label_th: string }, lang: Lang): string {
+	return lang === 'th' ? e.type_label_th : e.type_label_en;
+}
+
+function halfMark(h: Half, lang: Lang): string {
+	return h === 'am' ? translate(lang, 'cal.markAm') : h === 'pm' ? translate(lang, 'cal.markPm') : '';
 }
 
 /**
@@ -44,10 +57,15 @@ function halfMark(h: Half): string {
  * it sits in. Read aloud in a list of links, five identical names carry no
  * information at all, so the date and leave type are spoken too.
  */
-function entryLabel(e: LeaveEntry, date: string): string {
+function entryLabel(e: LeaveEntry, date: string, lang: Lang): string {
 	const half = halfOn(e, date);
-	const part = half === 'am' ? ', morning only' : half === 'pm' ? ', afternoon only' : '';
-	return `${e.display_name} — ${e.type_label_en}${part}, ${longDate(date)}`;
+	const part = half === 'am' ? translate(lang, 'cal.halfAm') : half === 'pm' ? translate(lang, 'cal.halfPm') : '';
+	return translate(lang, 'cal.entryLabel', {
+		name: e.display_name,
+		type: typeLabel(e, lang),
+		part,
+		date: longDate(date, lang),
+	});
 }
 
 /**
@@ -56,22 +74,26 @@ function entryLabel(e: LeaveEntry, date: string): string {
  * The popup is built from these attributes rather than fetched, so opening one
  * costs no request and works the instant the page renders.
  *
- * Note that `data-note` goes further than the rest: the grid cell shows only a
- * name, but the note is free text the booker wrote, and it is emitted for every
- * viewer regardless of `canEdit`. That is a deliberate property of a shared
- * calendar, not an oversight — but it is the one field here that a colleague
- * could not otherwise read off the page, so see ISSUES.md #17 before assuming
- * notes are private.
+ * `data-note` is the one field here a colleague could not otherwise read off
+ * the page, so it is filtered rather than emitted: a note marked private never
+ * reaches the HTML at all for anyone but its author and admins. Hiding it in
+ * the popup instead would ship the text to every browser and rely on CSS to
+ * keep a secret (ISSUES.md #17).
  */
-function entryData(e: LeaveEntry, canEdit: boolean) {
+function entryData(e: LeaveEntry, canEdit: boolean, note: string | null, lang: Lang) {
 	return {
 		'data-entry': e.id,
 		'data-name': e.display_name,
-		'data-type': e.type_label_en,
+		'data-type': typeLabel(e, lang),
 		'data-color': e.color,
 		'data-when': describeRange(e.start_date, e.end_date, e.start_half, e.end_half),
 		'data-days': formatDays(e.days_total),
-		'data-note': e.note ?? '',
+		'data-note': note ?? '',
+		// Carried so drag-to-move can preserve it; without this every dragged
+		// booking's note would fall back to private. Only for people who may
+		// drag the chip, since to anyone else it would quietly announce that a
+		// note exists and is being kept from them.
+		'data-note-private': canEdit && e.note_private ? '1' : '',
 		'data-can-edit': canEdit ? '1' : '',
 		// Raw values, not for display — drag-to-move rebuilds the booking from
 		// these rather than parsing the human-readable data-when/data-type back apart.
@@ -84,12 +106,23 @@ function entryData(e: LeaveEntry, canEdit: boolean) {
 }
 
 export function CalendarPage(props: CalendarProps) {
-	const { user, year, month, entries, holidays, types, today, version, error, notice } = props;
+	return (
+		<Layout title={`${monthName(props.month, toLang(props.user.lang))} ${props.year}`} user={props.user} active="calendar" version={props.version}>
+			<CalendarBody {...props} />
+		</Layout>
+	);
+}
+
+/** Inside the Layout, so `useT` sees the language the Layout provides. */
+function CalendarBody(props: CalendarProps) {
+	const { user, year, month, entries, holidays, types, today, error, notice } = props;
+	const t = useT();
+	const lang = useLang();
 	// Presentation only: rotating the columns changes no arithmetic, and Saturday
 	// and Sunday stay the weekend whichever day the week opens on.
 	const weekStart = parseWeekStart(user.week_start) ?? MONDAY;
 	const grid = monthGrid(year, month, weekStart);
-	const weekdays = weekdayLabels(weekStart);
+	const weekdays = weekdayLabels(weekStart, lang);
 	const weeks = intoWeeks(grid);
 	const map = byDate(entries);
 	const holidayMap = new Map(holidays.map((h) => [h.date, h.label]));
@@ -98,6 +131,9 @@ export function CalendarPage(props: CalendarProps) {
 	const monthPrefix = `${year}-${String(month).padStart(2, '0')}`;
 
 	const canEdit = (e: LeaveEntry) => e.user_email === user.email || Boolean(user.is_admin);
+	// Resolved once per entry, here, so the chip's tooltip and the popup's data
+	// attributes cannot disagree about what this viewer may read.
+	const noteFor = (e: LeaveEntry) => visibleNote(e, user);
 
 	// `entries` only covers the displayed month's grid, padded to whole weeks.
 	// When today isn't in that grid (browsing another month) there is no data
@@ -127,7 +163,7 @@ export function CalendarPage(props: CalendarProps) {
 			if (todayEmails.has(e.user_email)) continue;
 			const existing = weekMap.get(e.id);
 			if (existing) existing.days.push(d);
-			else weekMap.set(e.id, { id: e.id, name: e.display_name, type: e.type_label_en, color: e.color, days: [d] });
+			else weekMap.set(e.id, { id: e.id, name: e.display_name, type: typeLabel(e, lang), color: e.color, days: [d] });
 		}
 	}
 	const weekPeople = [...weekMap.values()];
@@ -140,21 +176,21 @@ export function CalendarPage(props: CalendarProps) {
 		.map((d) => ({ date: d, entries: map.get(d) ?? [], holiday: holidayMap.get(d) }));
 
 	return (
-		<Layout title={`${monthName(month)} ${year}`} user={user} active="calendar" version={version}>
+		<>
 			{error ? <div class="banner error">{error}</div> : null}
 			{notice ? <div class="banner ok">{notice}</div> : null}
 
 			<div class="month-head">
 				<h1>
-					{monthName(month)} <span class="muted">{year}</span>
+					{monthName(month, lang)} <span class="muted">{year}</span>
 				</h1>
-				<a class="icon-btn" href={`/?y=${prev.year}&m=${prev.month}`} aria-label="Previous month">
+				<a class="icon-btn" href={`/?y=${prev.year}&m=${prev.month}`} aria-label={t('cal.prevMonth')}>
 					<ChevronLeftIcon />
 				</a>
-				<a class="icon-btn" href={`/?y=${next.year}&m=${next.month}`} aria-label="Next month">
+				<a class="icon-btn" href={`/?y=${next.year}&m=${next.month}`} aria-label={t('cal.nextMonth')}>
 					<ChevronRightIcon />
 				</a>
-				<a class="btn text today-link" href="/">Today</a>
+				<a class="btn text today-link" href="/">{t('cal.today')}</a>
 			</div>
 
 			{/* A real link, so this works with scripting off. The client script
@@ -165,21 +201,31 @@ export function CalendarPage(props: CalendarProps) {
 			<p class="calendar-actions">
 				<a class="btn primary book-inline" href="/book" data-book-link>
 					<PlusIcon class="sm" />
-					Book leave
+					{t('cal.book')}
 				</a>
-				<span class="muted hint">Click any day to book it, or an entry to open it.</span>
+				<span class="muted hint">{t('cal.hint')}</span>
 			</p>
 			<a class="fab" href="/book" data-book-link>
 				<PlusIcon />
-				Book leave
+				{t('cal.book')}
 			</a>
 
-			{showSummary ? (
-				<section class="who-summary" aria-label="Who is out">
+			{/* Both halves empty is the common case in a quiet week, and two cards
+			    saying almost the same nothing filled the top of a phone screen.
+			    One line covers it — and "nobody *else*" needs somebody to be else
+			    to, which there isn't. */}
+			{showSummary && todayEntries.length === 0 && weekPeople.length === 0 ? (
+				<section class="who-summary quiet" aria-label={t('cal.whoIsOut')}>
+					<p class="muted">{t('cal.nobodyAtAll')}</p>
+				</section>
+			) : null}
+
+			{showSummary && (todayEntries.length > 0 || weekPeople.length > 0) ? (
+				<section class="who-summary" aria-label={t('cal.whoIsOut')}>
 					<div class="who-block">
-						<h2>Out today</h2>
+						<h2>{t('cal.outToday')}</h2>
 						{todayEntries.length === 0 ? (
-							<p class="muted">Nobody is out today.</p>
+							<p class="muted">{t('cal.nobodyToday')}</p>
 						) : (
 							<ul class="who-list">
 								{todayEntries.map((e) => (
@@ -187,8 +233,8 @@ export function CalendarPage(props: CalendarProps) {
 										<span class="dot" style={`--chip: ${e.color}`} />
 										<span class="who-name">{e.display_name}</span>
 										<span class="muted">
-											{e.type_label_en}
-											{halfMark(halfOn(e, today))}
+											{typeLabel(e, lang)}
+											{halfMark(halfOn(e, today), lang)}
 										</span>
 									</li>
 								))}
@@ -196,9 +242,9 @@ export function CalendarPage(props: CalendarProps) {
 						)}
 					</div>
 					<div class="who-block">
-						<h2>Next 7 days</h2>
+						<h2>{t('cal.next7')}</h2>
 						{weekPeople.length === 0 ? (
-							<p class="muted">Nobody else is out in the next 7 days.</p>
+							<p class="muted">{t('cal.nobodyWeek')}</p>
 						) : (
 							<ul class="who-list">
 								{weekPeople.map((p) => (
@@ -206,7 +252,7 @@ export function CalendarPage(props: CalendarProps) {
 										<span class="dot" style={`--chip: ${p.color}`} />
 										<span class="who-name">{p.name}</span>
 										<span class="muted">
-											{p.type} ({p.days.map((d) => shortDate(d)).join(', ')})
+											{p.type} ({p.days.map((d) => shortDate(d, lang)).join(', ')})
 										</span>
 									</li>
 								))}
@@ -226,9 +272,7 @@ export function CalendarPage(props: CalendarProps) {
 			    worse than saying nothing. */}
 			<section class="grid-view">
 				<table class="grid">
-					<caption class="visually-hidden">
-						Leave for {monthName(month)} {year}, one column per day of the week.
-					</caption>
+					<caption class="visually-hidden">{t('cal.title', { month: monthName(month, lang), year })}</caption>
 					<thead>
 						<tr>
 							{weekdays.map((w) => (
@@ -265,13 +309,13 @@ export function CalendarPage(props: CalendarProps) {
 												href={`/book?date=${date}`}
 												data-book-link
 												data-date={date}
-												aria-label={`Book leave on ${longDate(date)}`}
+												aria-label={t('cal.bookOn', { date: longDate(date, lang) })}
 											></a>
 											<div class="cell-head">
 												<span class="daynum" aria-hidden="true">{Number(date.slice(8, 10))}</span>
 												{/* The number alone reads as a bare digit out of context, so the
 												    full date is announced instead and the digit is hidden. */}
-												<span class="visually-hidden">{longDate(date)}</span>
+												<span class="visually-hidden">{longDate(date, lang)}</span>
 												{holiday ? <span class="holiday-tag">{holiday}</span> : null}
 											</div>
 											<div class="chips">
@@ -280,13 +324,13 @@ export function CalendarPage(props: CalendarProps) {
 														class={`chip ${canEdit(e) ? 'mine' : ''}`}
 														href={canEdit(e) ? `/leave/${e.id}/edit` : '#'}
 														style={`--chip: ${e.color}`}
-														title={`${e.display_name} — ${e.type_label_en}${e.note ? `: ${e.note}` : ''}`}
-														aria-label={entryLabel(e, date)}
-														{...entryData(e, canEdit(e))}
+														title={`${e.display_name} — ${typeLabel(e, lang)}${noteFor(e) ? `: ${noteFor(e)}` : ''}`}
+														aria-label={entryLabel(e, date, lang)}
+														{...entryData(e, canEdit(e), noteFor(e), lang)}
 													>
 														<span aria-hidden="true">
 															{e.display_name}
-															{halfMark(halfOn(e, date))}
+															{halfMark(halfOn(e, date), lang)}
 														</span>
 													</a>
 												))}
@@ -300,9 +344,9 @@ export function CalendarPage(props: CalendarProps) {
 				</table>
 			</section>
 
-			<section class="agenda-view" aria-label="Leave by day">
+			<section class="agenda-view" aria-label={t('cal.byDay')}>
 				{agenda.length === 0 ? (
-					<p class="muted pad">Nobody is on leave this month.</p>
+					<p class="muted pad">{t('cal.emptyMonth')}</p>
 				) : (
 					agenda.map((row) => (
 						<div class={`agenda-row ${row.date === today ? 'today' : ''}`}>
@@ -311,9 +355,9 @@ export function CalendarPage(props: CalendarProps) {
 								href={`/book?date=${row.date}`}
 								data-book-link
 								data-date={row.date}
-								aria-label={`Book leave on ${longDate(row.date)}`}
+								aria-label={t('cal.bookOn', { date: longDate(row.date, lang) })}
 							>
-								<span class="agenda-dow">{weekdayName(row.date)}</span>
+								<span class="agenda-dow">{weekdayName(row.date, lang)}</span>
 								<span class="agenda-num">{Number(row.date.slice(8, 10))}</span>
 							</a>
 							<div class="agenda-body">
@@ -322,14 +366,14 @@ export function CalendarPage(props: CalendarProps) {
 									<a
 										class={`agenda-item ${canEdit(e) ? 'mine' : ''}`}
 										href={canEdit(e) ? `/leave/${e.id}/edit` : '#'}
-										aria-label={entryLabel(e, row.date)}
-										{...entryData(e, canEdit(e))}
+										aria-label={entryLabel(e, row.date, lang)}
+										{...entryData(e, canEdit(e), noteFor(e), lang)}
 									>
 										<span class="dot" style={`--chip: ${e.color}`} />
 										<span class="agenda-name">{e.display_name}</span>
 										<span class="agenda-type">
-											{e.type_label_en}
-											{halfMark(halfOn(e, row.date))}
+											{typeLabel(e, lang)}
+											{halfMark(halfOn(e, row.date), lang)}
 										</span>
 									</a>
 								))}
@@ -339,45 +383,59 @@ export function CalendarPage(props: CalendarProps) {
 				)}
 			</section>
 
+			{/* Both languages, whichever the reader has chosen: the legend is where
+			    someone learns that ลาป่วย and Sick leave are the same chip colour. */}
 			<section class="legend">
-				{types.map((t) => (
+				{types.map((type) => (
 					<span class="legend-item">
-						<span class="dot" style={`--chip: ${t.color}`} /> {t.label_en}
-						<span class="muted"> · {t.label_th}</span>
+						<span class="dot" style={`--chip: ${type.color}`} /> {lang === 'th' ? type.label_th : type.label_en}
+						<span class="muted"> · {lang === 'th' ? type.label_en : type.label_th}</span>
 					</span>
 				))}
 			</section>
 
 			{/* Both dialogs are inert markup until the client script upgrades them.
 			    Rendered once per page, not once per entry. */}
-			<dialog class="popup" data-create-dialog aria-label="Book leave">
+			{/* The dialog's own title changes as days are clicked, so the client
+			    needs the wording and the month names — same reasoning as the
+			    booking form's templates. */}
+			<dialog
+				class="popup"
+				data-create-dialog
+				aria-label={t('cal.book')}
+				data-dialog-strings={JSON.stringify({
+					book: t('cal.book'),
+					bookOn: t('cal.bookOnShort'),
+					months: t('cal.months'),
+				})}
+			>
 				<div class="popup-head">
-					<h2 data-create-title>Book leave</h2>
-					<button type="button" class="icon-btn popup-x" data-popup-close aria-label="Close">
+					<h2 data-create-title>{t('cal.book')}</h2>
+					<button type="button" class="icon-btn popup-x" data-popup-close aria-label={t('popup.close')}>
 						<CloseIcon />
 					</button>
 				</div>
 				<BookingForm types={types} today={today} compact />
 			</dialog>
 
-			<dialog class="popup" data-entry-dialog aria-label="Leave details">
+			<dialog class="popup" data-entry-dialog aria-label={t('popup.details')}>
 				<div class="popup-head">
 					<h2>
 						<span class="dot" data-p-dot /> <span data-p-name></span>
 					</h2>
-					<button type="button" class="icon-btn popup-x" data-popup-close aria-label="Close">
+					<button type="button" class="icon-btn popup-x" data-popup-close aria-label={t('popup.close')}>
 						<CloseIcon />
 					</button>
 				</div>
 				<dl class="popup-facts">
-					<dt>When</dt>
+					<dt>{t('popup.when')}</dt>
 					<dd data-p-when></dd>
-					<dt>Type</dt>
+					<dt>{t('popup.type')}</dt>
 					<dd data-p-type></dd>
-					<dt>Days</dt>
+					<dt>{t('popup.days')}</dt>
 					<dd data-p-days></dd>
 					<div data-p-note-row>
-						<dt>Note</dt>
+						<dt>{t('popup.note')}</dt>
 						<dd data-p-note></dd>
 					</div>
 				</dl>
@@ -385,18 +443,16 @@ export function CalendarPage(props: CalendarProps) {
 					<form method="post" data-p-cancel class="inline">
 						<button type="submit" class="btn text danger">
 							<DeleteIcon class="sm" />
-							Remove
+							{t('popup.remove')}
 						</button>
 					</form>
 					<a class="btn tonal" data-p-edit href="#">
 						<EditIcon class="sm" />
-						Edit
+						{t('popup.edit')}
 					</a>
 				</div>
-				<p class="muted" data-p-readonly hidden>
-					Only the person who booked this — or an admin — can change it.
-				</p>
+				<p class="muted" data-p-readonly hidden>{t('popup.readonly')}</p>
 			</dialog>
-		</Layout>
+		</>
 	);
 }

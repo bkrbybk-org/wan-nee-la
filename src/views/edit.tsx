@@ -3,6 +3,8 @@ import type { LeaveEntry, LeaveType, User } from '../types.ts';
 import { Layout } from './layout.tsx';
 import { BookingForm } from './booking.tsx';
 import { ChevronLeftIcon, DeleteIcon } from './icons.tsx';
+import { useLang, useT } from '../i18n/context.tsx';
+import { t as translate, toLang } from '../i18n/strings.ts';
 
 interface EditProps {
 	user: User;
@@ -18,54 +20,67 @@ interface EditProps {
 
 export function EditPage({ user, entry, types, today, onBehalfOf, version, error, notice }: EditProps) {
 	return (
-		<Layout title="Edit leave" user={user} active="me" version={version}>
+		<Layout title={translate(toLang(user.lang), 'edit.title')} user={user} active="me" version={version}>
+			<EditBody {...{ entry, types, today, onBehalfOf, error, notice }} />
+		</Layout>
+	);
+}
+
+function EditBody({
+	entry,
+	types,
+	today,
+	onBehalfOf,
+	error,
+	notice,
+}: Omit<EditProps, 'user' | 'version'>) {
+	const t = useT();
+	const lang = useLang();
+	return (
+		<>
 			{error ? <div class="banner error">{error}</div> : null}
 			{notice ? <div class="banner ok">{notice}</div> : null}
 
 			<div class="page-head">
-				<a class="icon-btn" href="/me" aria-label="Back to my leave">
+				<a class="icon-btn" href="/me" aria-label={t('edit.back')}>
 					<ChevronLeftIcon />
 				</a>
-				<h1>Edit leave</h1>
+				<h1>{t('edit.title')}</h1>
 			</div>
 
 			{onBehalfOf ? (
-				<div class="banner error">
-					You are editing {onBehalfOf}'s booking as an admin.
-				</div>
+				<div class="banner error">{t('edit.onBehalf', { name: onBehalfOf })}</div>
 			) : null}
 
 			<section class="card">
-				<h2>Currently booked</h2>
+				<h2>{t('edit.current')}</h2>
 				<p class="leave-current">
 					<span class="dot" style={`--chip: ${entry.color}`} />
-					<strong>{describeRange(entry.start_date, entry.end_date, entry.start_half, entry.end_half)}</strong>
+					<strong>{describeRange(entry.start_date, entry.end_date, entry.start_half, entry.end_half, lang)}</strong>
 					<span class="muted">
 						{' '}
-						· {entry.type_label_en} · {formatDays(entry.days_total)} day(s)
+						· {lang === 'th' ? entry.type_label_th : entry.type_label_en} ·{' '}
+						{t('edit.days', { count: entry.days_total, days: formatDays(entry.days_total) })}
 					</span>
 				</p>
 				{entry.note ? <p class="muted">{entry.note}</p> : null}
 			</section>
 
 			<section class="card">
-				<h2>Change it</h2>
+				<h2>{t('edit.change')}</h2>
 				<BookingForm types={types} today={today} entry={entry} compact />
 			</section>
 
 			<section class="card">
-				<h2>Remove</h2>
-				<p class="muted">
-					Cancelling returns {formatDays(entry.days_total)} day(s) to the balance and takes the entry off the shared
-					calendar. The record is kept, marked cancelled, rather than deleted.
-				</p>
+				<h2>{t('edit.remove')}</h2>
+				<p class="muted">{t('edit.removeHelp', { count: entry.days_total, days: formatDays(entry.days_total) })}</p>
 				<form method="post" action={`/api/leave/${entry.id}/cancel`}>
 					<button type="submit" class="btn danger">
 						<DeleteIcon class="sm" />
-						Remove this leave
+						{t('edit.removeButton')}
 					</button>
 				</form>
 			</section>
-		</Layout>
+		</>
 	);
 }

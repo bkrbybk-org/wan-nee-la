@@ -337,6 +337,9 @@ a { color: var(--md-primary); }
 	max-width: 1100px;
 	margin: 0 auto;
 	padding: var(--pad);
+	/* Clears the extended FAB, which is fixed above the navigation bar and would
+	   otherwise sit on top of the build string at the bottom of the page. */
+	padding-bottom: 72px;
 	color: var(--md-on-surface-variant);
 	font-size: 11px;
 	line-height: 16px;
@@ -602,6 +605,14 @@ select.tf-input {
 	position: absolute;
 	left: 16px;
 	top: 18px;
+	/* A floated label is 75% scale, so it fits a quarter more text than the box
+	   is wide — hence the allowance below. Thai labels run longer than their
+	   English counterparts ("ลาไม่รับค่าจ้าง" for "Unpaid"), and a wrapped label
+	   in a 120px quota field lands on top of the value. */
+	max-width: calc(133% - 40px);
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
 	color: var(--md-on-surface-variant);
 	font-size: 16px;
 	line-height: 20px;
@@ -634,7 +645,9 @@ select.tf-input {
 
 .row { display: flex; gap: 12px; flex-wrap: wrap; }
 .row.inline { align-items: center; gap: 8px; margin-bottom: 8px; }
-form.inline { display: inline-flex; gap: 8px; align-items: center; }
+/* Wraps rather than clipping: the person row in /admin carries a name, two
+   checkboxes and a Save button, which is wider than a phone. */
+form.inline { display: inline-flex; gap: 8px; align-items: center; flex-wrap: wrap; }
 .actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-top: 8px; }
 .preview { font-size: 12px; line-height: 16px; color: var(--md-on-surface-variant); }
 .preview.bad { color: var(--md-error); }
@@ -644,6 +657,7 @@ form.inline { display: inline-flex; gap: 8px; align-items: center; }
 	display: inline-flex;
 	align-items: center;
 	gap: 8px;
+	white-space: nowrap;
 	min-height: 40px;
 	padding-right: 8px;
 	font-size: 14px;
@@ -846,7 +860,7 @@ form.inline { display: inline-flex; gap: 8px; align-items: center; }
 .calendar-actions { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: var(--pad); }
 /* The fixed FAB carries this action on phones. */
 .calendar-actions .book-inline { display: none; }
-.calendar-actions .hint { font-size: 12px; line-height: 16px; }
+.calendar-actions .hint { display: none; font-size: 12px; line-height: 16px; }
 
 /* ---------- who's out summary ---------- */
 
@@ -856,6 +870,13 @@ form.inline { display: inline-flex; gap: 8px; align-items: center; }
 	gap: 12px;
 	margin-bottom: var(--pad);
 }
+/* Nobody out today or soon: one line, not two cards of nothing. */
+.who-summary.quiet {
+	padding: 12px var(--pad);
+	border-radius: var(--md-shape-md);
+	background: var(--md-surface-container-low);
+}
+.who-summary.quiet p { margin: 0; }
 .who-block {
 	padding: 14px var(--pad);
 	border-radius: var(--md-shape-md);
@@ -878,7 +899,11 @@ form.inline { display: inline-flex; gap: 8px; align-items: center; }
 
 /* ---------- legend ---------- */
 
-.legend { display: flex; flex-wrap: wrap; gap: 8px; margin: var(--pad) 0; }
+/* Hidden on phones: the agenda names each leave type in words on the row
+   itself, so the colour key has nothing left to explain and was costing two
+   rows of a small screen. The month grid, which shows colour and no type name,
+   is desktop-only — and that is where the legend earns its place. */
+.legend { display: none; flex-wrap: wrap; gap: 8px; margin: var(--pad) 0; }
 /* M3 assist chip. */
 .legend-item {
 	display: inline-flex;
@@ -947,7 +972,9 @@ form.inline { display: inline-flex; gap: 8px; align-items: center; }
 	border-radius: var(--md-shape-md);
 	padding: var(--pad);
 }
-.balance-top { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; }
+/* min-height reserves the second line that a long Thai label ("ลาไม่รับค่าจ้าง")
+   wraps onto, so the big numbers stay on one baseline across the row. */
+.balance-top { display: flex; align-items: flex-start; gap: 8px; margin-bottom: 12px; min-height: 40px; }
 .balance-label { font-weight: 500; }
 .balance-th { font-size: 12px; line-height: 16px; }
 /* display-small, trimmed — the number is the point of the card. */
@@ -979,6 +1006,38 @@ form.inline { display: inline-flex; gap: 8px; align-items: center; }
 .leave-note { font-size: 12px; line-height: 16px; flex-basis: 100%; }
 .row-actions { display: inline-flex; gap: 4px; align-items: center; }
 .leave-current { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin: 0; }
+
+/* Who else is away, under the booking form. Advisory at rest, and marked as a
+   caution only when the day is genuinely thin. */
+.coverage {
+	margin: 8px 0 0;
+	font-size: 12px;
+	line-height: 16px;
+	color: var(--md-on-surface-variant);
+}
+.coverage:empty { margin: 0; }
+.coverage.busy {
+	padding: 8px 12px;
+	border-radius: var(--md-shape-sm);
+	background: var(--md-error-container);
+	color: var(--md-on-error-container);
+	font-weight: 500;
+}
+
+/* Pasted holiday list. A textarea is not a .tf field — no floating label — but
+   it should still read as one of the same family. */
+.import-block { margin-bottom: var(--pad); }
+.import-block summary { list-style: none; display: inline-flex; }
+.import-block summary::-webkit-details-marker { display: none; }
+.import-list {
+	height: auto;
+	min-height: 140px;
+	padding: 12px 16px;
+	font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+	font-size: 13px;
+	line-height: 20px;
+	resize: vertical;
+}
 
 /* ---------- browser notifications ---------- */
 
@@ -1014,7 +1073,7 @@ form.inline { display: inline-flex; gap: 8px; align-items: center; }
 	background: var(--md-surface-container);
 	border-radius: var(--md-shape-md);
 }
-.quota-cell { flex: 0 0 108px; }
+.quota-cell { flex: 0 0 124px; }
 .holiday-list { list-style: none; padding: 0; margin: 0; }
 .holiday-list li {
 	display: flex;
@@ -1025,6 +1084,33 @@ form.inline { display: inline-flex; gap: 8px; align-items: center; }
 }
 .holiday-list li + li { border-top: 1px solid var(--md-outline-variant); }
 .holiday-list form.inline { margin-left: auto; }
+
+/* On a phone the two-column quota table is wider than the screen, and
+   side-scrolling puts the Save button somewhere nobody looks — the row appears
+   half-empty with its second column off to the right. Stack it instead: each
+   person becomes a block, their quota fields underneath.
+
+   This does drop the table semantics under the breakpoint. It is a form laid
+   out in a table rather than data being read across rows, every control keeps
+   its own label, and the column headings ("Person", "Days allotted") say
+   nothing the fields do not. */
+@media (max-width: 767px) {
+	.table-scroll { overflow-x: visible; }
+	.grid-table thead { display: none; }
+	.grid-table,
+	.grid-table tbody,
+	.grid-table tr,
+	.grid-table td {
+		display: block;
+		width: 100%;
+	}
+	.grid-table tr { padding: 8px 0; border-bottom: 1px solid var(--md-outline-variant); }
+	.grid-table tr:last-child { border-bottom: 0; }
+	.grid-table td { padding: 4px 0; border: 0; }
+	/* The person's own controls read as one row; their quotas as a grid below. */
+	.quota-form { gap: 8px; }
+	.quota-cell { flex: 1 1 calc(50% - 4px); }
+}
 
 /* ---------- desktop ---------- */
 
@@ -1037,7 +1123,11 @@ form.inline { display: inline-flex; gap: 8px; align-items: center; }
 	.agenda-view { display: none; }
 	.fab { display: none; }
 	.calendar-actions .book-inline { display: inline-flex; }
+	/* Describes the month grid, which only exists at this width. */
+	.calendar-actions .hint { display: inline; }
+	.legend { display: flex; }
 	.wrap { padding: 24px; }
+	.foot { padding-bottom: var(--pad); }
 	.who-summary { grid-template-columns: 1fr 1fr; gap: var(--pad); }
 
 	/* M3 primary tabs. The active tab is marked by a 3dp indicator under the

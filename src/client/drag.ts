@@ -98,6 +98,10 @@ if (grid) {
 		field('startHalf', chip.getAttribute('data-start-half') ?? 'full');
 		field('endHalf', chip.getAttribute('data-end-half') ?? 'full');
 		field('note', chip.getAttribute('data-note') ?? '');
+		// Only own-or-admin chips are draggable, so the note text above is always
+		// one this viewer may read — but its visibility still has to survive the
+		// move rather than resetting to the default.
+		if (!chip.getAttribute('data-note-private')) field('noteVisibility', 'shared');
 		// Come back to the month the drag happened in. Without this the edit
 		// endpoint's defaults apply and a drag on the calendar would land the
 		// user on /me, or on the edit page if the move was rejected.

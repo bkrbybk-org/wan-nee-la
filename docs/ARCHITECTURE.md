@@ -211,9 +211,33 @@ Navigation changes shape at the same breakpoint, following M3's own guidance rat
 
 Both are rendered on every page and chosen by CSS, so there is no JS in the navigation.
 
+## Response headers
+
+Every response the Worker returns carries `nosniff`, `X-Frame-Options: DENY`, `X-Robots-Tag: noindex, nofollow` and `Referrer-Policy: same-origin`; HTML additionally carries a Content-Security-Policy and `Cache-Control: private, no-store`.
+
+Two choices worth knowing:
+
+- **`same-origin`, not `no-referrer`.** The app reads its own `Referer` to send someone back to the month they booked from. Under `no-referrer` that header is absent and the feature silently degrades ([ISSUES.md](ISSUES.md) #28). The path taken from it is checked against the origin and through `safePath`, because a URL pathname can begin `//` and become a protocol-relative redirect off the site (#27).
+- **CSP is strict about scripts, permissive about styles.** `script-src 'self' 'sha256-…'` — the hash is of the inline theme switcher, which must run before first paint. Styles need `'unsafe-inline'` because leave-type colours are rendered as `style="--chip: …"` on hundreds of elements. Script execution is what turns an escaping mistake into an account takeover; an inline style is not.
+
+`Strict-Transport-Security` is deliberately absent: it belongs to the zone, not the Worker (#13).
+
+## Language
+
+Two languages, English and Thai, chosen per person on `/me` and stored in D1 — like the week start, and for the same reason: pages are rendered on the server, so the preference has to reach the Worker, and per person it follows someone between their laptop and their phone.
+
+- **Strings** live in `src/i18n/strings.ts`, both languages on one line per key, so a stale translation is visible while editing rather than hiding in a second file.
+- **Components** read the reader's language from a Hono JSX context provided by `Layout`, instead of threading a prop through every component. Rendering is synchronous, so the provider reaches everything below it within one render and nothing is shared between requests.
+- **Pure functions never see a language.** `validateBooking` and `countLeaveDays` return a `Message` — a key plus its numbers — and the route renders it at the edge, where the reader is known. Tests assert on the key, so rewording a message cannot turn a test red.
+- **Client-rendered text** (the day count, the coverage line, the notification card's states) is handed to the browser as data attributes on the element that needs it. The catalogue stays out of the bundle; esbuild drops it, and the browser is never sent strings in a language nobody asked for.
+
+What stays as it is, and why, is in [ISSUES.md](ISSUES.md) #25.
+
 ## Notifications
 
 Two channels, one job. `runDigest` decides *whether* to notify once — skipping weekends, public holidays, and days with nobody out — builds the text once, then fans out. An admin's preview runs the same function in dry-run mode, so what they see is produced by the code that sends.
+
+Two kinds of post, too: the daily "out today" digest, and a week-ahead summary on Monday mornings. They claim separate rows in `notification_runs` — keyed on `(date, kind, channel)` — because a Monday carries both, and a shared key would let whichever ran first suppress the other.
 
 | Channel | Reaches | Cost | Configured by |
 | --- | --- | --- | --- |
@@ -233,6 +257,22 @@ Three consequences worth knowing:
 - **Dead endpoints are pruned on send.** 404 and 410 mean gone for good and the row is deleted; anything else may be transient and is retried tomorrow.
 
 The service worker (`public/sw.js`) deliberately caches nothing. Every page here is behind Access and rendered per user; a cached page served to the wrong person, or after their access was revoked, is a far worse failure than a page that will not load offline.
+
+## Notes, and who can read them
+
+One rule, in one function: `visibleNote(entry, viewer)` in `domain/leave.ts`. A note is readable by its author, by admins, and by everyone else only if the booker ticked "share".
+
+It is applied at the **boundary**, not in a template — the calendar's `data-*` attributes and the JSON feed both call it, so an unshared note is absent from what reaches another colleague's browser rather than hidden by CSS. The per-person page (`/u/:email`) renders no notes at all, for anyone.
+
+The audit trail records whether a note existed, never its text. A trail that copied notes into a second, admin-readable table would quietly undo the whole feature.
+
+## Audit trail
+
+`leave_audit` records every create, edit and cancel: actor, subject, action, timestamp, and JSON snapshots either side.
+
+The write is batched with the change itself, inside the repo functions that perform it, rather than being left to the routes. Three code paths reach a mutation — the form, the drag-to-move, and an admin editing someone else's booking — and a trail with a hole in it would always be the path someone forgot. `updateLeave` reads the previous row itself rather than trusting a caller to pass it.
+
+Snapshots are JSON rather than mirrored columns so the trail keeps its meaning when `leave_requests` changes shape.
 
 ## Non-goals (v1)
 

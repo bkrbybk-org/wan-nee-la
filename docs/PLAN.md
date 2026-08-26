@@ -34,8 +34,8 @@ These are policy questions. Each has a recommendation; none should be decided by
 
 | # | Question | Recommendation |
 | --- | --- | --- |
-| 2.1 | **Leave notes are readable by everyone** ([ISSUES.md](ISSUES.md) #17). Verified: a colleague who is neither owner nor admin sees the note text in the calendar HTML and the JSON feed. | Relabel the field and warn that it is shared; restrict to owner + admin if anyone objects. The problem is not that notes are shared, it is that the field does not look shared. |
-| 2.2 | **No audit trail on retroactive changes** ([ISSUES.md](ISSUES.md) #8). An edit overwrites the old values; edit, remove and drag all reach past bookings within the 90-day window. | Keep editing easy, add an audit table, surface it in `/admin`. Needs a migration. |
+| ~~2.1~~ | ~~**Leave notes are readable by everyone** ([ISSUES.md](ISSUES.md) #17). Verified: a colleague who is neither owner nor admin sees the note text in the calendar HTML and the JSON feed. | Relabel the field and warn that it is shared; restrict to owner + admin if anyone objects. The problem is not that notes are shared, it is that the field does not look shared.~~ **Done:** per-note choice, private by default. |
+| ~~2.2~~ | ~~**No audit trail on retroactive changes** ([ISSUES.md](ISSUES.md) #8). An edit overwrites the old values; edit, remove and drag all reach past bookings within the 90-day window. | Keep editing easy, add an audit table, surface it in `/admin`.~~ **Done:** `leave_audit`, written in the same batch as each change. |
 | 2.3 | **Nothing monitors the deployment** ([ISSUES.md](ISSUES.md) #18). `/health` is behind Access, so an anonymous check gets a 302. | Add an Access Bypass rule for `/health` — it exposes only a version string, a D1 ping and two booleans — then point a monitor at it. |
 
 ---
@@ -78,9 +78,10 @@ None of these are needed for the app to do its job. Rough value order.
 | --- | --- | --- | --- |
 | 5.1 | iCal feed | **Opus** then **Sonnet** | Leave appears in Google Calendar or Outlook. Calendar clients cannot do SSO, so it needs a per-user signed-token URL exempted from Access — the auth design is mine, the rest is not. |
 | 5.2 | CSV export for HR | **Sonnet** | Leave taken per person per type over a date range. |
-| 5.3 | Look-ahead in the LINE digest | **Sonnet** | "Out today" plus tomorrow, or a Monday week-ahead post. Cheap now the job exists. |
+| ~~5.3~~ | ~~Look-ahead in the LINE digest~~ | — | **Done:** a Monday week-ahead post, on both channels. |
 | 5.4 | Team grouping and filtering | **Sonnet** | The calendar shows everyone. Worth doing when the roster makes it unreadable, not before. |
-| 5.5 | Coverage warnings | **Opus** | "Three of your team are already out that day", at booking time. Depends on 5.4. The rule is a judgement call, hence Opus. |
+| 5.8 | Sharpen the coverage warning with teams | **Sonnet** | It currently counts the whole roster ("3 of 4 away"). With 5.4 it could count the people who actually cover for each other. |
+| ~~5.5~~ | ~~Coverage warnings~~ | — | **Done:** shown under the booking form, roster-wide; see 5.8 to scope it to a team. |
 | 5.6 | Deploy on merge to main | **Opus** | Deliberately not set up: it puts a Cloudflare API token and the infrastructure ids into repository settings for a public repo. Revisit when more than one person merges. |
 | 5.7 | Carry-over of unused leave | **Owner** then **Opus** | An explicit v1 non-goal. Confirm before January, since the rule affects balances retroactively. |
 

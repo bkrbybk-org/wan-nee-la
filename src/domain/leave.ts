@@ -9,6 +9,7 @@
 
 import { addDays, countLeaveDays, daysBetween, isValidDate, rangesOverlap, type Half } from './dates.ts';
 import type { Balance, LeaveEntry, LeaveType, Quota } from '../types.ts';
+import { msg, type Message } from '../i18n/strings.ts';
 
 export const HALVES: readonly Half[] = ['full', 'am', 'pm'];
 
@@ -23,6 +24,8 @@ export interface BookingInput {
 	startHalf: Half;
 	endHalf: Half;
 	note: string;
+	/** True when only the booker and admins may read the note. */
+	notePrivate: boolean;
 }
 
 export interface ExistingRange {
@@ -42,7 +45,7 @@ export interface BookingContext {
 	today: string;
 }
 
-export type Validated = { ok: true; days: number; type: LeaveType } | { ok: false; error: string };
+export type Validated = { ok: true; days: number; type: LeaveType } | { ok: false; error: Message };
 
 export const NOTE_MAX = 500;
 
@@ -56,25 +59,46 @@ export const MAX_BACKDATE_DAYS = 90;
 /** How far ahead. Guards against a typo'd year putting leave in 2126. */
 export const MAX_FUTURE_DAYS = 550;
 
-export function parseBooking(form: Record<string, unknown>): BookingInput | { error: string } {
+/**
+ * The note this viewer is allowed to read, or null.
+ *
+ * One rule, one place. Every surface that renders or serialises a note goes
+ * through here — the calendar's data attributes, the chip tooltip, the JSON
+ * feed — so a new surface cannot quietly become the one that leaks.
+ */
+export function visibleNote(
+	entry: { note: string | null; note_private: number; user_email: string },
+	viewer: { email: string; is_admin: number },
+): string | null {
+	if (!entry.note) return null;
+	if (!entry.note_private) return entry.note;
+	return entry.user_email === viewer.email || viewer.is_admin ? entry.note : null;
+}
+
+export function parseBooking(form: Record<string, unknown>): BookingInput | { error: Message } {
 	const leaveTypeId = Number(form.leaveTypeId ?? form.leave_type_id);
-	if (!Number.isInteger(leaveTypeId) || leaveTypeId <= 0) return { error: 'Pick a leave type.' };
+	if (!Number.isInteger(leaveTypeId) || leaveTypeId <= 0) return { error: msg('error.pickType') };
 
 	const startDate = String(form.startDate ?? form.start_date ?? '').trim();
 	// A blank end date means a single-day booking — the common case on mobile,
 	// where filling a second date picker for one day off is pure friction.
 	const endDate = String(form.endDate ?? form.end_date ?? '').trim() || startDate;
 
-	if (!isValidDate(startDate)) return { error: 'Start date is not a valid date.' };
-	if (!isValidDate(endDate)) return { error: 'End date is not a valid date.' };
+	if (!isValidDate(startDate)) return { error: msg('error.badStart') };
+	if (!isValidDate(endDate)) return { error: msg('error.badEnd') };
 
 	const startHalf = parseHalf(form.startHalf ?? form.start_half ?? 'full');
 	const endHalf = parseHalf(form.endHalf ?? form.end_half ?? (startDate === endDate ? startHalf : 'full'));
-	if (!startHalf || !endHalf) return { error: 'Half-day value must be full, am, or pm.' };
+	if (!startHalf || !endHalf) return { error: msg('error.badHalf') };
 
 	const note = String(form.note ?? '').trim().slice(0, NOTE_MAX);
+	// Private unless the booker asked to share. An unchecked checkbox submits
+	// nothing at all, so absence has to mean private — the safe direction. The
+	// drag-to-move path rebuilds the booking from data attributes and sends this
+	// explicitly, which is what stops a dragged booking's note turning private.
+	const notePrivate = String(form.noteVisibility ?? '') !== 'shared';
 
-	return { leaveTypeId, startDate, endDate, startHalf, endHalf, note };
+	return { leaveTypeId, startDate, endDate, startHalf, endHalf, note, notePrivate };
 }
 
 /**
@@ -83,22 +107,22 @@ export function parseBooking(form: Record<string, unknown>): BookingInput | { er
  */
 export function validateBooking(input: BookingInput, ctx: BookingContext): Validated {
 	const type = ctx.types.find((t) => t.id === input.leaveTypeId);
-	if (!type) return { ok: false, error: 'Unknown leave type.' };
+	if (!type) return { ok: false, error: msg('error.unknownType') };
 
 	const count = countLeaveDays(input.startDate, input.endDate, input.startHalf, input.endHalf, ctx.holidays);
 	if (!count.ok) return { ok: false, error: count.error };
 
 	const backdate = daysBetween(input.startDate, ctx.today);
 	if (backdate > MAX_BACKDATE_DAYS) {
-		return { ok: false, error: `That start date is more than ${MAX_BACKDATE_DAYS} days in the past. Ask an admin to add it.` };
+		return { ok: false, error: msg('error.tooFarBack', { days: MAX_BACKDATE_DAYS }) };
 	}
 	if (daysBetween(ctx.today, input.endDate) > MAX_FUTURE_DAYS) {
-		return { ok: false, error: 'That end date is too far in the future — check the year.' };
+		return { ok: false, error: msg('error.tooFarAhead') };
 	}
 
 	const clash = ctx.existing.find((e) => rangesOverlap(input.startDate, input.endDate, e.start_date, e.end_date));
 	if (clash) {
-		return { ok: false, error: `You already have leave booked over ${clash.start_date} – ${clash.end_date}.` };
+		return { ok: false, error: msg('error.overlap', { start: clash.start_date, end: clash.end_date }) };
 	}
 
 	if (type.counts_quota) {
@@ -106,7 +130,10 @@ export function validateBooking(input: BookingInput, ctx: BookingContext): Valid
 		if (count.days > left) {
 			return {
 				ok: false,
-				error: `Not enough ${type.label_en.toLowerCase()} leave left: ${count.days} day(s) requested, ${left} remaining.`,
+				// The leave type's own name is data, not an interface string, and it
+				// already carries a Thai label — so the reader's language picks which
+				// of the two to drop in.
+				error: msg('error.notEnough', { count: count.days, type: type.label_en.toLowerCase(), typeTh: type.label_th, days: count.days, left }),
 			};
 		}
 	}

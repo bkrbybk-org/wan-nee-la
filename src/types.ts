@@ -33,6 +33,8 @@ export interface User {
 	active: number;
 	/** 0 = Sunday, 1 = Monday. Presentation only — see migrations/0003. */
 	week_start: number;
+	/** Interface language: 'en' or 'th'. */
+	lang: string;
 	created_at: string;
 }
 
@@ -57,6 +59,11 @@ export interface LeaveRequest {
 	end_half: Half;
 	days_total: number;
 	note: string | null;
+	/**
+	 * 1 = only the booker and admins may read the note; 0 = everyone can.
+	 * Enforced in the repo and route layers, never left to a template.
+	 */
+	note_private: number;
 	status: LeaveStatus;
 	created_at: string;
 	cancelled_at: string | null;

@@ -23,6 +23,34 @@ if (card) {
 	const iosNote = card.querySelector<HTMLElement>('[data-push-ios]')!;
 	const vapidKey = card.querySelector<HTMLElement>('[data-vapid-key]')?.getAttribute('data-vapid-key') ?? '';
 
+	/**
+	 * Wording, rendered by the server in the reader's language.
+	 *
+	 * English is kept here as a fallback rather than as the source: if the
+	 * attribute is ever missing or malformed the card still says something
+	 * truthful instead of going blank.
+	 */
+	const S: Record<string, string> = {
+		on: 'On for this browser.',
+		off: 'Off for this browser.',
+		blocked: 'Blocked. Notifications are switched off for this site in your browser settings.',
+		unsupported: 'This browser cannot show notifications.',
+		tabOnly: 'Not available in a Safari tab.',
+		asking: 'Asking for permission…',
+		sending: 'Sending…',
+		sent: 'Sent. It should appear in a moment.',
+		failed: 'Could not send a test.',
+		refused: 'The server would not accept this subscription.',
+		enableFailed: 'Could not turn notifications on.',
+		...(() => {
+			try {
+				return JSON.parse(card.getAttribute('data-push-strings') ?? '{}') as Record<string, string>;
+			} catch {
+				return {};
+			}
+		})(),
+	};
+
 	card.hidden = false;
 
 	const supported = 'serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window;
@@ -54,25 +82,25 @@ if (card) {
 			buttons({});
 			if (iOS && !standalone) {
 				iosNote.hidden = false;
-				show('Not available in a Safari tab.');
+				show(S.tabOnly);
 			} else {
-				show('This browser cannot show notifications.');
+				show(S.unsupported);
 			}
 			return;
 		}
 
 		if (Notification.permission === 'denied') {
 			buttons({});
-			show('Blocked. Notifications are switched off for this site in your browser settings.');
+			show(S.blocked);
 			return;
 		}
 
 		const sub = await (await registration()).pushManager.getSubscription();
 		if (sub) {
-			show('On for this browser.');
+			show(S.on);
 			buttons({ disable: true, test: true });
 		} else {
-			show('Off for this browser.');
+			show(S.off);
 			buttons({ enable: true });
 		}
 	}
@@ -100,7 +128,7 @@ if (card) {
 
 	enableBtn.addEventListener('click', async () => {
 		enableBtn.disabled = true;
-		show('Asking for permission…');
+		show(S.asking);
 		try {
 			const permission = await Notification.requestPermission();
 			if (permission !== 'granted') {
@@ -125,13 +153,13 @@ if (card) {
 				// Do not leave a live subscription the server has no record of —
 				// it would be a notification nobody can ever turn off.
 				await sub.unsubscribe();
-				show(saved.error ?? 'The server would not accept this subscription.');
+				show(saved.error ?? S.refused);
 				buttons({ enable: true });
 				return;
 			}
 			await paint();
 		} catch (err) {
-			show(err instanceof Error ? err.message : 'Could not turn notifications on.');
+			show(err instanceof Error ? err.message : S.enableFailed);
 			buttons({ enable: true });
 		} finally {
 			enableBtn.disabled = false;
@@ -158,9 +186,9 @@ if (card) {
 
 	testBtn.addEventListener('click', async () => {
 		testBtn.disabled = true;
-		show('Sending…');
+		show(S.sending);
 		const res = await post('/api/push/test');
-		show(res.ok ? 'Sent. It should appear in a moment.' : (res.error ?? 'Could not send a test.'));
+		show(res.ok ? S.sent : (res.error ?? S.failed));
 		testBtn.disabled = false;
 	});
 

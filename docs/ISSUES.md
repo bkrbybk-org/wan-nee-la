@@ -111,7 +111,7 @@ Accepted for v1: the window is milliseconds, the population is small, and an ove
 
 ---
 
-## #8 — Retroactive edit/cancel still reclaims quota `open — needs owner decision`
+## #8 — Retroactive edit/cancel still reclaims quota `resolved`
 
 Self-serve with no approval means a user can edit or cancel leave that has already been taken and get the days back. Nothing stops it, and the owner has since asked for edit and remove to be available on every booking, so the surface is now wider than when this was first written.
 
@@ -127,6 +127,11 @@ Not fixed, and **deliberately not decided unilaterally** — this is a policy qu
 Options: (a) allow it, trust people; (b) freeze bookings whose end date has passed, admin override only; (c) allow but write an audit row on every edit and cancel, surfaced in `/admin`.
 
 Leaning (c) now rather than (b): the owner explicitly wants correction to be easy, and an audit trail preserves that while making retroactive changes visible. Note that an edit currently overwrites the old values with no record of what they were, so (c) needs a new table.
+
+
+**Resolved with an audit trail rather than a restriction.** Editing stays easy — sick leave is often entered after the fact and then corrected — and `leave_audit` records who changed what, on whose booking, with before and after snapshots. `/admin` shows it.
+
+The write happens inside the same `db.batch()` as the change, in the repo layer, so a route cannot perform a mutation and forget to record it. Snapshots deliberately store *whether* a note existed rather than its text: copying notes into a second, admin-readable table would quietly undo #17.
 
 ---
 
@@ -151,6 +156,11 @@ Hence the `holidays` table + admin editor, not a constant in the source.
 - Special one-off government holidays.
 
 Add those via `/admin` → Holidays. A missing holiday is not cosmetic: leave booked across it silently costs the employee a day of quota.
+
+
+**Partly addressed.** `/admin` now accepts a pasted list — dates and names separated by a space, comma, tab or semicolon, `#` comments ignored — and refuses the whole import if any line fails to parse, since a half-imported holiday notice silently draws down everyone's quota on the days that were dropped.
+
+Still open: nothing *fetches* the announcement. There is no machine-readable feed of Thai cabinet resolutions, so someone has to notice and paste. A yearly reminder would close it.
 
 ---
 
@@ -198,11 +208,16 @@ Correction to an earlier note here: `/health` is *not* usable for an anonymous u
 
 ---
 
-## #11 — No CSRF token, only an Origin check `accepted`
+## #11 — No CSRF token, only an Origin check `accepted, tightened`
 
 Cloudflare Access authenticates but does not stop a cross-site form POST — its cookie rides along. `src/index.tsx` rejects any non-GET whose `Origin` host differs from the `Host` header.
 
 Accepted rather than a token scheme because every mutation here is a same-origin form submit, and browsers have sent `Origin` on cross-site POSTs for years. The gap: a request with **no** `Origin` header at all is allowed through, which keeps non-browser clients (curl, the tests above) working. Revisit if this ever gets a public or API-key surface.
+
+
+**Tightened.** The check used to allow a request whose `Origin` header was *absent*, which is the standard way this defence is quietly defeated. It now requires a matching Origin on every state-changing request. Every browser sends it on a POST, so absence means the request did not come from one of our pages.
+
+The LINE webhook genuinely has no Origin. It is registered above this middleware and never reaches it — it proves itself with an HMAC signature instead. The smoke suite posts to it without an Origin and still expects 200, so that arrangement is covered.
 
 ---
 
@@ -229,7 +244,7 @@ So:
 
 ---
 
-## #17 — Leave notes are visible to everyone, not just the booker `open — needs owner decision`
+## #17 — Leave notes are visible to everyone, not just the booker `resolved`
 
 The optional free-text note on a booking is shown to **every** authenticated user, not only the owner and admins. It reaches them three ways: the chip's `title` tooltip, the `data-note` attribute the detail popup reads, and the `note` field in `GET /api/leave`.
 
@@ -245,6 +260,13 @@ The risk is that notes are exactly where someone writes a medical or family deta
 Options: (a) leave it — a shared calendar, and people can simply not write anything private; (b) show the note only to its owner and admins; (c) keep it public but relabel the field and add a hint that everyone can read it, so the choice is informed; (d) two fields, one shared and one private.
 
 Recommendation: **(c) now, (b) if anyone objects.** (c) is small, keeps the feature's usefulness, and fixes the real problem, which is that the field does not look like a broadcast. Not decided unilaterally — this is a privacy policy question for the company, not a technical one.
+
+
+**Resolved.** Each note now carries its own answer, chosen on the booking form, and the default is private. The rule lives in one function (`visibleNote`) that the calendar, the entry popup and the JSON feed all go through, so a private note is *absent* from what reaches another colleague's browser rather than hidden by whatever renders it.
+
+Notes written before the choice existed were made private. Their authors were never offered one, and restricting a note that was already visible loses some shared context, while publishing one written in confidence cannot be undone.
+
+The original diagnosis was the right one: the problem was never that notes were shared, it was that the field gave no sign of it.
 
 ---
 
@@ -314,3 +336,100 @@ Closing this is one click: sign in, turn notifications on from `/me`, press **Se
 Harmless in practice — the schema is already correct when it happens — but it makes a real failure indistinguishable from a no-op, and it means the command cannot be used to bring an existing database up to date.
 
 Found while checking that `0004_push.sql`, which rebuilds a table, survives being replayed; it does. The fix for 0003 is to rebuild the table the same way, or to move to a migration runner that records what it has applied.
+
+---
+
+## #25 — The Thai interface stops at the app's own edges `accepted`
+
+The UI is fully translated and follows the reader between devices. Three things deliberately stay as they are:
+
+- **The LINE and push digests.** One message goes to a whole group, so it is bilingual by construction — a Thai header and English body — rather than per reader. Translating per recipient would mean one push per language, and for LINE, which bills per member, one post per language in the same group.
+- **Holiday names and leave-type labels.** These are data an admin types, not interface strings. Leave types already carry both languages from the seed and the interface picks the matching one; holiday names are shown exactly as entered.
+- **Years stay Gregorian.** Both conventions are in daily use in Thailand — B.E. on official documents, C.E. in most software — and a calendar showing 2569 beside a native date field that fills in 2026 would be worse than one that is consistently plain. `THAI_YEAR_OFFSET` in `domain/dates.ts` flips it if the office disagrees.
+
+---
+
+## #26 — Nothing prunes the audit trail or the notification log `open`
+
+`leave_audit` gains a row per booking change and `notification_runs` up to two per day, and nothing ever deletes either. At this scale that is years of headroom — a few thousand rows — so this is a note rather than a problem.
+
+Worth doing together with the `notification_runs` pruning already listed in PLAN.md 4.4, in the same cron pass. The audit trail is the one to think about before deleting: a trail that quietly loses its oldest entries is worse than one that is explicitly kept for a stated period.
+
+---
+
+## #27 — `referrerPath` could have been turned into an open redirect `resolved`
+
+The post-booking redirect reads the `Referer` header to send someone back to the page they came from. It took `new URL(referer).pathname` and used it as a `Location` — and `new URL('https://evil.example//evil.example').pathname` is `//evil.example`, which a browser reads as a protocol-relative URL and follows off the site.
+
+Reaching it needed a POST that carried an attacker-chosen Referer, which the CSRF check already refused. It was one mistake away from mattering, and it became easier to reach the moment the referrer policy changed (below), so it is fixed rather than argued about: the referrer's origin must match this site's, and the extracted path goes through `safePath` like every other redirect target.
+
+Found while auditing the change that made `Referer` meaningful again — see #28.
+
+---
+
+## #28 — `Referrer-Policy: no-referrer` was disabling the app's own redirects `resolved`
+
+The Worker sent `no-referrer`, so browsers sent no `Referer` at all — including on same-origin form posts. `referrerPath` therefore always returned null, and every booking made from the calendar redirected to `/me` instead of back to the month it was booked from.
+
+Now `same-origin`: a URL like `/u/someone@example.com` still never reaches a third party, but our own pages keep the header they rely on. The fix for #27 landed with it, because that header is now genuinely load-bearing.
+
+---
+
+## #29 — The manual week-ahead send ignored the duplicate guard `resolved`
+
+`runWeekAhead` had one `force` flag doing two jobs: run on a day that is not Monday, and discard an existing claim. `/admin/notify/send` needed the first, so it passed `force: true` — and silently got the second. Pressing "Send now" twice would have posted twice to the company LINE group, which is precisely what the claim exists to prevent, and the "resend if already logged" tick box had no effect on that path.
+
+Split into `allowAnyDay` and `force`. Only the tick box sets `force`.
+
+Not caught by the suite, and still not catchable there: claiming happens after a channel is found to be configured, and the smoke run has neither a LINE token nor a VAPID pair, so no claim is ever taken. Verified by reading the two call sites and the types.
+
+---
+
+## #30 — No security headers on any response `resolved`
+
+The Worker sent `X-Content-Type-Options`, `Referrer-Policy` and `X-Frame-Options`, and nothing else. There was no Content-Security-Policy and no cache directive on authenticated HTML.
+
+Now on every response the Worker returns:
+
+| Header | Value | Why |
+| --- | --- | --- |
+| `Content-Security-Policy` | see below | An escaping mistake should not become script execution |
+| `Cache-Control` | `private, no-store` on HTML | Shared office machines: the next person must not pull the last person's page out of the back/forward cache |
+| `X-Content-Type-Options` | `nosniff` | |
+| `X-Frame-Options` | `DENY` | With `frame-ancestors 'none'`, for older browsers |
+| `Referrer-Policy` | `same-origin` | See #28 |
+| `X-Robots-Tag` | `noindex, nofollow` | |
+
+The policy is strict about scripts — `script-src 'self' 'sha256-…'`, where the hash covers the one inline script, the pre-paint theme switcher — and deliberately permissive about styles, because leave-type colours are rendered as `style="--chip: …"` on hundreds of elements. Script execution is what turns an escaping mistake into an account takeover; an inline style is not.
+
+Verified in a browser: the theme script still runs before first paint, the client bundle loads, dialogs open, and the same-origin fetches the booking preview depends on are allowed. No violations reported.
+
+Not covered: `Strict-Transport-Security`, which belongs at the zone rather than in the Worker (see #13).
+
+---
+
+## #31 — Service worker registration is unverified `open`
+
+Same shape as #23: the browser used during development refuses to install service workers, so `/sw.js` has never actually registered. It is served correctly, and no CSP violation is raised when registration is attempted, so the failure is the environment's rather than the policy's — but that is an inference, not an observation.
+
+Closed by the same single action as #23: sign in on a real browser, turn notifications on, press **Send a test**.
+
+---
+
+## #32 — The admin page was unusable on a phone `resolved`
+
+The quota table is two columns wide and sat inside a horizontal scroller. On a 375px screen that meant a row showing a person's name and checkboxes, a Save button clipped at the edge, and a large empty space where the quota fields were — off to the right, where nobody scrolls.
+
+Below 768px the table now stacks: each person becomes a block with their quota fields in a two-up grid beneath. The `<table>` semantics are dropped at that width, which is a real trade — but this is a form laid out in a table rather than data read across rows, every control keeps its own label, and the headings ("Person", "Days allotted") say nothing the fields do not.
+
+Two smaller things found in the same pass: the person row's inline form could not wrap, so its Save button was clipped rather than moving to the next line; and the calendar's "click any day to book it" hint described a month grid that does not exist on a phone, where the only affordances are the agenda list and the FAB. The hint is now desktop-only.
+
+---
+
+## #33 — Interface text that still read as unfinished `resolved`
+
+Nine strings used "day(s)" and "person(s)". The catalogue now carries a plural form — `'{days} day|{days} days'`, chosen by a `count` variable — with the split done per language, since Thai has no plural and its side stays a single form.
+
+Found while checking the phone layout, along with two other gaps: the half-day marker on calendar chips was hard-coded `½am` / `½pm` and stayed English in a Thai interface, and the holiday-import help text ran its example straight into the end of a sentence.
+
+`test-i18n.mjs` now guards the catalogue itself: every key has both languages, no Thai value is a copy of its English, both halves of a plural use the same placeholders, and no English string falls back to "(s)".

@@ -15,6 +15,8 @@
  * constant rather than a timezone lookup.
  */
 
+import { msg, type Message } from '../i18n/strings.ts';
+
 export const BANGKOK_OFFSET_MS = 7 * 60 * 60 * 1000;
 
 export type Half = 'full' | 'am' | 'pm';
@@ -89,7 +91,7 @@ export function workdaysIn(start: string, end: string, holidays: ReadonlySet<str
 	return eachDate(start, end).filter((d) => isWorkday(d, holidays));
 }
 
-export type DayCount = { ok: true; days: number } | { ok: false; error: string };
+export type DayCount = { ok: true; days: number } | { ok: false; error: Message };
 
 /**
  * Days of quota a request consumes.
@@ -115,28 +117,28 @@ export function countLeaveDays(
 	endHalf: Half,
 	holidays: ReadonlySet<string>,
 ): DayCount {
-	if (!isValidDate(start)) return { ok: false, error: `invalid start date: ${start}` };
-	if (!isValidDate(end)) return { ok: false, error: `invalid end date: ${end}` };
-	if (daysBetween(start, end) < 0) return { ok: false, error: 'end date is before start date' };
+	if (!isValidDate(start)) return { ok: false, error: msg('error.badStart') };
+	if (!isValidDate(end)) return { ok: false, error: msg('error.badEnd') };
+	if (daysBetween(start, end) < 0) return { ok: false, error: msg('error.endBeforeStart') };
 
 	const single = start === end;
 
 	if (single) {
 		if (startHalf !== endHalf) {
-			return { ok: false, error: 'a single-day request must use the same half for start and end' };
+			return { ok: false, error: msg('error.badHalf') };
 		}
 		if (!isWorkday(start, holidays)) {
-			return { ok: false, error: 'that day is a weekend or a public holiday' };
+			return { ok: false, error: msg('error.notAWorkingDay') };
 		}
 		return { ok: true, days: startHalf === 'full' ? 1 : 0.5 };
 	}
 
-	if (startHalf === 'am') return { ok: false, error: 'a multi-day request cannot start with a morning-only day' };
-	if (endHalf === 'pm') return { ok: false, error: 'a multi-day request cannot end with an afternoon-only day' };
+	if (startHalf === 'am') return { ok: false, error: msg('error.halfOnMultiDay') };
+	if (endHalf === 'pm') return { ok: false, error: msg('error.halfOnMultiDay') };
 
 	const workdays = workdaysIn(start, end, holidays);
 	if (workdays.length === 0) {
-		return { ok: false, error: 'that range contains no working days' };
+		return { ok: false, error: msg('error.noWorkingDays') };
 	}
 
 	let days = workdays.length;
@@ -197,14 +199,34 @@ export function monthGrid(year: number, month: number, weekStart: WeekStart = MO
 	return eachDate(startAt, addDays(last, trail));
 }
 
-const DAY_NAMES = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+/**
+ * Names, by language.
+ *
+ * Thai years stay Gregorian rather than Buddhist Era. Both are used in Thailand
+ * — B.E. on official documents, C.E. in most software — and a calendar that
+ * silently showed 2569 next to a date field the browser fills with 2026 would
+ * be worse than one that is consistently plain. Flip `THAI_YEAR_OFFSET` if the
+ * office wants B.E.
+ */
+const DAY_NAMES = {
+	en: ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'],
+	th: ['อา.', 'จ.', 'อ.', 'พ.', 'พฤ.', 'ศ.', 'ส.'],
+};
+
+const DAY_NAMES_FULL = {
+	en: ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'],
+	th: ['วันอาทิตย์', 'วันจันทร์', 'วันอังคาร', 'วันพุธ', 'วันพฤหัสบดี', 'วันศุกร์', 'วันเสาร์'],
+};
+
+/** 0 keeps the Gregorian year; 543 would make it Buddhist Era. */
+const THAI_YEAR_OFFSET = 0;
+
+type DateLang = 'en' | 'th';
 
 /** Column headings in the order the grid renders them. */
-export function weekdayLabels(weekStart: WeekStart = MONDAY): string[] {
-	return Array.from({ length: 7 }, (_, i) => DAY_NAMES[(weekStart + i) % 7]);
+export function weekdayLabels(weekStart: WeekStart = MONDAY, lang: DateLang = 'en'): string[] {
+	return Array.from({ length: 7 }, (_, i) => DAY_NAMES[lang][(weekStart + i) % 7]);
 }
-
-const DAY_NAMES_FULL = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 
 /**
  * "Monday 17 August 2026" — spoken form.
@@ -212,9 +234,10 @@ const DAY_NAMES_FULL = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 
  * A calendar cell shows a bare number, which reads as a stray digit out of
  * context. Assistive technology gets this instead.
  */
-export function longDate(iso: string): string {
+export function longDate(iso: string, lang: DateLang = 'en'): string {
 	const [y, m, dd] = iso.split('-').map(Number);
-	return `${DAY_NAMES_FULL[dayOfWeek(iso)]} ${dd} ${monthName(m)} ${y}`;
+	const year = lang === 'th' ? y + THAI_YEAR_OFFSET : y;
+	return `${DAY_NAMES_FULL[lang][dayOfWeek(iso)]} ${dd} ${monthName(m, lang)} ${year}`;
 }
 
 /** Split a run of dates into rows of seven, for a month table. */
@@ -225,8 +248,8 @@ export function intoWeeks(dates: readonly string[]): string[][] {
 }
 
 /** The short name of a date's own weekday, independent of column order. */
-export function weekdayName(date: string): string {
-	return DAY_NAMES[dayOfWeek(date)];
+export function weekdayName(date: string, lang: DateLang = 'en'): string {
+	return DAY_NAMES[lang][dayOfWeek(date)];
 }
 
 export function shiftMonth(year: number, month: number, delta: number): { year: number; month: number } {
@@ -234,19 +257,35 @@ export function shiftMonth(year: number, month: number, delta: number): { year: 
 	return { year: Math.floor(total / 12), month: (total % 12) + 1 };
 }
 
-const MONTH_NAMES = [
-	'January', 'February', 'March', 'April', 'May', 'June',
-	'July', 'August', 'September', 'October', 'November', 'December',
-];
+const MONTH_NAMES = {
+	en: [
+		'January', 'February', 'March', 'April', 'May', 'June',
+		'July', 'August', 'September', 'October', 'November', 'December',
+	],
+	th: [
+		'มกราคม', 'กุมภาพันธ์', 'มีนาคม', 'เมษายน', 'พฤษภาคม', 'มิถุนายน',
+		'กรกฎาคม', 'สิงหาคม', 'กันยายน', 'ตุลาคม', 'พฤศจิกายน', 'ธันวาคม',
+	],
+};
 
-export function monthName(month: number): string {
-	return MONTH_NAMES[month - 1] ?? '';
+const MONTH_SHORT = {
+	en: ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'],
+	th: ['ม.ค.', 'ก.พ.', 'มี.ค.', 'เม.ย.', 'พ.ค.', 'มิ.ย.', 'ก.ค.', 'ส.ค.', 'ก.ย.', 'ต.ค.', 'พ.ย.', 'ธ.ค.'],
+};
+
+export function monthName(month: number, lang: DateLang = 'en'): string {
+	return MONTH_NAMES[lang][month - 1] ?? '';
 }
 
-/** "15 Aug" — compact enough for a calendar chip. */
-export function shortDate(iso: string): string {
+/**
+ * "15 Aug" — compact enough for a calendar chip.
+ *
+ * Thai abbreviations are their own forms ("ส.ค."), not the first three
+ * characters of the full name, which would produce nonsense.
+ */
+export function shortDate(iso: string, lang: DateLang = 'en'): string {
 	const [, m, d] = iso.split('-').map(Number);
-	return `${d} ${monthName(m).slice(0, 3)}`;
+	return `${d} ${MONTH_SHORT[lang][m - 1] ?? ''}`;
 }
 
 export function formatDays(n: number): string {
@@ -254,8 +293,15 @@ export function formatDays(n: number): string {
 }
 
 /** How a request's dates read in a list: "15 Aug", "15–19 Aug", "15 Aug (PM)". */
-export function describeRange(start: string, end: string, startHalf: Half, endHalf: Half): string {
-	const half = (h: Half) => (h === 'am' ? ' (AM)' : h === 'pm' ? ' (PM)' : '');
-	if (start === end) return `${shortDate(start)}${half(startHalf)}`;
-	return `${shortDate(start)}${half(startHalf)} – ${shortDate(end)}${half(endHalf)}`;
+export function describeRange(
+	start: string,
+	end: string,
+	startHalf: Half,
+	endHalf: Half,
+	lang: DateLang = 'en',
+): string {
+	const half = (h: Half) =>
+		h === 'am' ? (lang === 'th' ? ' (เช้า)' : ' (AM)') : h === 'pm' ? (lang === 'th' ? ' (บ่าย)' : ' (PM)') : '';
+	if (start === end) return `${shortDate(start, lang)}${half(startHalf)}`;
+	return `${shortDate(start, lang)}${half(startHalf)} – ${shortDate(end, lang)}${half(endHalf)}`;
 }

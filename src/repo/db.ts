@@ -6,13 +6,13 @@
  * in this file, including for values that "obviously" came from our own tables.
  */
 
-import { bangkokNow } from '../domain/dates.ts';
+import { addDays, bangkokNow } from '../domain/dates.ts';
 import { computeBalances } from '../domain/leave.ts';
 import type { Balance, Holiday, LeaveEntry, LeaveRequest, LeaveType, Quota, User } from '../types.ts';
 
 const ENTRY_COLUMNS = `
 	r.id, r.user_email, r.leave_type_id, r.start_date, r.end_date,
-	r.start_half, r.end_half, r.days_total, r.note, r.status,
+	r.start_half, r.end_half, r.days_total, r.note, r.note_private, r.status,
 	r.created_at, r.cancelled_at,
 	COALESCE(u.display_name, r.user_email) AS display_name,
 	t.code  AS type_code,
@@ -250,26 +250,29 @@ export async function usedByType(db: D1Database, email: string, year: number): P
 	return new Map((res.results ?? []).map((r) => [r.leave_type_id, r.days]));
 }
 
-export async function insertLeave(db: D1Database, row: LeaveRequest): Promise<void> {
-	await db
-		.prepare(
-			`INSERT INTO leave_requests
-			 (id, user_email, leave_type_id, start_date, end_date, start_half, end_half, days_total, note, status, created_at)
-			 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'confirmed', ?)`,
-		)
-		.bind(
-			row.id,
-			row.user_email,
-			row.leave_type_id,
-			row.start_date,
-			row.end_date,
-			row.start_half,
-			row.end_half,
-			row.days_total,
-			row.note,
-			row.created_at,
-		)
-		.run();
+export async function insertLeave(db: D1Database, row: LeaveRequest, actor: string): Promise<void> {
+	await db.batch([
+		db
+			.prepare(
+				`INSERT INTO leave_requests
+				 (id, user_email, leave_type_id, start_date, end_date, start_half, end_half, days_total, note, note_private, status, created_at)
+				 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'confirmed', ?)`,
+			)
+			.bind(
+				row.id,
+				row.user_email,
+				row.leave_type_id,
+				row.start_date,
+				row.end_date,
+				row.start_half,
+				row.end_half,
+				row.days_total,
+				row.note,
+				row.note_private,
+				row.created_at,
+			),
+		auditStatement(db, row.id, actor, row.user_email, 'created', null, row),
+	]);
 }
 
 export async function getLeave(db: D1Database, id: string): Promise<LeaveRequest | null> {
@@ -296,27 +299,37 @@ export async function updateLeave(
 	id: string,
 	row: Pick<
 		LeaveRequest,
-		'leave_type_id' | 'start_date' | 'end_date' | 'start_half' | 'end_half' | 'days_total' | 'note'
+		'leave_type_id' | 'start_date' | 'end_date' | 'start_half' | 'end_half' | 'days_total' | 'note' | 'note_private'
 	>,
+	actor: string,
 ): Promise<boolean> {
-	const res = await db
-		.prepare(
-			`UPDATE leave_requests
-			 SET leave_type_id = ?, start_date = ?, end_date = ?, start_half = ?, end_half = ?, days_total = ?, note = ?
-			 WHERE id = ? AND status = 'confirmed'`,
-		)
-		.bind(
-			row.leave_type_id,
-			row.start_date,
-			row.end_date,
-			row.start_half,
-			row.end_half,
-			row.days_total,
-			row.note,
-			id,
-		)
-		.run();
-	return (res.meta.changes ?? 0) > 0;
+	// Read the old values here rather than trusting the caller to pass them.
+	// A trail with holes in it is worse than no trail, and the hole would
+	// always be the route that forgot.
+	const before = await getLeave(db, id);
+	if (!before || before.status !== 'confirmed') return false;
+
+	const [update] = await db.batch([
+		db
+			.prepare(
+				`UPDATE leave_requests
+				 SET leave_type_id = ?, start_date = ?, end_date = ?, start_half = ?, end_half = ?, days_total = ?, note = ?, note_private = ?
+				 WHERE id = ? AND status = 'confirmed'`,
+			)
+			.bind(
+				row.leave_type_id,
+				row.start_date,
+				row.end_date,
+				row.start_half,
+				row.end_half,
+				row.days_total,
+				row.note,
+				row.note_private,
+				id,
+			),
+		auditStatement(db, id, actor, before.user_email, 'edited', before, { ...before, ...row }),
+	]);
+	return ((update.meta as { changes?: number }).changes ?? 0) > 0;
 }
 
 /**
@@ -324,12 +337,194 @@ export async function updateLeave(
  * row already cancelled. The status guard in the WHERE clause makes a double
  * submit a no-op rather than rewriting `cancelled_at`.
  */
-export async function cancelLeave(db: D1Database, id: string): Promise<boolean> {
+export async function cancelLeave(db: D1Database, id: string, actor: string): Promise<boolean> {
+	const before = await getLeave(db, id);
+	if (!before || before.status !== 'confirmed') return false;
+
+	const [cancel] = await db.batch([
+		db
+			.prepare(`UPDATE leave_requests SET status = 'cancelled', cancelled_at = ? WHERE id = ? AND status = 'confirmed'`)
+			.bind(bangkokNow(), id),
+		auditStatement(db, id, actor, before.user_email, 'cancelled', before, null),
+	]);
+	return ((cancel.meta as { changes?: number }).changes ?? 0) > 0;
+}
+
+// ---------------------------------------------------------------------------
+// Audit trail
+// ---------------------------------------------------------------------------
+
+export type AuditAction = 'created' | 'edited' | 'cancelled';
+
+export interface AuditRow {
+	id: number;
+	leave_id: string;
+	actor_email: string;
+	subject_email: string;
+	action: AuditAction;
+	at: string;
+	before: string | null;
+	after: string | null;
+}
+
+/** What a snapshot records. Deliberately not the whole row — see below. */
+export interface LeaveSnapshot {
+	leave_type_id: number;
+	start_date: string;
+	end_date: string;
+	start_half: string;
+	end_half: string;
+	days_total: number;
+	note_private: number;
+	/**
+	 * Whether a note existed, not what it said.
+	 *
+	 * An audit trail that copied the text would put private notes in a second
+	 * table, readable by every admin looking at the change log, and would keep
+	 * them there after the booking was cancelled. Recording that the note
+	 * changed is enough to answer the question the trail exists for.
+	 */
+	has_note: boolean;
+}
+
+function snapshot(row: {
+	leave_type_id: number;
+	start_date: string;
+	end_date: string;
+	start_half: string;
+	end_half: string;
+	days_total: number;
+	note: string | null;
+	note_private: number;
+}): LeaveSnapshot {
+	return {
+		leave_type_id: row.leave_type_id,
+		start_date: row.start_date,
+		end_date: row.end_date,
+		start_half: row.start_half,
+		end_half: row.end_half,
+		days_total: row.days_total,
+		note_private: row.note_private,
+		has_note: Boolean(row.note),
+	};
+}
+
+/**
+ * One audit row, as a statement to be batched with the change it describes.
+ *
+ * Returned rather than executed so the write and its record go to D1 together:
+ * the mutation functions above batch them, which is as close to atomic as D1
+ * offers, and means no code path can perform a change without recording it.
+ */
+function auditStatement(
+	db: D1Database,
+	leaveId: string,
+	actor: string,
+	subject: string,
+	action: AuditAction,
+	before: Parameters<typeof snapshot>[0] | null,
+	after: Parameters<typeof snapshot>[0] | null,
+): D1PreparedStatement {
+	return db
+		.prepare(
+			`INSERT INTO leave_audit (leave_id, actor_email, subject_email, action, at, before, after)
+			 VALUES (?, ?, ?, ?, ?, ?, ?)`,
+		)
+		.bind(
+			leaveId,
+			actor,
+			subject,
+			action,
+			bangkokNow(),
+			before ? JSON.stringify(snapshot(before)) : null,
+			after ? JSON.stringify(snapshot(after)) : null,
+		);
+}
+
+export async function recentAudit(db: D1Database, limit = 30): Promise<AuditRow[]> {
+	const res = await db.prepare('SELECT * FROM leave_audit ORDER BY id DESC LIMIT ?').bind(limit).all<AuditRow>();
+	return res.results ?? [];
+}
+
+// ---------------------------------------------------------------------------
+// Coverage
+// ---------------------------------------------------------------------------
+
+export interface DayCoverage {
+	date: string;
+	names: string[];
+}
+
+/**
+ * Who else is already booked off across a range, by day.
+ *
+ * `exclude` is the person doing the booking — a warning that counts you against
+ * yourself is noise — and `excludeId` drops the booking being edited, so moving
+ * a booking by a day does not warn about the booking it is replacing.
+ */
+export async function coverageInRange(
+	db: D1Database,
+	from: string,
+	to: string,
+	exclude: string,
+	excludeId?: string,
+): Promise<Map<string, string[]>> {
 	const res = await db
-		.prepare(`UPDATE leave_requests SET status = 'cancelled', cancelled_at = ? WHERE id = ? AND status = 'confirmed'`)
-		.bind(bangkokNow(), id)
-		.run();
-	return (res.meta.changes ?? 0) > 0;
+		.prepare(
+			`SELECT r.start_date, r.end_date, COALESCE(u.display_name, r.user_email) AS display_name
+			   FROM leave_requests r
+			   LEFT JOIN users u ON u.email = r.user_email
+			  WHERE r.status = 'confirmed'
+			    AND r.start_date <= ? AND r.end_date >= ?
+			    AND r.user_email <> ?
+			    AND (u.active IS NULL OR u.active = 1)
+			    AND (? = '' OR r.id <> ?)`,
+		)
+		.bind(to, from, exclude, excludeId ?? '', excludeId ?? '')
+		.all<{ start_date: string; end_date: string; display_name: string }>();
+
+	// Expanded here rather than in SQL: SQLite has no generate_series in D1, and
+	// a range is at most a few weeks.
+	const byDate = new Map<string, string[]>();
+	for (const row of res.results ?? []) {
+		for (let d = row.start_date > from ? row.start_date : from; d <= to && d <= row.end_date; d = addDays(d, 1)) {
+			const names = byDate.get(d) ?? [];
+			names.push(row.display_name);
+			byDate.set(d, names);
+		}
+	}
+	return byDate;
+}
+
+/**
+ * Add or replace many holidays at once.
+ *
+ * One batch, so a paste of a whole year either lands or does not — a partial
+ * import would leave someone guessing which half of the list is in.
+ */
+export async function bulkUpsertHolidays(db: D1Database, rows: Holiday[]): Promise<number> {
+	if (rows.length === 0) return 0;
+	await db.batch(
+		rows.map((h) =>
+			db
+				.prepare(
+					`INSERT INTO holidays (date, label) VALUES (?, ?)
+					 ON CONFLICT (date) DO UPDATE SET label = excluded.label`,
+				)
+				.bind(h.date, h.label),
+		),
+	);
+	return rows.length;
+}
+
+export async function setLanguage(db: D1Database, email: string, lang: string): Promise<void> {
+	await db.prepare('UPDATE users SET lang = ? WHERE email = ?').bind(lang, email).run();
+}
+
+/** Active headcount, for judging what "a lot of people are out" means. */
+export async function activeUserCount(db: D1Database): Promise<number> {
+	const row = await db.prepare('SELECT COUNT(*) AS n FROM users WHERE active = 1').first<{ n: number }>();
+	return row?.n ?? 0;
 }
 
 // ---------------------------------------------------------------------------
@@ -357,8 +552,11 @@ export async function setConfig(db: D1Database, key: string, value: string): Pro
 
 export type NotifyChannel = 'line' | 'push';
 
+export type NotifyKind = 'daily' | 'week';
+
 export interface NotificationRun {
 	date: string;
+	kind: NotifyKind;
 	channel: NotifyChannel;
 	sent_at: string;
 	people: number;
@@ -384,15 +582,16 @@ export interface NotificationRun {
 export async function claimNotification(
 	db: D1Database,
 	date: string,
+	kind: NotifyKind,
 	channel: NotifyChannel,
 	people: number,
 ): Promise<boolean> {
 	const res = await db
 		.prepare(
-			`INSERT OR IGNORE INTO notification_runs (date, channel, sent_at, people, status)
-			 VALUES (?, ?, ?, ?, 'pending')`,
+			`INSERT OR IGNORE INTO notification_runs (date, kind, channel, sent_at, people, status)
+			 VALUES (?, ?, ?, ?, ?, 'pending')`,
 		)
-		.bind(date, channel, bangkokNow(), people)
+		.bind(date, kind, channel, bangkokNow(), people)
 		.run();
 	return (res.meta.changes ?? 0) > 0;
 }
@@ -400,28 +599,39 @@ export async function claimNotification(
 export async function finishNotification(
 	db: D1Database,
 	date: string,
+	kind: NotifyKind,
 	channel: NotifyChannel,
 	status: 'sent' | 'skipped_empty' | 'failed',
 	error?: string,
 ): Promise<void> {
 	await db
-		.prepare('UPDATE notification_runs SET status = ?, error = ?, sent_at = ? WHERE date = ? AND channel = ?')
-		.bind(status, error ?? null, bangkokNow(), date, channel)
+		.prepare(
+			'UPDATE notification_runs SET status = ?, error = ?, sent_at = ? WHERE date = ? AND kind = ? AND channel = ?',
+		)
+		.bind(status, error ?? null, bangkokNow(), date, kind, channel)
 		.run();
 }
 
-/** Drop a log row so a failed date can be retried. Both channels when unspecified. */
-export async function clearNotification(db: D1Database, date: string, channel?: NotifyChannel): Promise<void> {
+/** Drop a log row so a failed run can be retried. */
+export async function clearNotification(
+	db: D1Database,
+	date: string,
+	kind: NotifyKind,
+	channel?: NotifyChannel,
+): Promise<void> {
 	if (channel) {
-		await db.prepare('DELETE FROM notification_runs WHERE date = ? AND channel = ?').bind(date, channel).run();
+		await db
+			.prepare('DELETE FROM notification_runs WHERE date = ? AND kind = ? AND channel = ?')
+			.bind(date, kind, channel)
+			.run();
 		return;
 	}
-	await db.prepare('DELETE FROM notification_runs WHERE date = ?').bind(date).run();
+	await db.prepare('DELETE FROM notification_runs WHERE date = ? AND kind = ?').bind(date, kind).run();
 }
 
 export async function recentNotifications(db: D1Database, limit = 14): Promise<NotificationRun[]> {
 	const res = await db
-		.prepare('SELECT * FROM notification_runs ORDER BY date DESC, channel LIMIT ?')
+		.prepare('SELECT * FROM notification_runs ORDER BY date DESC, kind, channel LIMIT ?')
 		.bind(limit)
 		.all<NotificationRun>();
 	return res.results ?? [];

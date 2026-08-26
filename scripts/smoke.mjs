@@ -44,7 +44,7 @@ const OTHER = 'other@example.com';
 const STATE = mkdtempSync(join(tmpdir(), 'wnl-smoke-'));
 
 /** Assertions that must run for the suite to be considered complete. */
-const MIN_ASSERTIONS = 82;
+const MIN_ASSERTIONS = 128;
 
 let pass = 0;
 let fail = 0;
@@ -290,10 +290,15 @@ async function main() {
 	res = await post('/api/leave', { leaveTypeId: '1', startDate: MON }, { origin: 'null' });
 	eq('CSRF: opaque (null) origin rejected', res.status, 403);
 
+	// Absence is not permission: every browser sends Origin on a POST, so a
+	// request without one is not coming from one of our pages.
+	res = await post('/api/leave', { leaveTypeId: '1', startDate: MON }, { origin: null });
+	eq('CSRF: a missing origin is rejected', res.status, 403);
+
 	// --- booking rules over HTTP -------------------------------------------
 	res = await post('/api/leave', { leaveTypeId: '1', startDate: MON, endDate: FRI, note: 'smoke-private-note' });
 	eq('book Mon-Fri: accepted', res.status, 303);
-	eq('book Mon-Fri: charged 5 days', flashOf(res)?.message, 'Booked 5 day(s) of annual leave.');
+	eq('book Mon-Fri: charged 5 days', flashOf(res)?.message, 'Booked 5 days of annual leave.');
 
 	let entries = (await feed(MON, FRI)).entries;
 	eq('feed: booking present', entries.length, 1);
@@ -323,7 +328,37 @@ async function main() {
 	res = await post(`/api/leave/${bookingId}/edit`, {
 		leaveTypeId: '1', startDate: MON, endDate: addDays(MON, 2), note: 'smoke-private-note',
 	});
-	eq('shortening credits its own days back', flashOf(res)?.message, 'Updated to 3 day(s) of annual leave.');
+	eq('shortening credits its own days back', flashOf(res)?.message, 'Updated to 3 days of annual leave.');
+
+	// --- security headers ---------------------------------------------------
+	{
+		const headers = (await fetch(`${BASE}/me`)).headers;
+		const csp = headers.get('content-security-policy') ?? '';
+		check('CSP is set on HTML', csp.includes("default-src 'self'"), csp);
+		check('CSP allows the inline theme script by hash only', /script-src 'self' 'sha256-[A-Za-z0-9+/=]+'/.test(csp), csp);
+		check('CSP forbids framing', csp.includes("frame-ancestors 'none'"), csp);
+		eq('HTML is not stored by shared caches', headers.get('cache-control'), 'private, no-store');
+		eq('MIME sniffing off', headers.get('x-content-type-options'), 'nosniff');
+		// `same-origin`, not `no-referrer`: the app reads its own Referer to send
+		// people back where they came from.
+		eq('referrer stays inside the origin', headers.get('referrer-policy'), 'same-origin');
+	}
+
+	// --- the Referer header is a redirect target, so it is not trusted -------
+	//
+	// A page elsewhere can set its own Referrer-Policy and send us anything.
+	// `//evil.example` is a valid URL *pathname*, and would be a
+	// protocol-relative redirect off the site if it were used as given.
+	res = await post('/api/leave/1/cancel', {}, { referer: 'https://evil.example//evil.example' });
+	eq('a cross-origin referrer is ignored', res.headers.get('location'), '/me');
+	res = await post('/api/leave/1/cancel', {}, { referer: `${BASE}//evil.example` });
+	check(
+		'a same-origin referrer with a protocol-relative path is refused',
+		!(res.headers.get('location') ?? '').startsWith('//'),
+		res.headers.get('location'),
+	);
+	res = await post('/api/leave/1/cancel', {}, { referer: `${BASE}/?y=2026&m=9` });
+	eq('an ordinary same-origin referrer is honoured', res.headers.get('location'), '/?y=2026&m=9');
 
 	// --- open redirect ------------------------------------------------------
 	for (const evil of ['//evil.example', 'https://evil.example', '/\\evil.example']) {
@@ -366,8 +401,99 @@ async function main() {
 	check('digest: weekend not posted', /would not post/i.test(flashOf(res)?.message ?? ''), flashOf(res)?.message);
 
 	res = await post('/admin/notify/send', { date: MON });
-	check('digest: refuses to send with no channel token', /not configured/i.test(flashOf(res)?.message ?? ''), flashOf(res)?.message);
+	check(
+		'digest: refuses to send with no channel token',
+		/no channel is configured/i.test(flashOf(res)?.message ?? ''),
+		flashOf(res)?.message,
+	);
 	eq('digest: nothing logged when nothing was sent', d1Rows('SELECT COUNT(*) AS n FROM notification_runs')[0]?.n, 0);
+
+	// --- note visibility ----------------------------------------------------
+	//
+	// The note in the booking above was written with the box unticked, so it is
+	// private. The author can read it back; a colleague cannot, and that is
+	// asserted from the other identity further down.
+	// Found by id: the suite has booked more than one thing by now, and the feed
+	// is ordered by date rather than by whatever was created last.
+	const mine = async () => (await feed(MON, FRI)).entries.find((e) => e.id === bookingId);
+
+	// Set the note here rather than relying on one written earlier — the
+	// open-redirect tests above edit this same booking, and a test that depends
+	// on another test's leftovers breaks the day that one changes.
+	res = await post(`/api/leave/${bookingId}/edit`, {
+		leaveTypeId: '1', startDate: MON, endDate: addDays(MON, 2), note: 'smoke-private-note',
+	});
+	eq('note set for the privacy checks', flashOf(res)?.kind, 'ok');
+
+	// The booking sits about a month ahead, so ask for the month it is in rather
+	// than the default view, which is today's.
+	const bookedMonth = `${BASE}/?y=${MON.slice(0, 4)}&m=${Number(MON.slice(5, 7))}`;
+	let page = await (await fetch(bookedMonth)).text();
+	check('author sees their own private note in the calendar', page.includes('smoke-private-note'), 'own note missing');
+	eq('and in the JSON feed', (await mine())?.note, 'smoke-private-note');
+
+	// Sharing it puts the same note in front of everyone; the flag is what
+	// changes, not the text.
+	res = await post(`/api/leave/${bookingId}/edit`, {
+		leaveTypeId: '1', startDate: MON, endDate: addDays(MON, 2), note: 'smoke-shared-note', noteVisibility: 'shared',
+	});
+	eq('note can be shared', flashOf(res)?.kind, 'ok');
+	eq(
+		'and the row records it',
+		d1Rows(`SELECT note_private FROM leave_requests WHERE id = '${bookingId}'`)[0]?.note_private,
+		0,
+	);
+
+	res = await post(`/api/leave/${bookingId}/edit`, {
+		leaveTypeId: '1', startDate: MON, endDate: addDays(MON, 2), note: 'smoke-private-note',
+	});
+	eq('and made private again by omitting the box', d1Rows(`SELECT note_private FROM leave_requests WHERE id = '${bookingId}'`)[0]?.note_private, 1);
+
+	// --- audit trail --------------------------------------------------------
+	const trail = d1Rows(`SELECT action, actor_email, subject_email FROM leave_audit WHERE leave_id = '${bookingId}' ORDER BY id`);
+	eq('the booking was recorded as created', trail[0]?.action, 'created');
+	eq('by its author', trail[0]?.actor_email, ADMIN);
+	check('and every edit since was recorded', trail.filter((r) => r.action === 'edited').length >= 3, JSON.stringify(trail));
+	const snapshots = d1Rows(`SELECT before, after FROM leave_audit WHERE leave_id = '${bookingId}' AND action = 'edited' ORDER BY id DESC LIMIT 1`);
+	check('an edit records what changed', /"start_date"/.test(snapshots[0]?.before ?? ''), snapshots[0]?.before);
+	// The trail must never become a second copy of private notes.
+	eq(
+		'no note text is copied into the trail',
+		d1Rows(`SELECT COUNT(*) AS n FROM leave_audit WHERE before LIKE '%smoke-private-note%' OR after LIKE '%smoke-private-note%'`)[0]?.n,
+		0,
+	);
+
+	// --- coverage warning ---------------------------------------------------
+	let preview = await (await fetch(`${BASE}/api/leave/preview?leaveTypeId=1&start=${MON}&end=${MON}`)).json();
+	eq('preview still returns a day count', preview.days, 1);
+	check('and says nothing about coverage when only you are out', preview.coverage === null, JSON.stringify(preview.coverage));
+
+	// --- holiday import -----------------------------------------------------
+	res = await post('/admin/holidays/import', { list: '2027-01-01 New Year\n2027-04-13 Songkran' });
+	eq('holiday import accepted', flashOf(res)?.kind, 'ok');
+	// Counted by the two dates imported, not by year: the seed already carries a
+	// set of Thai holidays, and asserting on a total would be asserting on those.
+	eq(
+		'both holidays stored',
+		d1Rows("SELECT COUNT(*) AS n FROM holidays WHERE date IN ('2027-01-01','2027-04-13')")[0]?.n,
+		2,
+	);
+
+	res = await post('/admin/holidays/import', { list: '2028-01-01 Good\nnonsense line' });
+	eq('a bad line rejects the whole import', flashOf(res)?.kind, 'err');
+	eq('and nothing from it was written', d1Rows("SELECT COUNT(*) AS n FROM holidays WHERE date LIKE '2028-%'")[0]?.n, 0);
+
+	// --- language -----------------------------------------------------------
+	res = await post('/me/lang', { lang: 'th' });
+	eq('language can be set to Thai', flashOf(res)?.kind, 'ok');
+	page = await (await fetch(`${BASE}/me`)).text();
+	check('the interface is in Thai', page.includes('การลาของฉัน'), 'Thai heading missing');
+	check('and the document says so', page.includes('<html lang="th"'), 'lang attribute not switched');
+	res = await post('/me/lang', { lang: 'kr' });
+	eq('an unoffered language is refused', flashOf(res)?.kind, 'err');
+	res = await post('/me/lang', { lang: 'en' });
+	page = await (await fetch(`${BASE}/me`)).text();
+	check('and back to English', page.includes('My leave'), 'English heading missing');
 
 	// --- browser push ------------------------------------------------------
 	//
@@ -417,7 +543,11 @@ async function main() {
 	// A subscription exists, but the server cannot sign a push without a VAPID
 	// pair, so the digest must report that rather than claiming the date.
 	res = await post('/admin/notify/send', { date: MON });
-	check('digest: still not configured for push', /not configured/i.test(flashOf(res)?.message ?? ''), flashOf(res)?.message);
+	check(
+		'digest: still not configured for push',
+		/no channel is configured/i.test(flashOf(res)?.message ?? ''),
+		flashOf(res)?.message,
+	);
 	eq('digest: no run claimed for an unsendable channel', d1Rows('SELECT COUNT(*) AS n FROM notification_runs')[0]?.n, 0);
 
 	// --- admin actions ------------------------------------------------------
@@ -442,6 +572,8 @@ async function main() {
 
 	eq('second user is not admin', (await fetch(`${BASE}/admin`)).status, 403);
 	eq('second user cannot reach an admin action', (await post('/admin/quotas/bulk', { year: '2027', leaveTypeId: '1', days: '1' })).status, 403);
+	eq('second user cannot import holidays', (await post('/admin/holidays/import', { list: '2030-01-01 Sneaky' })).status, 403);
+	eq('and nothing was imported', d1Rows("SELECT COUNT(*) AS n FROM holidays WHERE date LIKE '2030-%'")[0]?.n, 0);
 
 	// --- per-person page: schedule is shared, balances are not ---------------
 	const otherViewsAdmin = await (await fetch(`${BASE}/u/${encodeURIComponent(ADMIN)}`)).text();
@@ -453,6 +585,23 @@ async function main() {
 	check('a person sees their own balances', ownPage.includes('class="balances"'), 'own balances missing');
 
 	eq('unknown person 404s', (await fetch(`${BASE}/u/nobody%40example.com`)).status, 404);
+
+	// --- a colleague cannot read a private note -----------------------------
+	const colleagueView = await (await fetch(`${BASE}/?y=${MON.slice(0, 4)}&m=${Number(MON.slice(5, 7))}`)).text();
+	check('a private note is absent from a colleague\'s calendar', !colleagueView.includes('smoke-private-note'), 'private note leaked');
+	const colleagueFeed = (await feed(MON, FRI)).entries;
+	const theirs = colleagueFeed.find((e) => e.id === bookingId);
+	eq('and absent from their JSON feed', theirs?.note ?? null, null);
+	check('though the booking itself is still visible', Boolean(theirs), 'booking hidden entirely');
+
+	// --- coverage warning, seen from the other side -------------------------
+	//
+	// The admin is booked off MON..MON+2, so a colleague previewing the same
+	// days must be told — by name, since the calendar shows those anyway.
+	const withCoverage = await (await fetch(`${BASE}/api/leave/preview?leaveTypeId=1&start=${MON}&end=${MON}`)).json();
+	check('coverage reports the colleague already away', withCoverage.coverage?.out === 2, JSON.stringify(withCoverage.coverage));
+	check('and names them', (withCoverage.coverage?.names ?? []).includes('Admin'), JSON.stringify(withCoverage.coverage));
+	check('two of two people out is flagged as busy', withCoverage.coverage?.busy === true, JSON.stringify(withCoverage.coverage));
 
 	// --- push subscriptions belong to someone -------------------------------
 	const adminEndpoint = 'https://push.example.net/wpush/v2/admin-laptop';
@@ -560,10 +709,41 @@ async function main() {
 	cal = await (await fetch(`${BASE}/`)).text();
 	check('calendar back to Monday first', cal.indexOf('>Mon<') < cal.indexOf('>Sun<'), 'did not rotate back');
 
-	// --- "out today / this week" summary ------------------------------------
-	const todayHtml = await (await fetch(`${BASE}/`)).text();
-	check('summary shows on the current month', todayHtml.includes('Out today'), 'summary missing');
-	check('summary looks forward, not at a mostly-past week', todayHtml.includes('Next 7 days'), 'forward window missing');
+	// --- "out today / next 7 days" summary ----------------------------------
+	//
+	// Rows are inserted straight into D1 rather than booked over HTTP: this is
+	// about what the summary renders, and a booking would be refused or not
+	// depending on which day of the week the suite happens to run.
+	const TODAY = (await (await fetch(`${BASE}/health`)).json()).bangkokToday;
+	const SOON = addDays(TODAY, 2);
+	const insertLeave = (id, email, date) =>
+		d1(
+			`INSERT INTO leave_requests (id, user_email, leave_type_id, start_date, end_date, start_half, end_half, days_total, note, note_private, status, created_at)
+			 VALUES ('${id}', '${email}', 1, '${date}', '${date}', 'full', 'full', 1, NULL, 1, 'confirmed', '${date}')`,
+		);
+
+	// Nothing booked in the window: one line, not two cards each saying nothing.
+	const quietHtml = await (await fetch(`${BASE}/`)).text();
+	check(
+		'a quiet week collapses to a single line',
+		quietHtml.includes('Nobody is out today or in the next 7 days'),
+		'combined empty state missing',
+	);
+	check('and drops the two headings', !quietHtml.includes('Out today'), 'empty cards still rendered');
+
+	insertLeave('smoke-today', ADMIN, TODAY);
+	const outTodayHtml = await (await fetch(`${BASE}/`)).text();
+	check('summary shows on the current month', outTodayHtml.includes('Out today'), 'summary missing');
+	check('and names who is out', outTodayHtml.includes('Admin'), 'name missing from summary');
+	check('the combined line is gone', !outTodayHtml.includes('Nobody is out today or in'), 'quiet line still rendered');
+
+	// Someone else, inside the forward window but not today.
+	insertLeave('smoke-soon', OTHER, SOON);
+	const forwardHtml = await (await fetch(`${BASE}/`)).text();
+	check('summary looks forward, not at a mostly-past week', forwardHtml.includes('Next 7 days'), 'forward window missing');
+	check('and names who is out later', forwardHtml.includes('Other'), 'forward name missing');
+
+	d1("DELETE FROM leave_requests WHERE id IN ('smoke-today', 'smoke-soon')");
 
 	// Browsing a month that cannot contain today: the summary must be absent
 	// rather than rendering a misleading "nobody is out today".

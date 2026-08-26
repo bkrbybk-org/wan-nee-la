@@ -1,5 +1,6 @@
 import type { LeaveEntry, LeaveType } from '../types.ts';
 import { SelectField, TextField } from './fields.tsx';
+import { useLang, useT } from '../i18n/context.tsx';
 
 interface BookingFormProps {
 	types: readonly LeaveType[];
@@ -30,12 +31,31 @@ export function BookingForm({ types, today, compact, entry, defaultDate }: Booki
 	const half = (want: string, current: string | undefined, fallback: string) =>
 		(current ?? fallback) === want;
 
+	const t = useT();
+	const lang = useLang();
+
 	return (
-		<form method="post" action={action} class={`booking ${compact ? 'compact' : ''}`} data-booking>
-			<SelectField id={`leaveTypeId-${uid}`} name="leaveTypeId" label="Leave type" required>
-				{types.map((t) => (
-					<option value={String(t.id)} selected={entry ? t.id === entry.leave_type_id : undefined}>
-						{t.label_en} · {t.label_th}
+		<form
+			method="post"
+			action={action}
+			class={`booking ${compact ? 'compact' : ''}`}
+			data-booking
+			// Lets the coverage line ignore the booking being edited, instead of
+			// counting it as somebody else already away on those days.
+			data-editing={entry?.id}
+			// Templates, with their placeholders intact, for the two lines the
+			// client fills in after asking the server. Same reasoning as the push
+			// card: the wording stays in the catalogue, not in the bundle.
+			data-booking-strings={JSON.stringify({
+				days: t('book.days'),
+				coverage: t('book.coverage'),
+				coverageMore: t('book.coverageMore'),
+			})}
+		>
+			<SelectField id={`leaveTypeId-${uid}`} name="leaveTypeId" label={t('book.type')} required>
+				{types.map((type) => (
+					<option value={String(type.id)} selected={entry ? type.id === entry.leave_type_id : undefined}>
+						{lang === 'th' ? type.label_th : type.label_en} · {lang === 'th' ? type.label_en : type.label_th}
 					</option>
 				))}
 			</SelectField>
@@ -44,16 +64,16 @@ export function BookingForm({ types, today, compact, entry, defaultDate }: Booki
 				<TextField
 					id={`startDate-${uid}`}
 					name="startDate"
-					label="From"
+					label={t('book.from')}
 					type="date"
 					required
 					value={entry ? entry.start_date : (defaultDate ?? today)}
 					extra={{ 'data-start': '' }}
 				/>
-				<SelectField id={`startHalf-${uid}`} name="startHalf" label="Start half" extra={{ 'data-start-half': '' }}>
-					<option value="full" selected={half('full', entry?.start_half, 'full')}>Full day</option>
-					<option value="am" selected={half('am', entry?.start_half, 'full')}>Morning only</option>
-					<option value="pm" selected={half('pm', entry?.start_half, 'full')}>Afternoon only</option>
+				<SelectField id={`startHalf-${uid}`} name="startHalf" label={t('book.startHalf')} extra={{ 'data-start-half': '' }}>
+					<option value="full" selected={half('full', entry?.start_half, 'full')}>{t('book.fullDay')}</option>
+					<option value="am" selected={half('am', entry?.start_half, 'full')}>{t('book.am')}</option>
+					<option value="pm" selected={half('pm', entry?.start_half, 'full')}>{t('book.pm')}</option>
 				</SelectField>
 			</div>
 
@@ -61,43 +81,45 @@ export function BookingForm({ types, today, compact, entry, defaultDate }: Booki
 				<TextField
 					id={`endDate-${uid}`}
 					name="endDate"
-					label="To"
+					label={t('book.to')}
 					type="date"
 					value={endValue}
-					support="Leave blank for a single day"
+					support={t('book.toHelp')}
 					extra={{ 'data-end': '' }}
 				/>
 				<SelectField
 					id={`endHalf-${uid}`}
 					name="endHalf"
-					label="End half"
+					label={t('book.endHalf')}
 					class="end-half-field"
 					extra={{ 'data-end-half': '' }}
 					fieldExtra={{ 'data-end-half-field': '' }}
 				>
-					<option value="full" selected={half('full', entry?.end_half, 'full')}>Full day</option>
-					<option value="am" selected={half('am', entry?.end_half, 'full')}>Morning only</option>
+					<option value="full" selected={half('full', entry?.end_half, 'full')}>{t('book.fullDay')}</option>
+					<option value="am" selected={half('am', entry?.end_half, 'full')}>{t('book.am')}</option>
 				</SelectField>
 			</div>
 
-			<TextField
-				id={`note-${uid}`}
-				name="note"
-				label="Note (optional)"
-				maxlength={500}
-				value={entry?.note ?? ''}
-				support="Visible to everyone on the calendar"
-			/>
+			<TextField id={`note-${uid}`} name="note" label={t('book.note')} maxlength={500} value={entry?.note ?? ''} />
+			{/* Private by default. The old behaviour was to share every note with
+			    everyone, which was defensible for a shared calendar — the problem
+			    was that the field gave no sign of it (ISSUES.md #17). */}
+			<label class="checkline">
+				<input type="checkbox" name="noteVisibility" value="shared" checked={entry ? !entry.note_private : false} />
+				{t('book.shareNote')}
+			</label>
+			<p class="tf-support">{t('book.noteHelp')}</p>
 
 			<div class="actions">
-				<button type="submit" class="btn primary">{editing ? 'Save changes' : 'Book leave'}</button>
+				<button type="submit" class="btn primary">{editing ? t('book.save') : t('book.submit')}</button>
 				{/* "Discard", not "Cancel" — this page also has a button that cancels
 				    the leave itself, and two different meanings of Cancel side by
 				    side is how someone deletes a booking they meant to keep. */}
-				{editing ? <a class="btn text" href="/me">Discard changes</a> : null}
+				{editing ? <a class="btn text" href="/me">{t('book.discard')}</a> : null}
 				{/* Filled in by booking.js; stays empty and harmless without it. */}
 				<span class="preview" data-preview aria-live="polite"></span>
 			</div>
+			<p class="coverage" data-coverage aria-live="polite"></p>
 		</form>
 	);
 }

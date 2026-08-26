@@ -1,6 +1,7 @@
 import { describeRange, formatDays } from '../domain/dates.ts';
 import type { Balance, LeaveEntry, User } from '../types.ts';
 import { Layout, YearNav } from './layout.tsx';
+import { useLang, useT } from '../i18n/context.tsx';
 
 interface UserPageProps {
 	viewer: User;
@@ -16,10 +17,20 @@ interface UserPageProps {
 }
 
 export function UserPage(props: UserPageProps) {
-	const { viewer, subject, year, minYear, maxYear, entries, balances, version } = props;
+	return (
+		<Layout title={props.subject.display_name} user={props.viewer} active="calendar" version={props.version}>
+			<UserBody {...props} />
+		</Layout>
+	);
+}
+
+function UserBody(props: UserPageProps) {
+	const { subject, year, minYear, maxYear, entries, balances } = props;
+	const t = useT();
+	const lang = useLang();
 
 	return (
-		<Layout title={subject.display_name} user={viewer} active="calendar" version={version}>
+		<>
 			<div class="page-head">
 				<h1>{subject.display_name}</h1>
 				<YearNav basePath={`/u/${encodeURIComponent(subject.email)}`} year={year} minYear={minYear} maxYear={maxYear} />
@@ -33,29 +44,36 @@ export function UserPage(props: UserPageProps) {
 							<div class="balance-card">
 								<div class="balance-top">
 									<span class="dot" style={`--chip: ${b.type.color}`} />
-									<span class="balance-label">{b.type.label_en}</span>
-									<span class="balance-th muted">{b.type.label_th}</span>
+									<span class="balance-label">{lang === 'th' ? b.type.label_th : b.type.label_en}</span>
+									<span class="balance-th muted">{lang === 'th' ? b.type.label_en : b.type.label_th}</span>
 								</div>
 								{b.type.counts_quota ? (
 									<>
 										<div class="balance-big">
 											{formatDays(b.remaining)}
-											<span class="unit">days left</span>
+											<span class="unit">{t('me.daysLeft')}</span>
 										</div>
-										<div class="meter" role="img" aria-label={`${formatDays(b.used)} of ${formatDays(b.allotted)} days used`}>
+										<div
+											class="meter"
+											role="img"
+											aria-label={t('me.meterLabel', {
+												used: formatDays(b.used),
+												allotted: formatDays(b.allotted),
+											})}
+										>
 											<span class="meter-fill" style={`width: ${pct}%; --chip: ${b.type.color}`} />
 										</div>
 										<div class="balance-sub muted">
-											{formatDays(b.used)} used of {formatDays(b.allotted)}
+											{t('me.usedOf', { used: formatDays(b.used), allotted: formatDays(b.allotted) })}
 										</div>
 									</>
 								) : (
 									<>
 										<div class="balance-big">
 											{formatDays(b.used)}
-											<span class="unit">days taken</span>
+											<span class="unit">{t('me.daysTaken')}</span>
 										</div>
-										<div class="balance-sub muted">No annual allowance</div>
+										<div class="balance-sub muted">{t('me.noAllowance')}</div>
 									</>
 								)}
 							</div>
@@ -65,9 +83,9 @@ export function UserPage(props: UserPageProps) {
 			) : null}
 
 			<section class="card">
-				<h2>Leave in {year}</h2>
+				<h2>{t('user.leaveIn', { year })}</h2>
 				{entries.length === 0 ? (
-					<p class="muted">Nothing booked.</p>
+					<p class="muted">{t('user.nothing')}</p>
 				) : (
 					<ul class="leave-list">
 						{entries.map((e) => (
@@ -76,7 +94,7 @@ export function UserPage(props: UserPageProps) {
 					</ul>
 				)}
 			</section>
-		</Layout>
+		</>
 	);
 }
 
@@ -88,14 +106,18 @@ export function UserPage(props: UserPageProps) {
  * never rendered here, for anyone, confirmed or cancelled (see task brief).
  */
 function UserLeaveRow({ entry }: { entry: LeaveEntry }) {
+	const t = useT();
+	const lang = useLang();
 	const cancelled = entry.status === 'cancelled';
 	return (
 		<li class={`leave-row ${cancelled ? 'cancelled' : ''}`}>
 			<span class="dot" style={`--chip: ${entry.color}`} />
-			<span class="leave-when">{describeRange(entry.start_date, entry.end_date, entry.start_half, entry.end_half)}</span>
-			<span class="leave-type muted">{entry.type_label_en}</span>
+			<span class="leave-when">
+				{describeRange(entry.start_date, entry.end_date, entry.start_half, entry.end_half, lang)}
+			</span>
+			<span class="leave-type muted">{lang === 'th' ? entry.type_label_th : entry.type_label_en}</span>
 			<span class="leave-days">{formatDays(entry.days_total)}d</span>
-			{cancelled ? <span class="tag">cancelled</span> : null}
+			{cancelled ? <span class="tag">{t('me.cancelled')}</span> : null}
 		</li>
 	);
 }

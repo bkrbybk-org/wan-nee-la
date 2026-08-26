@@ -2,7 +2,7 @@
 // Unit tests for src/notify/line.ts — webhook signature verification, group-id
 // extraction, and the digest text. No network: pushText is not exercised here.
 // Run: npm run test:line
-import { buildDigest, groupIdFromWebhook, timingSafeEqual, verifyLineSignature } from '../src/notify/line.ts';
+import { buildDigest, buildWeekAhead, groupIdFromWebhook, timingSafeEqual, verifyLineSignature } from '../src/notify/line.ts';
 
 let failures = 0;
 const check = (name, cond, detail) => {
@@ -142,6 +142,48 @@ check('digest: range ending AM marks its last day', endsAm.includes('(morning)')
 // LINE rejects anything past ~5000 characters, so a big day must not blow the limit.
 const many = buildDigest('2026-08-17', Array.from({ length: 400 }, (_, i) => entry({ display_name: `Person ${i}` })));
 check('digest: clamped below the LINE limit', many.length <= 4900, `length ${many.length}`);
+
+// ---------------------------------------------------------------------------------------
+// buildWeekAhead — the Monday post.
+// ---------------------------------------------------------------------------------------
+
+// Monday 2026-08-17 to Sunday 2026-08-23.
+const MON = '2026-08-17';
+const SUN = '2026-08-23';
+
+// Distinct addresses on purpose: people are grouped by who they are, not by
+// what they are called, so fixtures sharing one email would merge into one.
+const week = buildWeekAhead(MON, SUN, [
+	entry({ user_email: 'mai@x.com', display_name: 'Mai', start_date: '2026-08-18', end_date: '2026-08-19', days_total: 2 }),
+	entry({ user_email: 'bob@x.com', display_name: 'Bob', start_date: MON, end_date: '2026-08-21', days_total: 5 }),
+]);
+check('week: names everyone away', week.includes('Mai') && week.includes('Bob'), week);
+check('week: a full working week reads as "all week"', /Bob.*all week/.test(week), week);
+check('week: a two-day absence lists its days', /Mai.*Tue, Wed/.test(week), week);
+check('week: counts people, not bookings', week.includes('2 people away'), week);
+
+// Two bookings by the same person in one week is still one person away.
+const twice = buildWeekAhead(MON, SUN, [
+	entry({ user_email: 'mai@x.com', display_name: 'Mai', start_date: MON, end_date: MON, days_total: 1 }),
+	entry({ user_email: 'mai@x.com', display_name: 'Mai', start_date: '2026-08-20', end_date: '2026-08-20', days_total: 1 }),
+]);
+check('week: two bookings by one person are one line', (twice.match(/Mai/g) ?? []).length === 1, twice);
+check('week: and both days are on it', /Mai.*Mon, Thu/.test(twice), twice);
+check('week: counted as one person', twice.includes('1 person away'), twice);
+
+// Weekend days inside a range are not reported: nobody is "away" on a Saturday.
+const overWeekend = buildWeekAhead(MON, SUN, [
+	entry({ user_email: 'nok@x.com', display_name: 'Nok', start_date: '2026-08-21', end_date: SUN, days_total: 1 }),
+]);
+check('week: weekend days are dropped', !/Sat|Sun/.test(overWeekend), overWeekend);
+check('week: the working part survives', /Nok.*Fri/.test(overWeekend), overWeekend);
+
+const bigWeek = buildWeekAhead(
+	MON,
+	SUN,
+	Array.from({ length: 400 }, (_, i) => entry({ user_email: `p${i}@x.com`, display_name: `P${i}`, start_date: MON, end_date: MON, days_total: 1 })),
+);
+check('week: clamped below the LINE limit', bigWeek.length <= 4900, `length ${bigWeek.length}`);
 
 console.log(failures === 0 ? '\nAll LINE tests passed.' : `\n${failures} failure(s).`);
 process.exit(failures === 0 ? 0 : 1);

@@ -4,11 +4,11 @@
  * 08:00 — a separate "test" path would drift and stop being a test.
  */
 
-import { bangkokToday, isWeekend } from '../domain/dates.ts';
+import { addDays, bangkokToday, dayOfWeek, isWeekend } from '../domain/dates.ts';
 import * as db from '../repo/db.ts';
-import type { NotifyChannel } from '../repo/db.ts';
+import type { NotifyChannel, NotifyKind } from '../repo/db.ts';
 import type { Env } from '../types.ts';
-import { buildDigest, pushText } from './line.ts';
+import { buildDigest, buildWeekAhead, pushText, weekAway } from './line.ts';
 import { sendPush, type VapidKeys } from './push.ts';
 
 export const GROUP_ID_KEY = 'line_group_id';
@@ -18,6 +18,7 @@ export type DigestStatus =
 	| 'skipped_empty'
 	| 'skipped_holiday'
 	| 'skipped_weekend'
+	| 'skipped_not_monday'
 	| 'skipped_duplicate'
 	| 'not_configured'
 	| 'no_subscribers'
@@ -92,21 +93,30 @@ function rollUp(channels: ChannelOutcome[]): { status: DigestStatus; error?: str
  * Unchanged in substance from when it was the only channel: claim the date,
  * then send, so a crash cannot produce a second message in a company group.
  */
-async function runLine(env: Env, date: string, text: string, people: number, force: boolean): Promise<ChannelOutcome> {
+async function runLine(
+	env: Env,
+	date: string,
+	kind: NotifyKind,
+	text: string,
+	people: number,
+	force: boolean,
+): Promise<ChannelOutcome> {
 	const groupId = await resolveGroupId(env);
 	if (!lineConfigured(env) || !groupId) return { channel: 'line', status: 'not_configured' };
 
-	if (force) await db.clearNotification(env.DB, date, 'line');
-	if (!(await db.claimNotification(env.DB, date, 'line', people))) {
+	if (force) await db.clearNotification(env.DB, date, kind, 'line');
+	if (!(await db.claimNotification(env.DB, date, kind, 'line', people))) {
 		return { channel: 'line', status: 'skipped_duplicate' };
 	}
 
-	const res = await pushText(env.LINE_CHANNEL_ACCESS_TOKEN, groupId, text, `wnl-${date}`);
+	// The retry key carries the kind too: LINE would otherwise treat Monday's
+	// week-ahead post as a duplicate of Monday's daily digest and drop it.
+	const res = await pushText(env.LINE_CHANNEL_ACCESS_TOKEN, groupId, text, `wnl-${kind}-${date}`);
 	if (!res.ok) {
-		await db.finishNotification(env.DB, date, 'line', 'failed', res.error);
+		await db.finishNotification(env.DB, date, kind, 'line', 'failed', res.error);
 		return { channel: 'line', status: 'failed', error: res.error };
 	}
-	await db.finishNotification(env.DB, date, 'line', 'sent');
+	await db.finishNotification(env.DB, date, kind, 'line', 'sent');
 	return { channel: 'line', status: 'sent', recipients: 1 };
 }
 
@@ -121,24 +131,34 @@ async function runLine(env: Env, date: string, text: string, people: number, for
  * The whole fan-out is one claim: a partial failure does not re-send to the
  * browsers that already got it.
  */
-async function runPush(env: Env, date: string, text: string, people: number, force: boolean): Promise<ChannelOutcome> {
+async function runPush(
+	env: Env,
+	date: string,
+	kind: NotifyKind,
+	text: string,
+	people: number,
+	force: boolean,
+): Promise<ChannelOutcome> {
 	if (!pushConfigured(env)) return { channel: 'push', status: 'not_configured' };
 
 	const subs = await db.activeSubscriptions(env.DB);
 	if (subs.length === 0) return { channel: 'push', status: 'no_subscribers', recipients: 0 };
 
-	if (force) await db.clearNotification(env.DB, date, 'push');
-	if (!(await db.claimNotification(env.DB, date, 'push', people))) {
+	if (force) await db.clearNotification(env.DB, date, kind, 'push');
+	if (!(await db.claimNotification(env.DB, date, kind, 'push', people))) {
 		return { channel: 'push', status: 'skipped_duplicate' };
 	}
 
 	const payload = JSON.stringify({
-		title: `Out today · ${people} ${people === 1 ? 'person' : 'people'}`,
+		title:
+			kind === 'week'
+				? `Away this week · ${people} ${people === 1 ? 'person' : 'people'}`
+				: `Out today · ${people} ${people === 1 ? 'person' : 'people'}`,
 		// The service worker cannot fetch this from behind Access when it wakes,
 		// so the message travels inside the encrypted payload.
 		body: text,
 		url: '/',
-		tag: `wnl-digest-${date}`,
+		tag: `wnl-${kind}-${date}`,
 	});
 
 	const results = await Promise.all(subs.map((s) => sendPush(s, payload, vapidKeys(env))));
@@ -151,11 +171,11 @@ async function runPush(env: Env, date: string, text: string, people: number, for
 
 	if (delivered === 0) {
 		const error = results.find((r) => r.error)?.error ?? 'no subscription accepted the push';
-		await db.finishNotification(env.DB, date, 'push', 'failed', error);
+		await db.finishNotification(env.DB, date, kind, 'push', 'failed', error);
 		return { channel: 'push', status: 'failed', recipients: 0, error };
 	}
 
-	await db.finishNotification(env.DB, date, 'push', 'sent');
+	await db.finishNotification(env.DB, date, kind, 'push', 'sent');
 	return { channel: 'push', status: 'sent', recipients: delivered };
 }
 
@@ -194,8 +214,65 @@ export async function runDigest(
 	// D1 is happier with two small statements in a row than with a race for the
 	// same page. Neither can throw — each returns its own outcome.
 	const channels: ChannelOutcome[] = [
-		await runLine(env, date, text, people, force),
-		await runPush(env, date, text, people, force),
+		await runLine(env, date, 'daily', text, people, force),
+		await runPush(env, date, 'daily', text, people, force),
+	];
+
+	return { date, people, text, channels, ...rollUp(channels) };
+}
+
+/**
+ * The Monday week-ahead post.
+ *
+ * Monday only, and skipped when Monday is a public holiday — a notification
+ * about next week's cover, sent to people who are not working today, is a
+ * notification nobody wanted. Skipped too when nobody is away: silence carries
+ * the same information for free.
+ *
+ * Two separate escape hatches, because they are not the same permission:
+ *
+ *  - `allowAnyDay` runs the job on a day that is not Monday. The admin preview
+ *    and "send now" buttons need it; the cron never does.
+ *  - `force` discards an existing claim so the post goes out again. That is the
+ *    "resend if already logged" tick box, and nothing else may set it — the
+ *    claim is the only thing standing between a stuck admin and two identical
+ *    posts in a company group.
+ *
+ * Conflating the two is how the manual send came to ignore the duplicate guard
+ * entirely.
+ */
+export async function runWeekAhead(
+	env: Env,
+	date: string = bangkokToday(),
+	opts: { dryRun?: boolean; force?: boolean; allowAnyDay?: boolean } = {},
+): Promise<DigestOutcome> {
+	const to = addDays(date, 6);
+	const [entries, mondayHoliday, weekHolidays] = await Promise.all([
+		db.listLeaveInRange(env.DB, date, to),
+		db.holidaySet(env.DB, date, date),
+		db.holidaySet(env.DB, date, to),
+	]);
+
+	if (dayOfWeek(date) !== 1 && !opts.allowAnyDay) {
+		// Its own status rather than "weekend": an admin looking at a Tuesday log
+		// should not be told the day was a weekend.
+		return { date, status: 'skipped_not_monday', people: 0, channels: [] };
+	}
+	if (mondayHoliday.has(date)) return { date, status: 'skipped_holiday', people: 0, channels: [] };
+
+	// Counted from the same filtered view the message is built from, so a
+	// booking that covers only a Saturday is absent from both.
+	const away = weekAway(date, to, entries, weekHolidays);
+	if (away.size === 0) return { date, status: 'skipped_empty', people: 0, channels: [] };
+
+	const text = buildWeekAhead(date, to, entries, weekHolidays);
+	const people = away.size;
+	if (opts.dryRun) return { date, status: 'dry_run', people, text, channels: [] };
+
+	const force = Boolean(opts.force);
+	const channels: ChannelOutcome[] = [
+		await runLine(env, date, 'week', text, people, force),
+		await runPush(env, date, 'week', text, people, force),
 	];
 
 	return { date, people, text, channels, ...rollUp(channels) };

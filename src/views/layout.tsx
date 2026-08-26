@@ -1,6 +1,8 @@
 import type { Child } from 'hono/jsx';
 import type { User } from '../types.ts';
 import { AdminIcon, CalendarIcon, ChevronLeftIcon, ChevronRightIcon, PersonIcon } from './icons.tsx';
+import { LangProvider, useT } from '../i18n/context.tsx';
+import { toLang, type StringKey } from '../i18n/strings.ts';
 
 /**
  * Theme switching, inlined into <head> on purpose.
@@ -14,7 +16,7 @@ import { AdminIcon, CalendarIcon, ChevronLeftIcon, ChevronRightIcon, PersonIcon 
  * Three states: "system" (the default) stamps nothing and lets
  * prefers-color-scheme decide; "light" and "dark" stamp data-theme and win.
  */
-const THEME_SCRIPT = `(function(){
+export const THEME_SCRIPT = `(function(){
 var KEY='wnl-theme',ORDER=['system','light','dark'],root=document.documentElement;
 var S='<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true">';
 var ICON={
@@ -56,19 +58,48 @@ function initials(name: string): string {
 	return (parts[0][0] + (parts[1]?.[0] ?? '')).toUpperCase();
 }
 
-function sections(user: User): { href: string; label: string; key: Section; Icon: typeof CalendarIcon }[] {
+function sections(user: User): { href: string; label: StringKey; key: Section; Icon: typeof CalendarIcon }[] {
 	const items = [
-		{ href: '/', label: 'Calendar', key: 'calendar' as const, Icon: CalendarIcon },
-		{ href: '/me', label: 'My leave', key: 'me' as const, Icon: PersonIcon },
+		{ href: '/', label: 'nav.calendar' as const, key: 'calendar' as const, Icon: CalendarIcon },
+		{ href: '/me', label: 'nav.me' as const, key: 'me' as const, Icon: PersonIcon },
 	];
-	return user.is_admin ? [...items, { href: '/admin', label: 'Admin', key: 'admin' as const, Icon: AdminIcon }] : items;
+	return user.is_admin
+		? [...items, { href: '/admin', label: 'nav.admin' as const, key: 'admin' as const, Icon: AdminIcon }]
+		: items;
 }
 
 export function Layout({ title, user, active, version, children }: LayoutProps) {
 	const nav = sections(user);
+	const lang = toLang(user.lang);
 
 	return (
-		<html lang="en">
+		<LangProvider value={lang}>
+			<LayoutShell title={title} user={user} active={active} version={version} nav={nav} lang={lang}>
+				{children}
+			</LayoutShell>
+		</LangProvider>
+	);
+}
+
+/**
+ * The page itself, inside the language provider.
+ *
+ * Split out so `useT` can be called here — a component cannot read a context
+ * its own render supplies, only one an ancestor did.
+ */
+function LayoutShell({
+	title,
+	user,
+	active,
+	version,
+	nav,
+	lang,
+	children,
+}: LayoutProps & { nav: ReturnType<typeof sections>; lang: ReturnType<typeof toLang> }) {
+	const t = useT();
+
+	return (
+		<html lang={lang}>
 			<head>
 				<meta charset="utf-8" />
 				{/* viewport-fit=cover so the navigation bar can respect the iPhone home indicator */}
@@ -93,7 +124,7 @@ export function Layout({ title, user, active, version, children }: LayoutProps) 
 				<script src="/app.js" defer></script>
 			</head>
 			<body>
-				<a class="skip-link" href="#main">Skip to content</a>
+				<a class="skip-link" href="#main">{t('nav.skip')}</a>
 
 				{/* M3 small top app bar. The tabs in it are for desktop; on a phone
 				    they are hidden and the bottom navigation bar carries the same
@@ -103,16 +134,16 @@ export function Layout({ title, user, active, version, children }: LayoutProps) 
 						<span class="brand-mark" aria-hidden="true">🌴</span>
 						<span class="brand-name">wan-nee-la</span>
 					</a>
-					<nav class="nav" aria-label="Sections">
+					<nav class="nav" aria-label={t('nav.sections')}>
 						{nav.map(({ href, label, key, Icon }) => (
 							<a href={href} class={active === key ? 'on' : ''} aria-current={active === key ? 'page' : undefined}>
 								<Icon class="sm" />
-								{label}
+								{t(label)}
 							</a>
 						))}
 					</nav>
 					<div class="topbar-end">
-						<button type="button" class="icon-btn theme-toggle" data-theme-toggle aria-label="Theme"></button>
+						<button type="button" class="icon-btn theme-toggle" data-theme-toggle aria-label={t('nav.theme')}></button>
 							{/* The name is shown beside the avatar on a wide screen and hidden
 						    on a phone, so the avatar — not the name — carries the spoken
 						    identity. The tooltip is how someone confirms which account
@@ -121,7 +152,7 @@ export function Layout({ title, user, active, version, children }: LayoutProps) 
 						<span class="account-name" aria-hidden="true">{user.display_name}</span>
 						<span class="account" title={user.email}>
 							<span aria-hidden="true">{initials(user.display_name)}</span>
-							<span class="visually-hidden">Signed in as {user.display_name}</span>
+							<span class="visually-hidden">{t('nav.signedInAs', { name: user.display_name })}</span>
 						</span>
 					</div>
 				</header>
@@ -130,11 +161,11 @@ export function Layout({ title, user, active, version, children }: LayoutProps) 
 
 				<footer class="foot">
 					<span>wan-nee-la</span>
-					{version ? <span class="mono">build {version.slice(0, 8)}</span> : null}
+					{version ? <span class="mono">{t('foot.build', { version: version.slice(0, 8) })}</span> : null}
 				</footer>
 
 				{/* M3 navigation bar — phones only, hidden at the 768px breakpoint. */}
-				<nav class="navbar" aria-label="Sections">
+				<nav class="navbar" aria-label={t('nav.sections')}>
 					{nav.map(({ href, label, key, Icon }) => (
 						<a
 							href={href}
@@ -142,7 +173,7 @@ export function Layout({ title, user, active, version, children }: LayoutProps) 
 							aria-current={active === key ? 'page' : undefined}
 						>
 							<span class="navbar-icon"><Icon /></span>
-							{label}
+							{t(label)}
 						</a>
 					))}
 				</nav>
@@ -153,10 +184,11 @@ export function Layout({ title, user, active, version, children }: LayoutProps) 
 
 /** Previous / next year links, shared by /me and /u/:email. */
 export function YearNav({ basePath, year, minYear, maxYear }: { basePath: string; year: number; minYear: number; maxYear: number }) {
+	const t = useT();
 	return (
 		<div class="year-nav">
 			{year > minYear ? (
-				<a href={`${basePath}?y=${year - 1}`} class="icon-btn" aria-label={`Go to ${year - 1}`}>
+				<a href={`${basePath}?y=${year - 1}`} class="icon-btn" aria-label={t('nav.year', { year: year - 1 })}>
 					<ChevronLeftIcon />
 				</a>
 			) : (
@@ -164,7 +196,7 @@ export function YearNav({ basePath, year, minYear, maxYear }: { basePath: string
 			)}
 			<span class="year-nav-current">{year}</span>
 			{year < maxYear ? (
-				<a href={`${basePath}?y=${year + 1}`} class="icon-btn" aria-label={`Go to ${year + 1}`}>
+				<a href={`${basePath}?y=${year + 1}`} class="icon-btn" aria-label={t('nav.year', { year: year + 1 })}>
 					<ChevronRightIcon />
 				</a>
 			) : (

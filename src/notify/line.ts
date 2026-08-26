@@ -16,7 +16,7 @@
  *     nobody on leave rather than posting "nobody is out today".
  */
 
-import { describeRange } from '../domain/dates.ts';
+import { addDays, describeRange, isWeekend, shortDate, weekdayName } from '../domain/dates.ts';
 import type { LeaveEntry } from '../types.ts';
 
 export const LINE_PUSH_URL = 'https://api.line.me/v2/bot/message/push';
@@ -99,6 +99,70 @@ export function buildDigest(date: string, entries: readonly LeaveEntry[]): strin
 	}
 
 	lines.push('', `${entries.length} ${entries.length === 1 ? 'person' : 'people'} out.`);
+
+	const text = lines.join('\n');
+	return text.length > TEXT_LIMIT ? `${text.slice(0, TEXT_LIMIT - 1)}…` : text;
+}
+
+/**
+ * The Monday week-ahead post: one line per person, with the days they are away.
+ *
+ * Grouped by person rather than listed by day, because the question on a Monday
+ * morning is "who will I be missing this week", not "what does Thursday look
+ * like" — and a day-by-day list of the same five names is four times longer for
+ * no extra information.
+ */
+export interface WeekAwayPerson {
+	name: string;
+	type: string;
+	days: string[];
+}
+
+/**
+ * Who is away on which working days of the week.
+ *
+ * Shared by the message and by the count that goes with it, so the two cannot
+ * disagree — a booking that covers only a Saturday belongs in neither.
+ *
+ * Weekends and public holidays are dropped: on a day the office is shut,
+ * everyone is away, and saying so tells nobody anything.
+ */
+export function weekAway(
+	from: string,
+	to: string,
+	entries: readonly LeaveEntry[],
+	holidays: ReadonlySet<string> = new Set(),
+): Map<string, WeekAwayPerson> {
+	const byPerson = new Map<string, WeekAwayPerson>();
+	for (const e of entries) {
+		for (let d = e.start_date > from ? e.start_date : from; d <= to && d <= e.end_date; d = addDays(d, 1)) {
+			if (isWeekend(d) || holidays.has(d)) continue;
+			const key = `${e.user_email}|${e.type_label_en}`;
+			const found = byPerson.get(key);
+			if (found) found.days.push(d);
+			else byPerson.set(key, { name: e.display_name, type: e.type_label_en, days: [d] });
+		}
+	}
+	return byPerson;
+}
+
+export function buildWeekAhead(
+	from: string,
+	to: string,
+	entries: readonly LeaveEntry[],
+	holidays: ReadonlySet<string> = new Set(),
+): string {
+	const lines = [`🌴 ลาสัปดาห์นี้ / Away this week — ${shortDate(from)} to ${shortDate(to)}`, ''];
+
+	const byPerson = weekAway(from, to, entries, holidays);
+
+	for (const person of byPerson.values()) {
+		// A full working week reads better as "all week" than as five dates.
+		const when = person.days.length >= 5 ? 'all week' : person.days.map((d) => weekdayName(d)).join(', ');
+		lines.push(`• ${person.name} — ${person.type} · ${when}`);
+	}
+
+	lines.push('', `${byPerson.size} ${byPerson.size === 1 ? 'person' : 'people'} away.`);
 
 	const text = lines.join('\n');
 	return text.length > TEXT_LIMIT ? `${text.slice(0, TEXT_LIMIT - 1)}…` : text;

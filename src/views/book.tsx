@@ -3,6 +3,8 @@ import type { LeaveType, User } from '../types.ts';
 import { Layout } from './layout.tsx';
 import { BookingForm } from './booking.tsx';
 import { ChevronLeftIcon } from './icons.tsx';
+import { useLang, useT } from '../i18n/context.tsx';
+import { t as translate, toLang } from '../i18n/strings.ts';
 
 /**
  * Standalone booking page.
@@ -31,16 +33,39 @@ export function BookPage({
 	notice?: string;
 }) {
 	return (
-		<Layout title="Book leave" user={user} active="calendar" version={version}>
+		<Layout title={translate(toLang(user.lang), 'book.pageTitle')} user={user} active="calendar" version={version}>
+			<BookBody {...{ user, types, today, date, error, notice }} />
+		</Layout>
+	);
+}
+
+function BookBody({
+	types,
+	today,
+	date,
+	error,
+	notice,
+}: {
+	user: User;
+	types: LeaveType[];
+	today: string;
+	date?: string;
+	error?: string;
+	notice?: string;
+}) {
+	const t = useT();
+	const lang = useLang();
+	return (
+		<>
 			{error ? <div class="banner error">{error}</div> : null}
 			{notice ? <div class="banner ok">{notice}</div> : null}
 
 			<div class="page-head">
-				<a class="icon-btn" href="/" aria-label="Back to calendar">
+				<a class="icon-btn" href="/" aria-label={t('book.back')}>
 					<ChevronLeftIcon />
 				</a>
-				<h1>Book leave</h1>
-				{date ? <span class="muted">{shortDate(date)}</span> : null}
+				<h1>{t('book.pageTitle')}</h1>
+				{date ? <span class="muted">{shortDate(date, lang)}</span> : null}
 			</div>
 
 			<section class="card">
@@ -48,8 +73,8 @@ export function BookPage({
 			</section>
 
 			<p>
-				<a class="btn text" href="/">Back to calendar</a>
+				<a class="btn text" href="/">{t('book.back')}</a>
 			</p>
-		</Layout>
+		</>
 	);
 }

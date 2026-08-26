@@ -57,9 +57,9 @@ document.addEventListener('click', (e) => {
 		// A fresh single-day booking: clear any end date left from last time, or
 		// the new start silently inherits an old range.
 		if (endInput) endInput.value = '';
-		if (createTitle) createTitle.textContent = `Book leave — ${formatDate(date)}`;
+		if (createTitle) createTitle.textContent = S.bookOn.split('{date}').join(formatDate(date));
 	} else if (createTitle) {
-		createTitle.textContent = 'Book leave';
+		createTitle.textContent = S.book;
 	}
 
 	// Let booking.ts recompute the day preview and the half-day fields.
@@ -68,10 +68,23 @@ document.addEventListener('click', (e) => {
 	open(createDialog);
 });
 
+/** Wording from the server, in the reader's language; English if it is absent. */
+const S = {
+	book: 'Book leave',
+	bookOn: 'Book leave — {date}',
+	months: 'Jan Feb Mar Apr May Jun Jul Aug Sep Oct Nov Dec',
+	...(() => {
+		try {
+			return JSON.parse(createDialog?.getAttribute('data-dialog-strings') ?? '{}') as Record<string, string>;
+		} catch {
+			return {};
+		}
+	})(),
+};
+
 function formatDate(iso: string): string {
 	const [y, m, d] = iso.split('-').map(Number);
-	const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-	return `${d} ${months[m - 1]} ${y}`;
+	return `${d} ${S.months.split(' ')[m - 1]} ${y}`;
 }
 
 // ---------------------------------------------------------------------------

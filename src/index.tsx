@@ -11,18 +11,29 @@ import {
 	lastOfMonth,
 	monthGrid,
 	parseWeekStart,
+	shortDate,
 } from './domain/dates.ts';
-import { parseBooking, round, validateBooking } from './domain/leave.ts';
+import { parseBooking, round, validateBooking, visibleNote } from './domain/leave.ts';
+import { parseHolidayList } from './domain/holidays.ts';
+import { isLang, t, tm, toLang, type Lang, type Message, type StringKey } from './i18n/strings.ts';
 import * as db from './repo/db.ts';
 import { AdminPage } from './views/admin.tsx';
 import { BookPage } from './views/book.tsx';
 import { CalendarPage } from './views/calendar.tsx';
 import { EditPage } from './views/edit.tsx';
-import { ErrorPage, Layout } from './views/layout.tsx';
+import { ErrorPage, Layout, THEME_SCRIPT } from './views/layout.tsx';
 import { MePage } from './views/me.tsx';
 import { UserPage } from './views/user.tsx';
 import { groupIdFromWebhook, verifyLineSignature } from './notify/line.ts';
-import { GROUP_ID_KEY, lineConfigured, pushConfigured, resolveGroupId, runDigest, vapidKeys } from './notify/digest.ts';
+import {
+	GROUP_ID_KEY,
+	lineConfigured,
+	pushConfigured,
+	resolveGroupId,
+	runDigest,
+	runWeekAhead,
+	vapidKeys,
+} from './notify/digest.ts';
 import { parseSubscription, sendPush } from './notify/push.ts';
 import type { Env, LeaveRequest, User } from './types.ts';
 
@@ -33,19 +44,71 @@ const app = new Hono<{ Bindings: Env; Variables: Vars }>();
  * Pick up a flash message and immediately expire the cookie, so a message is
  * shown exactly once and never resurfaces on a refresh.
  */
+/**
+ * Security headers on everything this Worker returns.
+ *
+ * Access authenticates the visitor; it does not tell their browser how to treat
+ * the page afterwards. These do.
+ *
+ * The policy is strict about scripts and deliberately not about styles. Colours
+ * for leave types are rendered as `style="--chip: …"` on hundreds of elements,
+ * so inline styles have to be allowed; script execution, which is what turns an
+ * escaping mistake into an account takeover, does not. The one inline script is
+ * the pre-paint theme switcher, allowed by its hash rather than by opening the
+ * door to every inline script on the page.
+ *
+ * `no-store` on HTML matters in an office where machines are shared: without
+ * it, a page rendered for one signed-in person can be pulled out of the
+ * back/forward cache by the next.
+ */
+let cspHeader: string | null = null;
+
+async function contentSecurityPolicy(): Promise<string> {
+	if (cspHeader) return cspHeader;
+	const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(THEME_SCRIPT));
+	const hash = btoa(String.fromCharCode(...new Uint8Array(digest)));
+	cspHeader = [
+		"default-src 'self'",
+		"base-uri 'none'",
+		"object-src 'none'",
+		"frame-ancestors 'none'",
+		"form-action 'self'",
+		"img-src 'self' data:",
+		"style-src 'self' 'unsafe-inline'",
+		`script-src 'self' 'sha256-${hash}'`,
+		"connect-src 'self'",
+		"manifest-src 'self'",
+		"worker-src 'self'",
+	].join('; ');
+	return cspHeader;
+}
+
+app.use('*', async (c, next) => {
+	await next();
+	const headers = c.res.headers;
+	headers.set('X-Content-Type-Options', 'nosniff');
+	headers.set('X-Frame-Options', 'DENY');
+	// Nothing here should ever appear in a search result.
+	headers.set('X-Robots-Tag', 'noindex, nofollow');
+	// `same-origin`, not `no-referrer`: the app links nowhere external, so this
+	// still keeps a URL like /u/someone@example.com from reaching a third party
+	// — but it leaves the header intact for our own pages, which is what
+	// `referrerPath` uses to send someone back to the calendar they booked
+	// from. Under `no-referrer` that header is absent and every booking
+	// redirects to /me instead.
+	headers.set('Referrer-Policy', 'same-origin');
+
+	if ((headers.get('Content-Type') ?? '').includes('text/html')) {
+		headers.set('Content-Security-Policy', await contentSecurityPolicy());
+		headers.set('Cache-Control', 'private, no-store');
+	}
+});
+
 app.use('*', async (c, next) => {
 	const flash = readFlash(c.req.header('Cookie'));
 	c.set('flash', flash);
 	await next();
 	if (flash) c.header('Set-Cookie', FLASH_CLEAR, { append: true });
-});
-
-app.use('*', async (c, next) => {
-	await next();
-	c.header('X-Robots-Tag', 'noindex, nofollow');
-	c.header('X-Content-Type-Options', 'nosniff');
-	c.header('Referrer-Policy', 'no-referrer');
-	c.header('X-Frame-Options', 'DENY');
 });
 
 /**
@@ -140,25 +203,49 @@ app.use('*', async (c, next) => {
  *
  * Access is an authentication gate, not a CSRF defence — its cookie rides along
  * on a form POST from any origin. Comparing Origin to Host is enough here
- * because every mutation in this app is a same-origin form submit.
+ * because every mutation below this line is a same-origin form submit or fetch
+ * from our own pages.
+ *
+ * A *missing* Origin is refused too, not waved through. Every browser sends it
+ * on a POST, so absence means something that is not one of our pages — and
+ * "allow when the header is absent" is the standard way this check is quietly
+ * defeated. The LINE webhook, which genuinely has no Origin, is registered
+ * above this middleware and never reaches it; it proves itself with a
+ * signature instead.
  */
 app.use('*', async (c, next) => {
 	if (c.req.method === 'GET' || c.req.method === 'HEAD') return next();
+
 	const origin = c.req.header('Origin');
-	if (origin) {
-		const host = c.req.header('Host');
-		let originHost = '';
-		try {
-			originHost = new URL(origin).host;
-		} catch {
-			originHost = '';
-		}
-		if (!host || originHost !== host) {
-			return c.text('Cross-origin request rejected.', 403);
-		}
+	const host = c.req.header('Host');
+	let originHost = '';
+	try {
+		originHost = origin ? new URL(origin).host : '';
+	} catch {
+		originHost = '';
+	}
+	if (!origin || !host || originHost !== host) {
+		return c.text('Cross-origin request rejected.', 403);
 	}
 	return next();
 });
+
+/**
+ * Translate for whoever is signed in.
+ *
+ * Flash messages are rendered on the next request, by which time the reader is
+ * known again — but translating here keeps the message and its numbers in one
+ * place, and means a stored flash cannot outlive a language change.
+ */
+type Ctx = Context<{ Bindings: Env; Variables: Vars }>;
+
+function say(c: Ctx, key: StringKey, vars?: Record<string, string | number>): string {
+	return t(toLang(c.get('user')?.lang), key, vars);
+}
+
+function sayMessage(c: Ctx, m: Message): string {
+	return tm(toLang(c.get('user')?.lang), m);
+}
 
 // ---------------------------------------------------------------------------
 // Calendar
@@ -234,6 +321,7 @@ app.get('/book', async (c) => {
 /** JSON feed for the calendar. Same data the grid renders, for scripts and future views. */
 app.get('/api/leave', async (c) => {
 	const today = c.get('today');
+	const viewer = c.get('user');
 	const from = validDateOr(c.req.query('from'), firstOfMonth(Number(today.slice(0, 4)), Number(today.slice(5, 7))));
 	const to = validDateOr(c.req.query('to'), lastOfMonth(Number(today.slice(0, 4)), Number(today.slice(5, 7))));
 	if (from > to) return c.json({ error: 'from is after to' }, 400);
@@ -253,7 +341,9 @@ app.get('/api/leave', async (c) => {
 			startHalf: e.start_half,
 			endHalf: e.end_half,
 			days: e.days_total,
-			note: e.note,
+			// Same rule as the calendar: a private note is absent from the feed,
+			// not merely hidden by whatever renders it.
+			note: visibleNote(e, viewer),
 		})),
 	});
 });
@@ -278,8 +368,58 @@ app.get('/api/leave/preview', async (c) => {
 
 	const holidays = await db.holidaySet(c.env.DB, parsed.startDate, parsed.endDate);
 	const count = countLeaveDays(parsed.startDate, parsed.endDate, parsed.startHalf, parsed.endHalf, holidays);
-	return c.json(count.ok ? { days: count.days } : { error: count.error }, 200);
+	if (!count.ok) return c.json({ error: count.error }, 200);
+
+	// Who else is already away on these days. Advisory only — nothing here can
+	// refuse a booking, because the app does not know who covers for whom; it
+	// only knows how to stop someone finding out by accident on the Monday.
+	const viewer = c.get('user');
+	const [coverage, headcount] = await Promise.all([
+		db.coverageInRange(c.env.DB, parsed.startDate, parsed.endDate, viewer.email, c.req.query('exclude') ?? undefined),
+		db.activeUserCount(c.env.DB),
+	]);
+	return c.json({ days: count.days, ...summariseCoverage(coverage, headcount, toLang(viewer.lang)) }, 200);
 });
+
+/**
+ * Turn a day-by-day map of who is away into one sentence.
+ *
+ * Reports the worst day in the range rather than a total, because five people
+ * out on five separate days is a normal week and five people out on the same
+ * Tuesday is the thing worth seeing before you book.
+ *
+ * "A lot" is a third of the active roster, and never fewer than two people, so
+ * the warning neither fires on a single colleague in a team of forty nor stays
+ * silent when both halves of a team of two book the same Tuesday.
+ */
+function summariseCoverage(coverage: Map<string, string[]>, headcount: number, lang: Lang) {
+	let worstDate = '';
+	let worst: string[] = [];
+	for (const [date, names] of coverage) {
+		if (names.length > worst.length) {
+			worst = names;
+			worstDate = date;
+		}
+	}
+	if (worst.length === 0) return { coverage: null };
+
+	const threshold = Math.max(2, Math.ceil(headcount / 3));
+	return {
+		coverage: {
+			// Formatted here, where the reader's language is known: the client
+			// would otherwise have to carry month names in two languages to turn
+			// 2026-08-24 into 24 ส.ค.
+			date: shortDate(worstDate, lang),
+			// Includes the person booking, which is what makes it answer "how many
+			// of us will be away that day".
+			out: worst.length + 1,
+			headcount,
+			busy: worst.length + 1 >= threshold,
+			names: worst.slice(0, 3),
+			more: Math.max(0, worst.length - 3),
+		},
+	};
+}
 
 // ---------------------------------------------------------------------------
 // Booking
@@ -332,15 +472,15 @@ async function buildBookingContext(
 app.post('/api/leave', async (c) => {
 	const user = c.get('user');
 	const today = c.get('today');
-	const back = referrerPath(c.req.header('Referer')) ?? '/me';
+	const back = referrerPath(c.req.header('Referer'), c.req.url) ?? '/me';
 
 	const form = await c.req.parseBody();
 	const parsed = parseBooking(form as Record<string, unknown>);
-	if ('error' in parsed) return redirectWithFlash(back, 'err', parsed.error);
+	if ('error' in parsed) return redirectWithFlash(back, 'err', sayMessage(c, parsed.error));
 
 	const ctx = await buildBookingContext(c.env, user.email, parsed, today);
 	const check = validateBooking(parsed, ctx);
-	if (!check.ok) return redirectWithFlash(back, 'err', check.error);
+	if (!check.ok) return redirectWithFlash(back, 'err', sayMessage(c, check.error));
 
 	const row: LeaveRequest = {
 		id: crypto.randomUUID(),
@@ -352,13 +492,23 @@ app.post('/api/leave', async (c) => {
 		end_half: parsed.endHalf,
 		days_total: check.days,
 		note: parsed.note || null,
+		note_private: parsed.notePrivate ? 1 : 0,
 		status: 'confirmed',
 		created_at: bangkokNow(),
 		cancelled_at: null,
 	};
-	await db.insertLeave(c.env.DB, row);
+	await db.insertLeave(c.env.DB, row, user.email);
 
-	return redirectWithFlash(back, 'ok', `Booked ${check.days} day(s) of ${check.type.label_en.toLowerCase()} leave.`);
+	return redirectWithFlash(
+		back,
+		'ok',
+		say(c, 'flash.booked', {
+			count: check.days,
+			days: check.days,
+			type: check.type.label_en.toLowerCase(),
+			typeTh: check.type.label_th,
+		}),
+	);
 });
 
 /**
@@ -372,9 +522,9 @@ async function ownedLeave(
 ): Promise<{ ok: true; row: LeaveRequest } | { ok: false; error: string }> {
 	const user = c.get('user');
 	const row = await db.getLeave(c.env.DB, id);
-	if (!row) return { ok: false, error: 'That booking no longer exists.' };
+	if (!row) return { ok: false, error: say(c, 'flash.gone') };
 	if (row.user_email !== user.email && !user.is_admin) {
-		return { ok: false, error: 'That is not your booking.' };
+		return { ok: false, error: say(c, 'flash.notYours') };
 	}
 	return { ok: true, row };
 }
@@ -387,11 +537,11 @@ app.get('/leave/:id/edit', async (c) => {
 	const owned = await ownedLeave(c, id);
 	if (!owned.ok) return redirectWithFlash('/me', 'err', owned.error);
 	if (owned.row.status !== 'confirmed') {
-		return redirectWithFlash('/me', 'err', 'That booking is cancelled. Book it again instead of editing it.');
+		return redirectWithFlash('/me', 'err', say(c, 'flash.cancelledRebook'));
 	}
 
 	const [entry, types] = await Promise.all([db.getLeaveEntry(c.env.DB, id), db.listLeaveTypes(c.env.DB)]);
-	if (!entry) return redirectWithFlash('/me', 'err', 'That booking no longer exists.');
+	if (!entry) return redirectWithFlash('/me', 'err', say(c, 'flash.gone'));
 
 	return c.html(
 		<EditPage
@@ -414,7 +564,7 @@ app.post('/api/leave/:id/edit', async (c) => {
 	const owned = await ownedLeave(c, id);
 	if (!owned.ok) return redirectWithFlash('/me', 'err', owned.error);
 	if (owned.row.status !== 'confirmed') {
-		return redirectWithFlash('/me', 'err', 'That booking is cancelled and cannot be edited.');
+		return redirectWithFlash('/me', 'err', say(c, 'flash.cancelledNoEdit'));
 	}
 
 	const form = await c.req.parseBody();
@@ -426,14 +576,14 @@ app.post('/api/leave/:id/edit', async (c) => {
 	const back = returnTo ?? `/leave/${id}/edit`;
 	const done = returnTo ?? '/me';
 	const parsed = parseBooking(form as Record<string, unknown>);
-	if ('error' in parsed) return redirectWithFlash(back, 'err', parsed.error);
+	if ('error' in parsed) return redirectWithFlash(back, 'err', sayMessage(c, parsed.error));
 
 	// Validate against the owner of the booking, not whoever is editing it — an
 	// admin fixing someone else's leave must be checked against that person's
 	// quota and their other bookings.
 	const ctx = await buildBookingContext(c.env, owned.row.user_email, parsed, today, owned.row);
 	const check = validateBooking(parsed, ctx);
-	if (!check.ok) return redirectWithFlash(back, 'err', check.error);
+	if (!check.ok) return redirectWithFlash(back, 'err', sayMessage(c, check.error));
 
 	const changed = await db.updateLeave(c.env.DB, id, {
 		leave_type_id: parsed.leaveTypeId,
@@ -443,23 +593,33 @@ app.post('/api/leave/:id/edit', async (c) => {
 		end_half: parsed.endHalf,
 		days_total: check.days,
 		note: parsed.note || null,
-	});
-	if (!changed) return redirectWithFlash(done, 'err', 'That booking was cancelled while you were editing it.');
+		note_private: parsed.notePrivate ? 1 : 0,
+	}, c.get('user').email);
+	if (!changed) return redirectWithFlash(done, 'err', say(c, 'flash.cancelledWhileEditing'));
 
-	return redirectWithFlash(done, 'ok', `Updated to ${check.days} day(s) of ${check.type.label_en.toLowerCase()} leave.`);
+	return redirectWithFlash(
+		done,
+		'ok',
+		say(c, 'flash.updated', {
+			count: check.days,
+			days: check.days,
+			type: check.type.label_en.toLowerCase(),
+			typeTh: check.type.label_th,
+		}),
+	);
 });
 
 app.post('/api/leave/:id/cancel', async (c) => {
-	const back = referrerPath(c.req.header('Referer')) ?? '/me';
+	const back = referrerPath(c.req.header('Referer'), c.req.url) ?? '/me';
 	const id = c.req.param('id');
 
 	const owned = await ownedLeave(c, id);
 	if (!owned.ok) return redirectWithFlash(back, 'err', owned.error);
 
-	const done = await db.cancelLeave(c.env.DB, id);
+	const done = await db.cancelLeave(c.env.DB, id, c.get('user').email);
 	return done
-		? redirectWithFlash(back, 'ok', 'Booking cancelled.')
-		: redirectWithFlash(back, 'err', 'That booking was already cancelled.');
+		? redirectWithFlash(back, 'ok', say(c, 'flash.cancelled'))
+		: redirectWithFlash(back, 'err', say(c, 'flash.alreadyCancelled'));
 });
 
 // ---------------------------------------------------------------------------
@@ -553,18 +713,31 @@ app.post('/me/week-start', async (c) => {
 	const weekStart = parseWeekStart(form.weekStart);
 	// Only Sunday and Monday are offered; anything else is a crafted request,
 	// and silently storing it would rotate the grid to an arbitrary column.
-	if (weekStart === null) return redirectWithFlash('/me', 'err', 'Pick either Monday or Sunday.');
+	if (weekStart === null) return redirectWithFlash('/me', 'err', say(c, 'flash.weekBad'));
 	await db.setWeekStart(c.env.DB, user.email, weekStart);
-	return redirectWithFlash('/me', 'ok', weekStart === 1 ? 'Weeks now start on Monday.' : 'Weeks now start on Sunday.');
+	return redirectWithFlash('/me', 'ok', say(c, weekStart === 1 ? 'flash.weekMonday' : 'flash.weekSunday'));
+});
+
+app.post('/me/lang', async (c) => {
+	const user = c.get('user');
+	const form = await c.req.parseBody();
+	const lang = String(form.lang ?? '');
+	// Only the languages actually offered. Storing anything else would fall back
+	// to English on every page while the radio button claimed otherwise.
+	if (!isLang(lang)) return redirectWithFlash('/me', 'err', say(c, 'flash.langBad'));
+
+	await db.setLanguage(c.env.DB, user.email, lang);
+	// Translated into the language just chosen, not the one being left behind.
+	return redirectWithFlash('/me', 'ok', t(lang, 'flash.langUpdated'));
 });
 
 app.post('/me/name', async (c) => {
 	const user = c.get('user');
 	const form = await c.req.parseBody();
 	const name = String(form.displayName ?? '').trim().slice(0, 60);
-	if (!name) return redirectWithFlash('/me', 'err', 'Display name cannot be empty.');
+	if (!name) return redirectWithFlash('/me', 'err', say(c, 'flash.nameEmpty'));
 	await db.setDisplayName(c.env.DB, user.email, name);
-	return redirectWithFlash('/me', 'ok', 'Name updated.');
+	return redirectWithFlash('/me', 'ok', say(c, 'flash.nameUpdated'));
 });
 
 // ---------------------------------------------------------------------------
@@ -658,12 +831,13 @@ app.get('/admin', async (c) => {
 	const today = c.get('today');
 	const year = clampInt(c.req.query('y'), Number(today.slice(0, 4)), 2000, 2100);
 
-	const [users, types, holidays, groupId, log] = await Promise.all([
+	const [users, types, holidays, groupId, log, audit] = await Promise.all([
 		db.listUsers(c.env.DB),
 		db.listLeaveTypes(c.env.DB),
 		db.listHolidays(c.env.DB, `${year}-01-01`, `${year + 1}-12-31`),
 		resolveGroupId(c.env),
 		db.recentNotifications(c.env.DB),
+		db.recentAudit(c.env.DB),
 	]);
 
 	const quotas = (await Promise.all(users.map((u) => db.listQuotas(c.env.DB, u.email, year)))).flat();
@@ -677,6 +851,7 @@ app.get('/admin', async (c) => {
 			types={types}
 			quotas={quotas}
 			holidays={holidays}
+			audit={audit}
 			today={today}
 			line={{ configured, groupId, ready: configured && Boolean(groupId) }}
 			log={log}
@@ -691,7 +866,7 @@ app.post('/admin/quotas', async (c) => {
 	const form = await c.req.parseBody();
 	const email = String(form.email ?? '').trim().toLowerCase();
 	const year = Number(form.year);
-	if (!email || !Number.isInteger(year)) return redirectWithFlash('/admin', 'err', 'Bad request.');
+	if (!email || !Number.isInteger(year)) return redirectWithFlash('/admin', 'err', say(c, 'flash.badRequest'));
 
 	const types = await db.listLeaveTypes(c.env.DB);
 	for (const t of types) {
@@ -701,7 +876,7 @@ app.post('/admin/quotas', async (c) => {
 		if (!Number.isFinite(days) || days < 0 || days > 365) continue;
 		await db.setQuota(c.env.DB, email, year, t.id, round(days));
 	}
-	return redirectWithFlash(`/admin?y=${year}`, 'ok', `Quotas saved for ${email}.`);
+	return redirectWithFlash(`/admin?y=${year}`, 'ok', say(c, 'flash.quotasSaved', { email }));
 });
 
 app.post('/admin/quotas/bulk', async (c) => {
@@ -709,25 +884,25 @@ app.post('/admin/quotas/bulk', async (c) => {
 	const leaveTypeId = Number(form.leaveTypeId);
 	const days = Number(form.days);
 	const year = Number(form.year);
-	if (!Number.isInteger(year)) return redirectWithFlash('/admin', 'err', 'Bad request.');
+	if (!Number.isInteger(year)) return redirectWithFlash('/admin', 'err', say(c, 'flash.badRequest'));
 	if (!Number.isFinite(days) || days < 0 || days > 365) {
-		return redirectWithFlash('/admin', 'err', 'Days must be between 0 and 365.');
+		return redirectWithFlash('/admin', 'err', say(c, 'flash.daysRange'));
 	}
 
 	const types = await db.listLeaveTypes(c.env.DB);
 	if (!types.some((t) => t.id === leaveTypeId)) {
-		return redirectWithFlash('/admin', 'err', 'Unknown leave type.');
+		return redirectWithFlash('/admin', 'err', say(c, 'flash.unknownType'));
 	}
 
 	const count = await db.bulkSetQuota(c.env.DB, year, leaveTypeId, round(days));
-	return redirectWithFlash(`/admin?y=${year}`, 'ok', `Set quota for ${count} active user(s).`);
+	return redirectWithFlash(`/admin?y=${year}`, 'ok', say(c, 'flash.quotasBulk', { count, n: count }));
 });
 
 app.post('/admin/user', async (c) => {
 	const actor = c.get('user');
 	const form = await c.req.parseBody();
 	const email = String(form.email ?? '').trim().toLowerCase();
-	if (!email) return redirectWithFlash('/admin', 'err', 'Bad request.');
+	if (!email) return redirectWithFlash('/admin', 'err', say(c, 'flash.badRequest'));
 
 	const isAdmin = form.isAdmin === '1';
 	const active = form.active === '1';
@@ -737,13 +912,13 @@ app.post('/admin/user', async (c) => {
 	if (email === actor.email && (!isAdmin || !active)) {
 		const admins = (await db.listUsers(c.env.DB)).filter((u) => u.is_admin && u.active);
 		if (admins.length <= 1) {
-			return redirectWithFlash('/admin', 'err', 'You are the only admin — promote someone else first.');
+			return redirectWithFlash('/admin', 'err', say(c, 'flash.onlyAdmin'));
 		}
 	}
 
 	await db.setAdmin(c.env.DB, email, isAdmin);
 	await db.setActive(c.env.DB, email, active);
-	return redirectWithFlash('/admin', 'ok', `Updated ${email}.`);
+	return redirectWithFlash('/admin', 'ok', say(c, 'flash.userUpdated', { email }));
 });
 
 /**
@@ -753,13 +928,16 @@ app.post('/admin/user', async (c) => {
 app.post('/admin/notify/preview', async (c) => {
 	const form = await c.req.parseBody();
 	const date = String(form.date ?? '').trim() || c.get('today');
-	if (!isValidDate(date)) return redirectWithFlash('/admin', 'err', 'Bad date.');
+	if (!isValidDate(date)) return redirectWithFlash('/admin', 'err', say(c, 'flash.badDate'));
 
-	const outcome = await runDigest(c.env, date, { dryRun: true });
+	const week = form.kind === 'week';
+	const outcome = week
+		? await runWeekAhead(c.env, date, { dryRun: true, allowAnyDay: true })
+		: await runDigest(c.env, date, { dryRun: true });
 	const summary =
 		outcome.status === 'dry_run'
-			? `Would post about ${outcome.people} person(s).`
-			: `Would not post: ${outcome.status.replace(/_/g, ' ')}.`;
+			? say(c, 'flash.wouldPost', { count: outcome.people, n: outcome.people })
+			: say(c, 'flash.wouldNotPost', { reason: say(c, `status.${outcome.status}`) });
 
 	// The preview text itself is stashed in the flash rather than the URL —
 	// query strings carrying prose get blocked by the WAF (docs/ISSUES.md #15).
@@ -770,31 +948,75 @@ app.post('/admin/notify/preview', async (c) => {
 app.post('/admin/notify/send', async (c) => {
 	const form = await c.req.parseBody();
 	const date = String(form.date ?? '').trim() || c.get('today');
-	if (!isValidDate(date)) return redirectWithFlash('/admin', 'err', 'Bad date.');
+	if (!isValidDate(date)) return redirectWithFlash('/admin', 'err', say(c, 'flash.badDate'));
 
-	const outcome = await runDigest(c.env, date, { force: form.force === '1' });
+	// `force` comes from the tick box in both cases. Only the day gate is
+	// relaxed for a manual week-ahead send — an admin pressing the button twice
+	// must still hit the duplicate guard.
+	const force = form.force === '1';
+	const outcome =
+		form.kind === 'week'
+			? await runWeekAhead(c.env, date, { force, allowAnyDay: true })
+			: await runDigest(c.env, date, { force });
+
 	if (outcome.status === 'sent') {
-		return redirectWithFlash('/admin', 'ok', `Posted to LINE about ${outcome.people} person(s).`);
+		// Says which channels actually delivered, rather than naming LINE when the
+		// message may well have gone only to browsers.
+		const sent = outcome.channels
+			.filter((ch) => ch.status === 'sent')
+			.map((ch) =>
+				ch.channel === 'push' ? say(c, 'flash.browsers', { count: ch.recipients ?? 0, n: ch.recipients ?? 0 }) : say(c, 'flash.line'),
+			)
+			.join(' + ');
+		return redirectWithFlash('/admin', 'ok', say(c, 'flash.sentTo', { count: outcome.people, channels: sent, n: outcome.people }));
 	}
 	if (outcome.status === 'failed') {
-		return redirectWithFlash('/admin', 'err', `LINE rejected it — ${outcome.error ?? 'unknown error'}`);
+		return redirectWithFlash('/admin', 'err', say(c, 'flash.sendFailed', { error: outcome.error ?? '—' }));
 	}
-	return redirectWithFlash('/admin', 'err', `Nothing sent: ${outcome.status.replace(/_/g, ' ')}.`);
+	return redirectWithFlash('/admin', 'err', say(c, 'flash.nothingSent', { reason: say(c, `status.${outcome.status}`) }));
+});
+
+/**
+ * Import a pasted list of holidays.
+ *
+ * Nothing is written unless every line parses. A partial import of a
+ * government holiday notice is the worst outcome: the calendar looks updated,
+ * and the three days that failed silently draw down everyone's quota.
+ */
+app.post('/admin/holidays/import', async (c) => {
+	const form = await c.req.parseBody();
+	const text = String(form.list ?? '');
+	if (!text.trim()) return redirectWithFlash('/admin', 'err', say(c, 'flash.nothingToImport'));
+
+	const { holidays, errors } = parseHolidayList(text);
+	if (errors.length > 0) {
+		const shown = errors.slice(0, 5).map((e) => `line ${e.line}: ${e.reason}`).join('\n');
+		const more = errors.length > 5 ? `\n…and ${errors.length - 5} more.` : '';
+		return redirectWithFlash('/admin', 'err', `${say(c, 'flash.importFailed')}\n\n${shown}${more}`);
+	}
+	if (holidays.length === 0) return redirectWithFlash('/admin', 'err', say(c, 'flash.importEmpty'));
+
+	const written = await db.bulkUpsertHolidays(c.env.DB, holidays);
+	return redirectWithFlash(
+		'/admin',
+		'ok',
+		say(c, 'flash.imported', { count: written, n: written, from: holidays[0].date, to: holidays[holidays.length - 1].date }),
+	);
 });
 
 app.post('/admin/holiday', async (c) => {
 	const form = await c.req.parseBody();
 	const date = String(form.date ?? '').trim();
 	const label = String(form.label ?? '').trim().slice(0, 80);
-	if (!isValidDate(date) || !label) return redirectWithFlash('/admin', 'err', 'Need a valid date and a label.');
+	if (!isValidDate(date) || !label) return redirectWithFlash('/admin', 'err', say(c, 'flash.holidayNeedsBoth'));
 	await db.addHoliday(c.env.DB, date, label);
-	return redirectWithFlash('/admin', 'ok', `Added ${date}.`);
+	return redirectWithFlash('/admin', 'ok', say(c, 'flash.holidayAdded', { date }));
 });
 
 app.post('/admin/holiday/delete', async (c) => {
 	const form = await c.req.parseBody();
 	const date = String(form.date ?? '').trim();
-	if (!isValidDate(date)) return redirectWithFlash('/admin', 'err', 'Bad date.');
+	if (!isValidDate(date)) return redirectWithFlash('/admin', 'err', say(c, 'flash.badDate'));
 	await db.removeHoliday(c.env.DB, date);
 	return redirectWithFlash('/admin', 'ok', `Removed ${date}.`);
 });
@@ -858,11 +1080,25 @@ function safePath(raw: unknown): string | null {
 	return value.slice(0, 200);
 }
 
-function referrerPath(referer: string | undefined): string | null {
+/**
+ * Where a form was submitted from, as a path on this site.
+ *
+ * Two guards, because this feeds a `Location` header:
+ *
+ *  - the referrer must be *this* origin. A page elsewhere can set its own
+ *    `Referrer-Policy: unsafe-url` and send us any URL it likes; only our own
+ *    pages get to say where a redirect goes.
+ *  - the extracted path goes through `safePath` like every other redirect
+ *    target. `new URL('https://evil.example//evil.com').pathname` is
+ *    `//evil.com`, which starts with a slash and would otherwise sail through
+ *    as a protocol-relative redirect off the site.
+ */
+function referrerPath(referer: string | undefined, requestUrl: string): string | null {
 	if (!referer) return null;
 	try {
 		const u = new URL(referer);
-		return u.pathname.startsWith('/') ? u.pathname : null;
+		if (u.origin !== new URL(requestUrl).origin) return null;
+		return safePath(u.pathname + u.search);
 	} catch {
 		return null;
 	}
@@ -951,6 +1187,12 @@ export default {
 		try {
 			const outcome = await runDigest(env);
 			console.log(JSON.stringify({ job: 'daily-leave-digest', ...outcome, text: undefined }));
+
+			// Mondays carry a second post. It claims its own row, so neither can
+			// suppress the other, and it decides for itself whether today is a
+			// Monday worth posting about.
+			const week = await runWeekAhead(env);
+			console.log(JSON.stringify({ job: 'week-ahead-digest', ...week, text: undefined }));
 		} catch (err) {
 			console.log(
 				JSON.stringify({

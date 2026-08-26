@@ -11,6 +11,7 @@ import {
 	parseHalf,
 	round,
 	validateBooking,
+	visibleNote,
 } from '../src/domain/leave.ts';
 import { defaultDisplayName } from '../src/repo/db.ts';
 
@@ -57,12 +58,20 @@ function booking(overrides = {}) {
 }
 
 const okDays = (name, res, want) =>
-	check(name, res.ok && res.days === want, res.ok ? `got ${res.days}, want ${want}` : `errored: ${res.error}`);
-const rejects = (name, res, fragment) =>
+	check(name, res.ok && res.days === want, res.ok ? `got ${res.days}, want ${want}` : `errored: ${res.error?.key}`);
+
+/**
+ * Rejections are asserted by message key, not by wording.
+ *
+ * The domain returns `{ key, vars }` rather than a sentence, so tests name the
+ * rule that fired instead of matching prose — which also means rewording a
+ * message, or translating it, cannot turn a green test red.
+ */
+const rejects = (name, res, key) =>
 	check(
 		name,
-		!res.ok && (!fragment || res.error.includes(fragment)),
-		res.ok ? `expected rejection, booked ${res.days}d` : `error was: ${res.error}`,
+		!res.ok && (!key || res.error.key === key),
+		res.ok ? `expected rejection, booked ${res.days}d` : `error key was: ${res.error.key}`,
 	);
 
 // ---------------------------------------------------------------------------------------
@@ -97,19 +106,19 @@ okDays('single full day', validateBooking(booking(), ctx()), 1);
 okDays('Mon–Fri', validateBooking(booking({ endDate: '2026-08-21' }), ctx()), 5);
 okDays('half day', validateBooking(booking({ startHalf: 'am', endHalf: 'am' }), ctx()), 0.5);
 
-rejects('unknown leave type', validateBooking(booking({ leaveTypeId: 99 }), ctx()), 'Unknown leave type');
-rejects('weekend booking', validateBooking(booking({ startDate: '2026-08-15', endDate: '2026-08-15' }), ctx()), 'weekend');
+rejects('unknown leave type', validateBooking(booking({ leaveTypeId: 99 }), ctx()), 'error.unknownType');
+rejects('weekend booking', validateBooking(booking({ startDate: '2026-08-15', endDate: '2026-08-15' }), ctx()), 'error.notAWorkingDay');
 rejects(
 	'booking on a holiday',
 	validateBooking(booking({ startDate: '2026-08-19', endDate: '2026-08-19' }), ctx({ holidays: new Set(['2026-08-19']) })),
-	'holiday',
+	'error.notAWorkingDay',
 );
 
 // Overlap: the same day already booked blocks a second request.
 rejects(
 	'overlaps existing leave',
 	validateBooking(booking({ endDate: '2026-08-21' }), ctx({ existing: [{ id: 'a', start_date: '2026-08-19', end_date: '2026-08-19' }] })),
-	'already have leave',
+	'error.overlap',
 );
 okDays(
 	'adjacent but not overlapping is fine',
@@ -121,7 +130,7 @@ okDays(
 rejects(
 	'over quota',
 	validateBooking(booking({ endDate: '2026-08-21' }), ctx({ remaining: new Map([[1, 3]]) })),
-	'Not enough',
+	'error.notEnough',
 );
 okDays('exactly the remaining balance', validateBooking(booking({ endDate: '2026-08-21' }), ctx({ remaining: new Map([[1, 5]]) })), 5);
 // Unpaid leave has no allowance, so a zero balance must not block it.
@@ -132,7 +141,7 @@ okDays('backdated within the window', validateBooking(booking({ startDate: '2026
 rejects(
 	'backdated beyond the window',
 	validateBooking(booking({ startDate: '2026-01-05', endDate: '2026-01-05' }), ctx()),
-	'in the past',
+	'error.tooFarBack',
 );
 check('MAX_BACKDATE_DAYS is a sane window', MAX_BACKDATE_DAYS >= 30 && MAX_BACKDATE_DAYS <= 365, `got ${MAX_BACKDATE_DAYS}`);
 rejects(
@@ -140,7 +149,7 @@ rejects(
 	// 2126-08-19 is a Monday, so this fails the future-window check rather than
 	// the weekend check.
 	validateBooking(booking({ startDate: '2126-08-19', endDate: '2126-08-19' }), ctx()),
-	'too far in the future',
+	'error.tooFarAhead',
 );
 
 // ---------------------------------------------------------------------------------------
@@ -221,6 +230,34 @@ eq(
 eq('displayName: dotted local part', defaultDisplayName('chatchai.w@example.com'), 'Chatchai W');
 eq('displayName: underscores', defaultDisplayName('some_one@example.com'), 'Some One');
 eq('displayName: plain', defaultDisplayName('bob@example.com'), 'Bob');
+
+// ---------------------------------------------------------------------------------------
+// Note visibility — one rule, used by the calendar, the popup and the JSON feed.
+// ---------------------------------------------------------------------------------------
+
+const owner = { email: 'mai@example.com', is_admin: 0 };
+const colleague = { email: 'bob@example.com', is_admin: 0 };
+const admin = { email: 'boss@example.com', is_admin: 1 };
+const privateEntry = { note: 'oncology follow-up', note_private: 1, user_email: 'mai@example.com' };
+const sharedEntry = { note: 'team offsite', note_private: 0, user_email: 'mai@example.com' };
+
+eq('private note: the author reads it', visibleNote(privateEntry, owner), 'oncology follow-up');
+eq('private note: an admin reads it', visibleNote(privateEntry, admin), 'oncology follow-up');
+eq('private note: a colleague does not', visibleNote(privateEntry, colleague), null);
+eq('shared note: a colleague reads it', visibleNote(sharedEntry, colleague), 'team offsite');
+eq('no note at all is null, not empty string', visibleNote({ note: null, note_private: 0, user_email: 'mai@example.com' }, admin), null);
+// An empty string is not a note; rendering "Note:" with nothing after it is worse than omitting the row.
+eq('an empty note is null', visibleNote({ note: '', note_private: 0, user_email: 'mai@example.com' }, owner), null);
+
+// ---------------------------------------------------------------------------------------
+// Note visibility on the way in — an unchecked box submits nothing at all.
+// ---------------------------------------------------------------------------------------
+
+const base = { leaveTypeId: '1', startDate: '2026-08-17', note: 'x' };
+eq('note is private when the box is unticked', parseBooking(base).notePrivate, true);
+eq('note is shared when the box is ticked', parseBooking({ ...base, noteVisibility: 'shared' }).notePrivate, false);
+eq('an unexpected value falls back to private', parseBooking({ ...base, noteVisibility: 'yes' }).notePrivate, true);
+eq('an empty value falls back to private', parseBooking({ ...base, noteVisibility: '' }).notePrivate, true);
 
 console.log(failures === 0 ? '\nAll leave tests passed.' : `\n${failures} failure(s).`);
 process.exit(failures === 0 ? 0 : 1);
