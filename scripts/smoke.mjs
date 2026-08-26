@@ -44,7 +44,7 @@ const OTHER = 'other@example.com';
 const STATE = mkdtempSync(join(tmpdir(), 'wnl-smoke-'));
 
 /** Assertions that must run for the suite to be considered complete. */
-const MIN_ASSERTIONS = 128;
+const MIN_ASSERTIONS = 132;
 
 let pass = 0;
 let fail = 0;
@@ -744,6 +744,27 @@ async function main() {
 	check('and names who is out later', forwardHtml.includes('Other'), 'forward name missing');
 
 	d1("DELETE FROM leave_requests WHERE id IN ('smoke-today', 'smoke-soon')");
+
+	// --- the month grid on a phone ------------------------------------------
+	//
+	// The grid is rendered at every width and CSS decides how it reads, so what
+	// is checked here is the markup a phone depends on: a day with something on
+	// it gets a whole-cell link into the list below, and a day without one
+	// keeps the booking link.
+	insertLeave('smoke-grid', ADMIN, TODAY);
+	const gridHtml = await (await fetch(`${BASE}/`)).text();
+	check('a busy day links into the day list', gridHtml.includes(`href="#d-${TODAY}"`), 'day link missing');
+	check('and the list carries the matching anchor', gridHtml.includes(`id="d-${TODAY}"`), 'anchor missing');
+	// A day with nothing on it has no day link at all, so the cell's booking
+	// link is what a tap finds.
+	const emptyDay = addDays(TODAY, 300);
+	check(
+		'an empty day has no day link',
+		!gridHtml.includes(`href="#d-${emptyDay}"`),
+		'empty day linked into the list',
+	);
+	check('and still offers booking', gridHtml.includes(`/book?date=${TODAY}`), 'booking link missing');
+	d1("DELETE FROM leave_requests WHERE id = 'smoke-grid'");
 
 	// Browsing a month that cannot contain today: the summary must be absent
 	// rather than rendering a misleading "nobody is out today".

@@ -48,6 +48,8 @@ export const STRINGS = {
 	'cal.hint': { en: 'Click any day to book it, or an entry to open it.', th: 'คลิกวันที่ใดก็ได้เพื่อแจ้งลา หรือคลิกรายการเพื่อดูรายละเอียด' },
 	'cal.bookOnShort': { en: 'Book leave — {date}', th: 'แจ้งลา — {date}' },
 	'cal.months': { en: 'Jan Feb Mar Apr May Jun Jul Aug Sep Oct Nov Dec', th: 'ม.ค. ก.พ. มี.ค. เม.ย. พ.ค. มิ.ย. ก.ค. ส.ค. ก.ย. ต.ค. พ.ย. ธ.ค.' },
+	'cal.seeDay': { en: 'See who is out on {date}', th: 'ดูว่าใครลาวันที่ {date}' },
+	'cal.dayCount': { en: '{n} away', th: 'ลา {n} คน' },
 	'cal.bookOn': { en: 'Book leave on {date}', th: 'แจ้งลาวันที่ {date}' },
 	'cal.whoIsOut': { en: 'Who is out', th: 'ใครลาบ้าง' },
 	'cal.outToday': { en: 'Out today', th: 'ลาวันนี้' },

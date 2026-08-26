@@ -311,6 +311,20 @@ function CalendarBody(props: CalendarProps) {
 												data-date={date}
 												aria-label={t('cal.bookOn', { date: longDate(date, lang) })}
 											></a>
+											{/* Phones only, and only where there is something to see. A
+											    cell is about 48px wide there — too narrow for names, and
+											    far too narrow to tap one of several. So the whole cell
+											    becomes one target that jumps to this day in the list
+											    below, which is where the names, types and controls live.
+											    An anchor, not a script: it works with JS off and it can
+											    be opened in a new tab like any other link. */}
+											{dayEntries.length > 0 ? (
+												<a
+													class="cell-day"
+													href={`#d-${date}`}
+													aria-label={t('cal.seeDay', { date: longDate(date, lang) })}
+												></a>
+											) : null}
 											<div class="cell-head">
 												<span class="daynum" aria-hidden="true">{Number(date.slice(8, 10))}</span>
 												{/* The number alone reads as a bare digit out of context, so the
@@ -349,7 +363,7 @@ function CalendarBody(props: CalendarProps) {
 					<p class="muted pad">{t('cal.emptyMonth')}</p>
 				) : (
 					agenda.map((row) => (
-						<div class={`agenda-row ${row.date === today ? 'today' : ''}`}>
+						<div class={`agenda-row ${row.date === today ? 'today' : ''}`} id={`d-${row.date}`}>
 							<a
 								class="agenda-date"
 								href={`/book?date=${row.date}`}

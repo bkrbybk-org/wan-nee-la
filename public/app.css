@@ -706,9 +706,21 @@ form.inline { display: inline-flex; gap: 8px; align-items: center; flex-wrap: wr
 .booking { background: var(--md-surface-container-low); border-radius: var(--md-shape-md); padding: var(--pad); }
 .booking.compact { background: transparent; padding: 0; }
 
-/* ---------- month grid (>=768px) ---------- */
+/* ---------- month grid ----------
 
-.grid-view { display: none; }
+   Shown at every width, but it says different things at each.
+
+   On a laptop a cell is ~150px wide and carries names. On a phone the same
+   cell is about 48px — no room for a name, and no room to tap one of three.
+   So a phone gets what a paper calendar gives: the shape of the month, with a
+   coloured dot per person away. Tapping a day jumps to that day in the list
+   underneath, which is where names, types and controls have space to exist.
+
+   This is the pattern Google Calendar uses on a phone, and the reason is the
+   same: the grid answers "which days are busy", the list answers "who". */
+
+.grid-view { display: block; }
+.cell-day { display: none; }
 
 .weekhead-cell {
 	padding: 8px 6px;
@@ -816,14 +828,84 @@ form.inline { display: inline-flex; gap: 8px; align-items: center; flex-wrap: wr
 .chip-dragging { cursor: grabbing; opacity: 0.5; box-shadow: var(--md-shadow-2); }
 .cell.drop-target { background: var(--md-secondary-container); outline: 2px solid var(--md-primary); outline-offset: -2px; }
 
-/* ---------- agenda (<768px) ---------- */
+/* ---------- the grid on a phone ---------- */
+
+@media (max-width: 767px) {
+	.grid { border-spacing: 3px; margin: -3px; }
+	.cell {
+		height: 56px;
+		padding: 3px 2px;
+		border-radius: var(--md-shape-sm);
+	}
+	.weekhead-cell { padding: 4px 0; font-size: 11px; }
+
+	/* One tap target per day, over everything else in the cell. */
+	.cell-day {
+		display: block;
+		position: absolute;
+		inset: 0;
+		z-index: 2;
+		border-radius: var(--md-shape-sm);
+	}
+	.cell-day:focus-visible { outline: 2px solid var(--md-primary); outline-offset: -2px; }
+
+	.cell-head { justify-content: center; margin-bottom: 2px; }
+	.daynum { min-width: 22px; height: 22px; font-size: 12px; padding: 0; }
+	/* A holiday's name cannot fit in a 48px cell — but it must survive in the
+	   list below, which is the only place it is spelled out. Scoped to the
+	   grid, not to the page. */
+	.cell .holiday-tag { display: none; }
+
+	/* Today is the circled number and nothing else, the way every phone
+	   calendar marks it. Tinting the whole cell as well turns one day into a
+	   block that outweighs the month around it. */
+	.cell.today { background: var(--md-surface-container-low); }
+	.cell.today.weekend { background: var(--md-surface-container); }
+
+	/* Softer than on a laptop: at this size the tint is the only thing marking
+	   a holiday, and at full strength it read as a solid slab. */
+	.cell.holiday { background: color-mix(in srgb, var(--md-tertiary-container) 55%, var(--md-surface-container-low)); }
+
+	/* Names become dots. The chip keeps its colour and its data attributes —
+	   only its text and its own tap target go away, because at this size the
+	   day is the target. */
+	.chips { flex-direction: row; flex-wrap: wrap; justify-content: center; gap: 3px; }
+	.chip {
+		width: 6px;
+		height: 6px;
+		padding: 0;
+		border: 0;
+		border-left: 0;
+		border-radius: 50%;
+		background: var(--chip);
+		font-size: 0;
+		line-height: 0;
+		overflow: hidden;
+		pointer-events: none;
+		box-shadow: none;
+	}
+	.chip:hover { box-shadow: none; }
+}
+
+/* ---------- agenda (the day list) ---------- */
 
 .agenda-view {
 	background: var(--md-surface-container-low);
 	border-radius: var(--md-shape-md);
 	overflow: hidden;
+	margin-top: var(--pad);
 }
-.agenda-row { display: flex; gap: 16px; padding: 8px var(--pad); }
+/* A day that was jumped to holds a brief highlight, so a tap on a busy grid
+   lands somewhere obvious rather than merely scrolling. */
+.agenda-row:target { background: var(--md-secondary-container); color: var(--md-on-secondary-container); }
+.agenda-row {
+	display: flex;
+	gap: 16px;
+	padding: 8px var(--pad);
+	/* Jumping from a grid cell lands here; without this the sticky app bar
+	   covers the row that was just tapped. */
+	scroll-margin-top: 80px;
+}
 .agenda-row + .agenda-row { border-top: 1px solid var(--md-outline-variant); }
 .agenda-row.today { background: var(--md-primary-container); color: var(--md-on-primary-container); }
 .agenda-row.today .muted, .agenda-row.today .agenda-dow, .agenda-row.today .agenda-type { color: inherit; opacity: 0.8; }
@@ -1119,7 +1201,6 @@ form.inline { display: inline-flex; gap: 8px; align-items: center; flex-wrap: wr
 	.navbar { display: none; }
 	.brand-name { display: inline; }
 	.account-name { display: inline; margin-right: 4px; color: var(--md-on-surface-variant); }
-	.grid-view { display: block; }
 	.agenda-view { display: none; }
 	.fab { display: none; }
 	.calendar-actions .book-inline { display: inline-flex; }
