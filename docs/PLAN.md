@@ -21,7 +21,7 @@ Nothing here needs code.
 
 | # | Task | Why it blocks |
 | --- | --- | --- |
-| 1.1 | Sign in through a browser | Nobody has completed an SSO login. It cannot be tested from a terminal: a service token authenticates at the edge but carries no `email`. **Whoever signs in first becomes the admin.** |
+| ~~1.1~~ | ~~Sign in through a browser~~ | **Done.** Three people are signed in and booking leave; the first became the admin. |
 | 1.2 | Switch on LINE, if wanted | Channel, bot in the group, Access **Bypass** rule on `/line/webhook`, then two `wrangler secret put` calls. Steps in the [README](../README.md#turning-on-the-line-post). |
 | 1.3 | Check the LINE message allowance | Billing is per group member. ~600 messages/month for a 20-person group, and the free tier varies by country ([ISSUES.md](ISSUES.md) #2). |
 | 1.4 | Switch on browser notifications, if wanted | `npm run vapid`, public key into `wrangler.local.jsonc`, `wrangler secret put VAPID_PRIVATE_KEY`, then turn them on from `/me` and press **Send a test**. Free, and independent of LINE. Steps in the [README](../README.md#turning-on-browser-notifications). On iPhone the site must be installed to the Home Screen first ([ISSUES.md](ISSUES.md) #21). |
@@ -46,9 +46,9 @@ The review found **no critical and no high-severity issues**. SQL is parameteris
 
 | # | Task | Who | Notes |
 | --- | --- | --- | --- |
-| 3.1 | Act on the notes decision (2.1) | **Sonnet** | Contract is fixed once the owner chooses. Touches `entryData`, the popup, and the JSON feed. |
+| ~~3.1~~ | ~~Act on the notes decision (2.1)~~ | — | **Done:** per-note choice, private by default, filtered in the route. |
 | 3.2 | Audit trail (2.2) | **Opus** | New table plus writes on three mutation paths; getting it wrong means a trail with holes, which is worse than none. |
-| 3.3 | Consider a Content-Security-Policy header | **Opus** | The theme script is inline and must run before first paint, so a CSP needs a hash or nonce. Small but easy to get subtly wrong. |
+| ~~3.3~~ | ~~Consider a Content-Security-Policy header~~ | — | **Done:** CSP with the inline theme script allowed by hash, plus `no-store` on HTML and the other headers (ISSUES #30). |
 
 ---
 
@@ -60,8 +60,8 @@ Nothing here is urgent. Ordered by cost-to-benefit.
 | --- | --- | --- | --- |
 | 4.1 | Stop writing on every request | **Sonnet** | `ensureUser` calls `ensureQuotas` on *both* branches, so every authenticated page load runs an `INSERT OR IGNORE`. Only new users and a new year need it. |
 | 4.2 | Fix the `/admin` N+1 | **Sonnet** | One `listQuotas` per user ([index.tsx:524](../src/index.tsx)); 40 staff is 41 round trips. One grouped query instead. |
-| 4.3 | Extend smoke coverage | **Sonnet** | 16/20 routes exercised. Untested: `/book`, `/api/leave/preview`, `/me/name`, `/admin/holiday` and its delete, and the success path of `GET /leave/:id/edit`. |
-| 4.4 | Prune `notification_log` | **Haiku** | One row per day, never deleted. Drop rows older than a year in the cron. |
+| 4.3 | Extend smoke coverage | **Sonnet** | Much wider than it was — 141 assertions now cover note visibility, the audit trail, security headers, the referrer guard, push ownership and the holiday importer. Worth a fresh count of which routes remain untouched. |
+| 4.4 | Prune `notification_runs` and `leave_audit` | **Haiku** | Neither is ever deleted from (ISSUES #26). Drop old rows in the cron — but decide the audit trail's retention deliberately rather than by default. |
 | 4.5 | Correct `ARCHITECTURE.md` schema drift | **Haiku** | It documents a `line_user_id` column and a partial index on `leave_requests` that the migration does not create. |
 | 4.6 | Add a formatter and linter | **Haiku** | None configured. Style has been held by hand across ~20 files and four subagents; it will not survive a fifth. |
 | 4.7 | Cache `leave_types` | **Sonnet** | Static seed data, re-queried on all 7 call sites per page load. |
@@ -89,8 +89,10 @@ None of these are needed for the app to do its job. Rough value order.
 
 ## Suggested order
 
-1. **1.1** — sign in. Everything else is theoretical until someone has used it.
-2. **2.1** and **2.3** — the two cheap decisions: notes visibility, and something watching the deployment.
-3. **4.1**, **4.2**, **4.3** — one Sonnet batch; measurable, low risk, and 4.3 protects the rest.
-4. **2.2 / 3.2** — the audit trail, once the policy is settled.
-5. Features, as they are actually wanted.
+1. **1.4** — switch on browser notifications and press *Send a test*. Two minutes, free, and the only thing that can close ISSUES #23 and #31 — the last unverified claims in this repo.
+2. **2.3** — a Bypass rule so something watches the deployment. It now carries real data for three people.
+3. **1.2 / 1.3** — decide on LINE, or decide that free browser notifications are enough.
+4. **4.1**, **4.2**, **4.7** — one Sonnet batch of back-end debt; measurable and low risk.
+5. **4.4** — pruning, with the audit trail's retention decided deliberately.
+6. **4.6** — a linter, before the style drifts further.
+7. Features, as they are actually wanted.
