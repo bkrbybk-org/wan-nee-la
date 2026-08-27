@@ -19,7 +19,7 @@ import { isLang, t, tm, toLang, type Lang, type Message, type StringKey } from '
 import * as db from './repo/db.ts';
 import { AdminPage } from './views/admin.tsx';
 import { BookPage } from './views/book.tsx';
-import { CalendarPage } from './views/calendar.tsx';
+import { CalendarPage, UPCOMING_DAYS } from './views/calendar.tsx';
 import { EditPage } from './views/edit.tsx';
 import { ErrorPage, Layout, THEME_SCRIPT } from './views/layout.tsx';
 import { MePage } from './views/me.tsx';
@@ -250,9 +250,6 @@ function sayMessage(c: Ctx, m: Message): string {
 // ---------------------------------------------------------------------------
 // Calendar
 // ---------------------------------------------------------------------------
-
-/** How far ahead the calendar's sidebar looks. A quarter is plenty of notice. */
-const UPCOMING_DAYS = 90;
 
 app.get('/', async (c) => {
 	const user = c.get('user');
@@ -1027,7 +1024,7 @@ app.post('/admin/holiday/delete', async (c) => {
 	const date = String(form.date ?? '').trim();
 	if (!isValidDate(date)) return redirectWithFlash('/admin', 'err', say(c, 'flash.badDate'));
 	await db.removeHoliday(c.env.DB, date);
-	return redirectWithFlash('/admin', 'ok', `Removed ${date}.`);
+	return redirectWithFlash('/admin', 'ok', say(c, 'flash.holidayRemoved', { date }));
 });
 
 app.notFound((c) => {

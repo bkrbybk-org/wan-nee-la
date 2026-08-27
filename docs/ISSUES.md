@@ -440,3 +440,25 @@ Nine strings used "day(s)" and "person(s)". The catalogue now carries a plural f
 Found while checking the phone layout, along with two other gaps: the half-day marker on calendar chips was hard-coded `½am` / `½pm` and stayed English in a Thai interface, and the holiday-import help text ran its example straight into the end of a sentence.
 
 `test-i18n.mjs` now guards the catalogue itself: every key has both languages, no Thai value is a copy of its English, both halves of a plural use the same placeholders, and no English string falls back to "(s)".
+
+---
+
+## #34 — A booking could span more than a year `resolved`
+
+Nothing capped the length of a single booking. The far-future guard bounds the *end* date against today (550 days) and the backdate window bounds the start, which together leave a range of well over a year perfectly acceptable — and for a leave type with no allowance there is no quota standing behind it either. A mistyped year in the end date would have blanketed the calendar until somebody noticed.
+
+Found by review rather than by use: the string catalogue carried a message for this rule that nothing referenced, which is what gave it away. `countLeaveDays` now refuses a range longer than 366 days, and the message it was already carrying is finally the one it shows.
+
+The same sweep found two smaller things: `/admin/holiday/delete` returned an untranslated English confirmation while the rest of the admin page spoke Thai, and a `Banner` component in `views/layout.tsx` that nothing had rendered for weeks.
+
+---
+
+## #35 — Documentation drift, found by cross-checking `resolved`
+
+A review comparing the `.md` files against the code found several claims that had stopped being true:
+
+- `ARCHITECTURE.md` described a `line_user_id` column and a partial index on `leave_requests`, neither of which any migration creates, and still documented `notification_log`, which `0008` replaced with `notification_runs`. The schema block is now the one nine migrations actually produce, checked against a migrated database rather than written from memory. This closes PLAN 4.5.
+- `PROGRESS.md` and `README.md` both said the client bundle was ~6kb. It is ~10kb, and has been since browser notifications shipped.
+- `PLAN.md` claimed smoke covered "16 of 20 routes". A recount says 27 of 27 — `/me/name` and `/admin/holiday/delete` were the last two, and are now covered.
+
+Worth noting how each was found, because it says something about which claims rot: the schema drift was a known open item nobody had acted on, the bundle size was a number nobody re-measured, and the route coverage was a ratio that quietly went stale as routes were added. All three were the kind of fact that only stays true if something checks it.

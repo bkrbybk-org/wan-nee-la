@@ -53,7 +53,6 @@ export const STRINGS = {
 	'cal.bookOnShort': { en: 'Book leave — {date}', th: 'แจ้งลา — {date}' },
 	'cal.months': { en: 'Jan Feb Mar Apr May Jun Jul Aug Sep Oct Nov Dec', th: 'ม.ค. ก.พ. มี.ค. เม.ย. พ.ค. มิ.ย. ก.ค. ส.ค. ก.ย. ต.ค. พ.ย. ธ.ค.' },
 	'cal.seeDay': { en: 'See who is out on {date}', th: 'ดูว่าใครลาวันที่ {date}' },
-	'cal.dayCount': { en: '{n} away', th: 'ลา {n} คน' },
 	'cal.bookOn': { en: 'Book leave on {date}', th: 'แจ้งลาวันที่ {date}' },
 	'cal.upcoming': { en: 'Upcoming', th: 'ที่กำลังจะถึง' },
 	'cal.nothingUpcoming': { en: 'Nothing booked in the next {days} days.', th: 'ไม่มีการลาใน {days} วันข้างหน้า' },

@@ -91,6 +91,9 @@ export function workdaysIn(start: string, end: string, holidays: ReadonlySet<str
 	return eachDate(start, end).filter((d) => isWorkday(d, holidays));
 }
 
+/** The longest a single booking may span, end to end. A leap year, plus a day. */
+export const MAX_RANGE_DAYS = 366;
+
 export type DayCount = { ok: true; days: number } | { ok: false; error: Message };
 
 /**
@@ -120,6 +123,12 @@ export function countLeaveDays(
 	if (!isValidDate(start)) return { ok: false, error: msg('error.badStart') };
 	if (!isValidDate(end)) return { ok: false, error: msg('error.badEnd') };
 	if (daysBetween(start, end) < 0) return { ok: false, error: msg('error.endBeforeStart') };
+	// A booking spanning more than a year is a mistyped year, not a plan. The
+	// far-future guard bounds the *end* date against today, which leaves a range
+	// of several hundred days perfectly acceptable to it — and for a leave type
+	// with no allowance there is no quota to refuse it either, so it would
+	// blanket the calendar until someone noticed.
+	if (daysBetween(start, end) > MAX_RANGE_DAYS) return { ok: false, error: msg('error.tooLong') };
 
 	const single = start === end;
 

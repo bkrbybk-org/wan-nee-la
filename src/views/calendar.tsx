@@ -58,8 +58,14 @@ function typeLabel(e: { type_label_en: string; type_label_th: string }, lang: La
  */
 const CELL_CHIPS = 3;
 
-/** How far ahead the sidebar looks. Must match UPCOMING_DAYS in index.tsx. */
-const UPCOMING_DAYS = 90;
+/**
+ * How far ahead the sidebar looks.
+ *
+ * Exported so the route that fetches the window and the view that describes it
+ * cannot disagree — they were two constants with a comment asking them to
+ * match, which is the setup for a quiet drift.
+ */
+export const UPCOMING_DAYS = 90;
 
 /**
  * What is coming up, in the sidebar.

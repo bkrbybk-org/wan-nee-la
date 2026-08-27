@@ -4,13 +4,13 @@
 
 Employee leave tracker on Cloudflare Workers. "wan nee la" is Thai for *on leave today*.
 
-- Global calendar — who is out, which day. Click a day to book it, click an entry to open it, drag an entry to move it.
-- Self-serve booking with half-day granularity. Edit or remove afterwards.
-- Personal dashboard — days remaining per leave type.
-- A LINE group post every morning at 08:00 Asia/Bangkok listing who is out.
+- Global calendar — who is out, which day. A month grid at every width: names on a laptop, dots on a phone. Click a day to book it, click an entry to open it, drag an entry to move it.
+- Self-serve booking with half-day granularity, and a note that is private unless you share it. Edit or remove afterwards; every change is recorded.
+- Personal dashboard — days remaining per leave type. An upcoming sidebar on the calendar, and a month/year jump for planning further out.
+- A morning post at 08:00 Asia/Bangkok listing who is out, to browser notifications (free) or a LINE group (billed per member), or both. A week-ahead post on Mondays.
 - Behind Cloudflare Access. Material 3 interface in English or Thai, mobile and laptop layouts, System/Light/Dark themes.
 
-Hono + Hono JSX (SSR) + D1. No frontend framework; the client bundle is ~6kb of progressive enhancement and every page works without it.
+Hono + Hono JSX (SSR) + D1. No frontend framework; the client bundle is ~10kb of progressive enhancement and every page works without it.
 
 ## Setup
 
@@ -63,10 +63,19 @@ The first account to sign in becomes the admin.
 npm run typecheck && npm test
 ```
 
+`npm test` runs six suites: date arithmetic, booking rules, the LINE digest,
+Web Push against RFC 8291's worked example, holiday-list parsing, and the
+string catalogue's own health.
+
 `npm run test:smoke` additionally boots a worker against a scratch database and
-exercises the HTTP layer — CSRF, ownership checks, booking rules, the digest's
-decisions and the LINE webhook signature. It needs no secrets and makes no
-outbound calls.
+exercises the HTTP layer over all 27 routes — CSRF, ownership checks, note
+visibility across two identities, booking rules, the audit trail, security
+headers, the digest's decisions and the LINE webhook signature. It needs no
+secrets and makes no outbound calls.
+
+`node scripts/palette.mjs` regenerates the Material 3 colour roles, checks every
+pair the stylesheet paints against WCAG AA, and fails if the values in
+`public/app.css` are not the ones it generates. CI runs it.
 
 CI runs the same checks on every push and pull request, plus a client and Worker build, and asserts that no local-only file or credential-shaped string has been committed. It needs no secrets, so it also runs on pull requests from forks.
 

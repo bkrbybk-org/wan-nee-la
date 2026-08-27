@@ -24,7 +24,7 @@ Two optional channels are still inert, both needing the owner rather than more c
 | Area | Choice | Why |
 | --- | --- | --- |
 | Runtime | Cloudflare Workers | Required. |
-| Framework | Hono + Hono JSX, server-rendered | No SPA. Pages are small; SSR is faster on a phone and keeps the client bundle at ~6kb. |
+| Framework | Hono + Hono JSX, server-rendered | No SPA. Pages are small; SSR is faster on a phone and keeps the client bundle at ~10kb. |
 | Data | D1 (SQLite) | Relational: users × quotas × requests. KV cannot do the date-range queries the calendar needs. |
 | Auth | Cloudflare Access, JWT **verified** in the Worker | Never trust the header alone — that assumption breaks the moment a second route exists. |
 | Dates | Bangkok-local `YYYY-MM-DD` strings | Leave is a calendar date, not an instant. UTC timestamps cause off-by-one bugs at the boundary. |
@@ -102,7 +102,7 @@ Two consequences worth remembering:
 
 **Admin** — quota editing per person or in bulk across active users, holiday management, user roles, LINE status and run log.
 
-**LINE digest** — cron at 08:00 Asia/Bangkok posts who is out. Skips weekends, holidays, and days with nobody out, because LINE bills a group push per member. Double-posting is guarded twice: a `notification_log` row is claimed *before* the push, and the request carries LINE's `X-Line-Retry-Key`. `scheduled()` never throws, since a retried handler that already sent would post again.
+**LINE digest** — cron at 08:00 Asia/Bangkok posts who is out. Skips weekends, holidays, and days with nobody out, because LINE bills a group push per member. Double-posting is guarded twice: a `notification_runs` row is claimed *before* the push, and the request carries LINE's `X-Line-Retry-Key`. `scheduled()` never throws, since a retried handler that already sent would post again.
 
 **Week start** — each person chooses Monday or Sunday on `/me`. Presentation only: weekends stay Saturday and Sunday and no quota arithmetic changes. Stored per user in D1 rather than `localStorage`, because the grid is rendered on the server.
 
@@ -134,17 +134,17 @@ Two consequences worth remembering:
 
 ## Verification
 
-**435 automated assertions**, all green in CI on every push and pull request.
+**445 automated assertions**, all green in CI on every push and pull request.
 
 | Suite | Assertions | Covers |
 | --- | --- | --- |
-| `test-dates.mjs` | 111 | Bangkok boundary, half-days, weekends, holidays, month grids |
+| `test-dates.mjs` | 114 | Bangkok boundary, half-days, weekends, holidays, month grids |
 | `test-leave.mjs` | 61 | Booking rules, balances, calendar placement, note visibility |
 | `test-line.mjs` | 42 | Webhook signature, group-id extraction, daily and week-ahead digest text |
 | `test-push.mjs` | 23 | RFC 8291 encryption against the spec's worked example, VAPID token and signature |
 | `test-holidays.mjs` | 30 | Parsing a pasted holiday list, and its bounds |
 | `test-i18n.mjs` | 27 | Lookup, placeholders, plurals, and the catalogue's own health |
-| `smoke.mjs` | 141 | The HTTP layer — see below |
+| `smoke.mjs` | 148 | The HTTP layer — see below |
 
 The smoke suite boots a real worker against a scratch database and exercises what pure functions cannot reach: the CSRF guard, ownership checks on edit and cancel, booking rules over real requests, the open-redirect guards on `returnTo` **and on the `Referer` header**, note visibility across two identities, the audit trail's contents, the security headers, digest decisions, the webhook signature, push subscription ownership, and admin authorisation.
 
@@ -158,7 +158,7 @@ It is built against its own worst failure mode — passing while testing nothing
 
 ## Open items
 
-**No known bugs.** 435 assertions are green, `npm audit` is clean, and an audit on 2026-08-25 over the whole codebase — routes, SQL, XSS sinks, JWT verification, cookie flags — found and fixed every defect it turned up; they are enumerated in the change log below, and each is covered by a test or, where a test could not reach it, recorded as such in [ISSUES.md](ISSUES.md).
+**No known bugs.** 445 assertions are green, `npm audit` is clean, and an audit on 2026-08-25 over the whole codebase — routes, SQL, XSS sinks, JWT verification, cookie flags — found and fixed every defect it turned up; they are enumerated in the change log below, and each is covered by a test or, where a test could not reach it, recorded as such in [ISSUES.md](ISSUES.md).
 
 What follows is decisions, unfinished configuration, accepted trade-offs and debt — not defects.
 
@@ -194,7 +194,6 @@ Nothing here is urgent; all of it is confirmed present. Owners and ordering in [
 - `npm run db:init` cannot be run twice (#24): migration `0003` is a bare `ADD COLUMN`, so a real failure is indistinguishable from a no-op.
 - `leave_types` is static seed data, re-queried on every page load.
 - Leave types can only be added or changed by SQL. There is no admin UI for them, which is why `0009` had to be a migration.
-- `ARCHITECTURE.md` documents a `line_user_id` column and a partial index that no migration creates.
 - No linter or formatter. Style has been held by hand across ~28 files and six subagents; it will not survive many more.
 - Deploy is manual, by choice. Deploy-on-merge would put a Cloudflare API token and the infrastructure ids into a public repo's settings.
 
@@ -236,6 +235,7 @@ Features — iCal, CSV export, team grouping, coverage scoped to a team, an admi
 
 ## Change log
 
+- **2026-08-27** — Codebase review and a documentation cross-check (#34, #35). Capped a booking at 366 days — nothing had, and a type with no allowance has no quota to refuse one. Translated the holiday-delete confirmation, deleted an unused `Banner` component, and merged two copies of `UPCOMING_DAYS` that a comment had been asking to keep in step. Smoke now covers all 27 routes. `ARCHITECTURE.md`'s schema block rewritten from a migrated database; bundle-size claims corrected from ~6kb to ~10kb.
 - **2026-08-27** — Planned medical leave (migration 0009), separate from sick leave and with no allowance. Two older bugs surfaced by it: balance cards read "1 days taken", and the entry popup's date stayed English in a Thai interface.
 - **2026-08-26** — Month/year jump beside the heading. The heading itself was the control first; the accessibility tree showed the disclosure exposed as a plain container, so the heading went back to being a heading with a named control beside it.
 - **2026-08-26** — Desktop calendar fits the window, with an upcoming sidebar. Confirmed in production that the zone rewrites `X-Frame-Options` (#13).

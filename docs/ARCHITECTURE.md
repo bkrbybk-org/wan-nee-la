@@ -31,24 +31,28 @@ Admin = `users.is_admin` flag in D1, not an Access group (keeps the app self-con
 
 ## Data model (D1)
 
+Nine migrations, applied in order. This is the schema they produce — checked against a database with all of them applied, not written from memory.
+
 ```sql
 CREATE TABLE users (
   email         TEXT PRIMARY KEY,          -- from Access JWT, lowercased
   display_name  TEXT NOT NULL,
-  line_user_id  TEXT,                      -- optional, for @-mention in the LINE post
   is_admin      INTEGER NOT NULL DEFAULT 0,
   active        INTEGER NOT NULL DEFAULT 1,
-  created_at    TEXT NOT NULL
+  created_at    TEXT NOT NULL,
+  week_start    INTEGER NOT NULL DEFAULT 1,-- 0 Sunday, 1 Monday. Presentation only (0003)
+  lang          TEXT NOT NULL DEFAULT 'en' -- en | th (0007)
 );
 
 CREATE TABLE leave_types (
   id            INTEGER PRIMARY KEY,
-  code          TEXT NOT NULL UNIQUE,      -- annual | sick | personal | unpaid
+  code          TEXT NOT NULL UNIQUE,      -- annual | sick | medical | personal | unpaid
   label_th      TEXT NOT NULL,
   label_en      TEXT NOT NULL,
-  color         TEXT NOT NULL,             -- calendar chip color
-  default_days  REAL NOT NULL,             -- seeds new-year quotas
-  counts_quota  INTEGER NOT NULL DEFAULT 1 -- unpaid leave = 0
+  color         TEXT NOT NULL,             -- calendar chip colour
+  default_days  REAL NOT NULL,             -- seeds new quota rows only
+  counts_quota  INTEGER NOT NULL DEFAULT 1,-- unpaid and planned medical are 0
+  sort_order    INTEGER NOT NULL DEFAULT 0
 );
 
 CREATE TABLE quotas (
@@ -69,24 +73,54 @@ CREATE TABLE leave_requests (
   end_half      TEXT NOT NULL,
   days_total    REAL NOT NULL,             -- computed server-side, never trusted from client
   note          TEXT,
+  note_private  INTEGER NOT NULL DEFAULT 1,-- 1 = booker and admins only (0005)
   status        TEXT NOT NULL,             -- confirmed | cancelled
   created_at    TEXT NOT NULL,
   cancelled_at  TEXT
 );
-CREATE INDEX idx_leave_range  ON leave_requests (start_date, end_date) WHERE status = 'confirmed';
-CREATE INDEX idx_leave_user   ON leave_requests (user_email, start_date);
+CREATE INDEX idx_leave_range ON leave_requests (start_date, end_date);
+CREATE INDEX idx_leave_user  ON leave_requests (user_email, start_date);
+
+-- Who changed what, and to whose booking (0006).
+CREATE TABLE leave_audit (
+  id            INTEGER PRIMARY KEY AUTOINCREMENT,
+  leave_id      TEXT NOT NULL,
+  actor_email   TEXT NOT NULL,
+  subject_email TEXT NOT NULL,
+  action        TEXT NOT NULL,             -- created | edited | cancelled
+  at            TEXT NOT NULL,
+  before        TEXT,                      -- JSON snapshot; records whether a note
+  after         TEXT                       -- existed, never the note itself
+);
+CREATE INDEX idx_audit_at    ON leave_audit (at DESC);
+CREATE INDEX idx_audit_leave ON leave_audit (leave_id);
 
 CREATE TABLE holidays (
   date   TEXT PRIMARY KEY,                 -- YYYY-MM-DD
   label  TEXT NOT NULL
 );
 
-CREATE TABLE notification_log (
-  date        TEXT PRIMARY KEY,            -- the leave date announced
-  sent_at     TEXT NOT NULL,
-  people      INTEGER NOT NULL,
-  status      TEXT NOT NULL,               -- sent | skipped_empty | failed
-  error       TEXT
+-- One row per browser, not per person (0004).
+CREATE TABLE push_subscriptions (
+  endpoint    TEXT PRIMARY KEY,            -- issued by the browser's push service
+  user_email  TEXT NOT NULL,
+  p256dh      TEXT NOT NULL,               -- the browser's public key, base64url
+  auth        TEXT NOT NULL,               -- shared secret for the encryption
+  created_at  TEXT NOT NULL,
+  last_seen   TEXT
+);
+CREATE INDEX idx_push_user ON push_subscriptions (user_email);
+
+-- Keyed per date, kind and channel, so no post can suppress another (0004, 0008).
+CREATE TABLE notification_runs (
+  date     TEXT NOT NULL,
+  kind     TEXT NOT NULL,                  -- daily | week
+  channel  TEXT NOT NULL,                  -- line | push
+  sent_at  TEXT NOT NULL,
+  people   INTEGER NOT NULL,
+  status   TEXT NOT NULL,                  -- pending | sent | failed
+  error    TEXT,
+  PRIMARY KEY (date, kind, channel)
 );
 
 CREATE TABLE app_config (                  -- LINE group id, captured via webhook
@@ -94,6 +128,8 @@ CREATE TABLE app_config (                  -- LINE group id, captured via webhoo
   value TEXT NOT NULL
 );
 ```
+
+Two notes on things that used to be documented here and were not true. There is no `line_user_id` column — @-mentioning people in the LINE post was never built. And `idx_leave_range` is a plain index, not a partial one on `status = 'confirmed'`; the status filter lives in the query.
 
 `days_total` is always recomputed on the server from `start_date`/`end_date`/halves minus weekends minus `holidays`. Client-submitted totals are ignored.
 
@@ -127,7 +163,7 @@ Self-serve model (owner's decision): a POST creates a `confirmed` row directly. 
 2. If weekend or in `holidays` → write `skipped_empty`, stop.
 3. Query confirmed leave overlapping today.
 4. If nobody on leave → `skipped_empty`, stop. (Also saves LINE quota — see ISSUES.md #2.)
-5. `INSERT OR IGNORE` into `notification_log` **first**. If the row already exists with `status='sent'`, stop. Cron retries and manual re-runs must not double-post.
+5. `INSERT OR IGNORE` into `notification_runs` **first**, keyed on (date, kind, channel). If the row already exists, stop. Cron retries and manual re-runs must not double-post, and the daily and week-ahead posts must not suppress each other.
 6. `POST https://api.line.me/v2/bot/message/push` with `to = <group id>`, Bearer channel access token, and an `X-Line-Retry-Key` (LINE's own idempotency header).
 7. Update the log row with the outcome.
 

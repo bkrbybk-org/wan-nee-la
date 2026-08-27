@@ -221,10 +221,6 @@ export function YearNav({ basePath, year, minYear, maxYear }: { basePath: string
 	);
 }
 
-export function Banner({ kind, children }: { kind: 'error' | 'ok'; children?: Child }) {
-	return <div class={`banner ${kind}`}>{children}</div>;
-}
-
 /** Full-page message for the states where there is no session to render a nav for. */
 export function ErrorPage({ title, detail }: { title: string; detail: string }) {
 	return (

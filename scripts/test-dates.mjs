@@ -238,5 +238,15 @@ eq('describeRange: single PM', describeRange('2026-08-17', '2026-08-17', 'pm', '
 eq('describeRange: multi day', describeRange('2026-08-17', '2026-08-21', 'full', 'full'), '17 Aug – 21 Aug');
 eq('describeRange: multi day with halves', describeRange('2026-08-17', '2026-08-21', 'pm', 'am'), '17 Aug (PM) – 21 Aug (AM)');
 
+// A booking longer than a year is a mistyped year, not a plan — and for a leave
+// type with no allowance there is no quota standing behind this check.
+bad('range longer than a year', days('2026-01-05', '2027-06-01'));
+check(
+	'and it says which rule refused it',
+	days('2026-01-05', '2027-06-01').error?.key === 'error.tooLong',
+	days('2026-01-05', '2027-06-01').error?.key,
+);
+check('a range just inside the limit is allowed', days('2026-01-05', '2026-12-31').ok, 'rejected a valid year');
+
 console.log(failures === 0 ? '\nAll date tests passed.' : `\n${failures} failure(s).`);
 process.exit(failures === 0 ? 0 : 1);

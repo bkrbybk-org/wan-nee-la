@@ -44,7 +44,7 @@ const OTHER = 'other@example.com';
 const STATE = mkdtempSync(join(tmpdir(), 'wnl-smoke-'));
 
 /** Assertions that must run for the suite to be considered complete. */
-const MIN_ASSERTIONS = 139;
+const MIN_ASSERTIONS = 146;
 
 let pass = 0;
 let fail = 0;
@@ -769,6 +769,30 @@ async function main() {
 	);
 	check('and still offers booking', gridHtml.includes(`/book?date=${TODAY}`), 'booking link missing');
 	d1("DELETE FROM leave_requests WHERE id = 'smoke-grid'");
+
+	// --- display name -------------------------------------------------------
+	res = await post('/me/name', { displayName: 'Renamed Admin' });
+	eq('display name can be changed', flashOf(res)?.kind, 'ok');
+	check(
+		'and the new name reaches the shared calendar',
+		(await (await fetch(`${BASE}/`)).text()).includes('Renamed Admin'),
+		'new name missing',
+	);
+	res = await post('/me/name', { displayName: '   ' });
+	eq('an empty display name is refused', flashOf(res)?.kind, 'err');
+	eq(
+		'and the old one survives',
+		d1Rows(`SELECT display_name FROM users WHERE email = '${ADMIN}'`)[0]?.display_name,
+		'Renamed Admin',
+	);
+	await post('/me/name', { displayName: 'Admin' });
+
+	// --- removing a holiday --------------------------------------------------
+	await post('/admin/holiday', { date: '2031-03-04', label: 'Smoke Day' });
+	eq('holiday added', d1Rows("SELECT COUNT(*) AS n FROM holidays WHERE date = '2031-03-04'")[0]?.n, 1);
+	res = await post('/admin/holiday/delete', { date: '2031-03-04' });
+	eq('holiday removed', flashOf(res)?.kind, 'ok');
+	eq('and it is gone', d1Rows("SELECT COUNT(*) AS n FROM holidays WHERE date = '2031-03-04'")[0]?.n, 0);
 
 	// --- jumping to a month -------------------------------------------------
 	//

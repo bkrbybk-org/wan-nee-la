@@ -60,9 +60,9 @@ Nothing here is urgent. Ordered by cost-to-benefit.
 | --- | --- | --- | --- |
 | 4.1 | Stop writing on every request | **Sonnet** | `ensureUser` calls `ensureQuotas` on *both* branches, so every authenticated page load runs an `INSERT OR IGNORE`. Only new users and a new year need it. |
 | 4.2 | Fix the `/admin` N+1 | **Sonnet** | One `listQuotas` per user ([index.tsx:524](../src/index.tsx)); 40 staff is 41 round trips. One grouped query instead. |
-| 4.3 | Extend smoke coverage | **Sonnet** | Much wider than it was — 141 assertions now cover note visibility, the audit trail, security headers, the referrer guard, push ownership and the holiday importer. Worth a fresh count of which routes remain untouched. |
+| ~~4.3~~ | ~~Extend smoke coverage~~ | — | **Done:** 148 assertions over 27 of 27 routes. Recounted 2026-08-27; the last two gaps (`/me/name`, `/admin/holiday/delete`) are now covered. |
 | 4.4 | Prune `notification_runs` and `leave_audit` | **Haiku** | Neither is ever deleted from (ISSUES #26). Drop old rows in the cron — but decide the audit trail's retention deliberately rather than by default. |
-| 4.5 | Correct `ARCHITECTURE.md` schema drift | **Haiku** | It documents a `line_user_id` column and a partial index on `leave_requests` that the migration does not create. |
+| ~~4.5~~ | ~~Correct `ARCHITECTURE.md` schema drift~~ | — | **Done:** the schema block is now the one nine migrations actually produce, checked against a migrated database. |
 | 4.6 | Add a formatter and linter | **Haiku** | None configured. Style has been held by hand across ~20 files and four subagents; it will not survive a fifth. |
 | 4.7 | Cache `leave_types` | **Sonnet** | Static seed data, re-queried on all 7 call sites per page load. |
 | 4.8 | Bump Hono | **Haiku** | Pinned `^4.6.14`, current is 4.13.2. `npm audit` is clean, so this is hygiene, not a fix. |
