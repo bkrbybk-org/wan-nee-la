@@ -1,4 +1,5 @@
 import { describeRange, formatDays } from '../domain/dates.ts';
+import type { BookingDraft } from '../domain/leave.ts';
 import type { Balance, LeaveEntry, LeaveType, User } from '../types.ts';
 import { Layout, YearNav } from './layout.tsx';
 import { BookingForm } from './booking.tsx';
@@ -22,6 +23,8 @@ interface MeProps {
 	error?: string;
 	errorField?: string;
 	notice?: string;
+	/** A booking the server just rejected, to hand back to the form. */
+	draft?: BookingDraft;
 }
 
 export function MePage(props: MeProps) {
@@ -33,7 +36,7 @@ export function MePage(props: MeProps) {
 }
 
 function MeBody(props: MeProps) {
-	const { user, year, minYear, maxYear, balances, entries, types, today, vapidPublicKey, error, errorField, notice } = props;
+	const { user, year, minYear, maxYear, balances, entries, types, today, vapidPublicKey, error, errorField, notice, draft } = props;
 	const t = useT();
 	const lang = useLang();
 	const upcoming = entries.filter((e) => e.status === 'confirmed' && e.end_date >= today);
@@ -92,7 +95,7 @@ function MeBody(props: MeProps) {
 
 			<section class="card">
 				<h2>{t('book.submit')}</h2>
-				<BookingForm types={types} today={today} errorField={errorField} compact />
+				<BookingForm types={types} today={today} errorField={errorField} draft={draft} compact />
 			</section>
 
 			<section class="card">

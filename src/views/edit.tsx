@@ -1,4 +1,5 @@
 import { describeRange, formatDays } from '../domain/dates.ts';
+import type { BookingDraft } from '../domain/leave.ts';
 import type { LeaveEntry, LeaveType, User } from '../types.ts';
 import { Layout } from './layout.tsx';
 import { BookingForm } from './booking.tsx';
@@ -18,12 +19,14 @@ interface EditProps {
 	/** The booking-form input the last submission was rejected over, if any. */
 	errorField?: string;
 	notice?: string;
+	/** A rejected edit, to hand back to the form instead of the stored booking. */
+	draft?: BookingDraft;
 }
 
-export function EditPage({ user, entry, types, today, onBehalfOf, version, error, errorField, notice }: EditProps) {
+export function EditPage({ user, entry, types, today, onBehalfOf, version, error, errorField, notice, draft }: EditProps) {
 	return (
 		<Layout title={translate(toLang(user.lang), 'edit.title')} user={user} active="me" version={version}>
-			<EditBody {...{ entry, types, today, onBehalfOf, error, errorField, notice }} />
+			<EditBody {...{ entry, types, today, onBehalfOf, error, errorField, notice, draft }} />
 		</Layout>
 	);
 }
@@ -36,6 +39,7 @@ function EditBody({
 	error,
 	errorField,
 	notice,
+	draft,
 }: Omit<EditProps, 'user' | 'version'>) {
 	const t = useT();
 	const lang = useLang();
@@ -71,7 +75,7 @@ function EditBody({
 
 			<section class="card">
 				<h2>{t('edit.change')}</h2>
-				<BookingForm types={types} today={today} entry={entry} errorField={errorField} compact />
+				<BookingForm types={types} today={today} entry={entry} errorField={errorField} draft={draft} compact />
 			</section>
 
 			<section class="card">

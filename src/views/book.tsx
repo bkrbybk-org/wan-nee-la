@@ -1,4 +1,5 @@
 import { shortDate } from '../domain/dates.ts';
+import type { BookingDraft } from '../domain/leave.ts';
 import type { LeaveType, User } from '../types.ts';
 import { Layout } from './layout.tsx';
 import { BookingForm } from './booking.tsx';
@@ -24,6 +25,7 @@ export function BookPage({
 	error,
 	errorField,
 	notice,
+	draft,
 }: {
 	user: User;
 	types: LeaveType[];
@@ -33,10 +35,12 @@ export function BookPage({
 	error?: string;
 	errorField?: string;
 	notice?: string;
+	/** A booking the server just rejected, to hand back to the form. */
+	draft?: BookingDraft;
 }) {
 	return (
 		<Layout title={translate(toLang(user.lang), 'book.pageTitle')} user={user} active="calendar" version={version}>
-			<BookBody {...{ user, types, today, date, error, errorField, notice }} />
+			<BookBody {...{ user, types, today, date, error, errorField, notice, draft }} />
 		</Layout>
 	);
 }
@@ -48,6 +52,7 @@ function BookBody({
 	error,
 	errorField,
 	notice,
+	draft,
 }: {
 	user: User;
 	types: LeaveType[];
@@ -56,6 +61,7 @@ function BookBody({
 	error?: string;
 	errorField?: string;
 	notice?: string;
+	draft?: BookingDraft;
 }) {
 	const t = useT();
 	const lang = useLang();
@@ -73,7 +79,7 @@ function BookBody({
 			</div>
 
 			<section class="card">
-				<BookingForm types={types} today={today} defaultDate={date} errorField={errorField} compact />
+				<BookingForm types={types} today={today} defaultDate={date} errorField={errorField} draft={draft} compact />
 			</section>
 
 			<p>

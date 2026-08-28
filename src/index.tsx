@@ -13,7 +13,16 @@ import {
 	parseWeekStart,
 	shortDate,
 } from './domain/dates.ts';
-import { fieldForError, parseBooking, round, validateBooking, visibleNote } from './domain/leave.ts';
+import {
+	draftPayload,
+	fieldForError,
+	parseBooking,
+	parseDraft,
+	round,
+	validateBooking,
+	visibleNote,
+	type BookingDraft,
+} from './domain/leave.ts';
 import { parseHolidayList } from './domain/holidays.ts';
 import { isLang, t, tm, toLang, type Lang, type Message, type StringKey } from './i18n/strings.ts';
 import * as db from './repo/db.ts';
@@ -297,6 +306,7 @@ app.get('/', async (c) => {
 			error={flashOf(c.get('flash'), 'err')}
 			errorField={flashField(c.get('flash'))}
 			notice={flashOf(c.get('flash'), 'ok')}
+			draft={flashDraft(c.get('flash'))}
 		/>,
 	);
 });
@@ -322,6 +332,7 @@ app.get('/book', async (c) => {
 			error={flashOf(c.get('flash'), 'err')}
 			errorField={flashField(c.get('flash'))}
 			notice={flashOf(c.get('flash'), 'ok')}
+			draft={flashDraft(c.get('flash'))}
 		/>,
 	);
 });
@@ -484,11 +495,19 @@ app.post('/api/leave', async (c) => {
 
 	const form = await c.req.parseBody();
 	const parsed = parseBooking(form as Record<string, unknown>);
-	if ('error' in parsed) return redirectWithFlash(back, 'err', sayMessage(c, parsed.error), fieldForError(parsed.error));
+	// No draft to carry: parsing failed, so there is no coherent booking to
+	// prefill with. The key still names the field that was wrong, which is the
+	// half of the answer that survives. Every rule that rejects a booking the
+	// reader could plausibly have meant is below, and those carry both.
+	if ('error' in parsed) {
+		return redirectWithFlash(back, 'err', sayMessage(c, parsed.error), { field: fieldForError(parsed.error) });
+	}
 
 	const ctx = await buildBookingContext(c.env, user.email, parsed, today);
 	const check = validateBooking(parsed, ctx);
-	if (!check.ok) return redirectWithFlash(back, 'err', sayMessage(c, check.error), fieldForError(check.error));
+	if (!check.ok) {
+		return redirectWithFlash(back, 'err', sayMessage(c, check.error), { field: fieldForError(check.error), draft: parsed });
+	}
 
 	const row: LeaveRequest = {
 		id: crypto.randomUUID(),
@@ -562,6 +581,7 @@ app.get('/leave/:id/edit', async (c) => {
 			error={flashOf(c.get('flash'), 'err')}
 			errorField={flashField(c.get('flash'))}
 			notice={flashOf(c.get('flash'), 'ok')}
+			draft={flashDraft(c.get('flash'))}
 		/>,
 	);
 });
@@ -585,14 +605,25 @@ app.post('/api/leave/:id/edit', async (c) => {
 	const back = returnTo ?? `/leave/${id}/edit`;
 	const done = returnTo ?? '/me';
 	const parsed = parseBooking(form as Record<string, unknown>);
-	if ('error' in parsed) return redirectWithFlash(back, 'err', sayMessage(c, parsed.error), fieldForError(parsed.error));
+	if ('error' in parsed) {
+		return redirectWithFlash(back, 'err', sayMessage(c, parsed.error), { field: fieldForError(parsed.error) });
+	}
+
+	// A rejected booking is carried back so the edit form can be redisplayed
+	// holding it — but only for the edit page. `returnTo` means this came from a
+	// drag on the calendar, which lands on a month view whose booking form is a
+	// blank create form; prefilling that with the dragged booking would put
+	// somebody else's dates into a form the reader never opened.
+	const draft = returnTo ? undefined : parsed;
 
 	// Validate against the owner of the booking, not whoever is editing it — an
 	// admin fixing someone else's leave must be checked against that person's
 	// quota and their other bookings.
 	const ctx = await buildBookingContext(c.env, owned.row.user_email, parsed, today, owned.row);
 	const check = validateBooking(parsed, ctx);
-	if (!check.ok) return redirectWithFlash(back, 'err', sayMessage(c, check.error), fieldForError(check.error));
+	if (!check.ok) {
+		return redirectWithFlash(back, 'err', sayMessage(c, check.error), { field: fieldForError(check.error), draft });
+	}
 
 	const changed = await db.updateLeave(c.env.DB, id, {
 		leave_type_id: parsed.leaveTypeId,
@@ -666,6 +697,7 @@ app.get('/me', async (c) => {
 			error={flashOf(c.get('flash'), 'err')}
 			errorField={flashField(c.get('flash'))}
 			notice={flashOf(c.get('flash'), 'ok')}
+			draft={flashDraft(c.get('flash'))}
 		/>,
 	);
 });
@@ -1130,20 +1162,77 @@ function referrerPath(referer: string | undefined, requestUrl: string): string |
 const FLASH_COOKIE = 'wnl_flash';
 const FLASH_MAX = 300;
 
-export type Flash = { kind: 'ok' | 'err'; message: string; field?: string } | null;
+/**
+ * How long the base64url cookie value may grow before the note is dropped.
+ *
+ * Browsers cap a cookie at 4096 bytes covering the name, the value and the
+ * attributes. The name and attributes here cost 62 bytes, so 3600 leaves a few
+ * hundred spare — room for a future attribute, and cheaper than discovering the
+ * limit as a cookie the browser silently refuses to store.
+ *
+ * For scale: a 300-character message beside a 500-character note encodes to
+ * about 1200 characters in English and 3350 in Thai, so an ordinary note always
+ * survives. What does not is a note of characters JSON has to escape — six bytes
+ * each for control characters — which is the case the drop below exists for.
+ */
+const FLASH_VALUE_MAX = 3600;
 
-function flashCookie(kind: 'ok' | 'err', message: string, field?: string): string {
-	const payload = JSON.stringify({ k: kind, m: message.slice(0, FLASH_MAX), f: field });
-	const b64 = btoa(String.fromCharCode(...new TextEncoder().encode(payload)))
+const FLASH_ATTRS = 'Path=/; Max-Age=30; HttpOnly; Secure; SameSite=Lax';
+
+/**
+ * What a rejection carries back besides the sentence: which input was wrong,
+ * and what was typed into the form. Both are optional and independent — a parse
+ * failure knows the field but has no coherent booking to hand back.
+ */
+interface FlashExtra {
+	field?: string;
+	draft?: BookingDraft;
+}
+
+export type Flash = { kind: 'ok' | 'err'; message: string; field?: string; draft?: BookingDraft } | null;
+
+function encodeFlash(payload: unknown): string {
+	return btoa(String.fromCharCode(...new TextEncoder().encode(JSON.stringify(payload))))
 		.replace(/\+/g, '-')
 		.replace(/\//g, '_')
 		.replace(/=+$/, '');
+}
+
+/**
+ * `extra.field` names the input that was rejected; `extra.draft` is the booking
+ * that was typed into the form, carried back so it can be handed over intact.
+ * The field name is a couple of dozen bytes and always travels; the draft is
+ * what has to fit in the room left over.
+ */
+function flashCookie(kind: 'ok' | 'err', message: string, extra?: FlashExtra): string {
+	const base = {
+		k: kind,
+		m: message.slice(0, FLASH_MAX),
+		...(extra?.field ? { f: extra.field } : {}),
+	};
+	const draft = extra?.draft;
+	let value = encodeFlash(draft ? { ...base, d: draftPayload(draft) } : base);
+
+	// An oversized payload loses the note rather than the whole draft — losing
+	// the draft would also lose the message explaining why the booking was
+	// refused, which is the part that has to arrive. Dropping the note whole
+	// beats truncating it too: a note that silently comes back half written is
+	// worse than one the reader can see they have to type again.
+	if (draft && value.length > FLASH_VALUE_MAX) {
+		value = encodeFlash({ ...base, d: draftPayload({ ...draft, note: undefined }) });
+	}
+
 	// Max-Age is 30s: long enough to survive the redirect, short enough that a
 	// stale message never reappears on a later visit.
-	return `${FLASH_COOKIE}=${b64}; Path=/; Max-Age=30; HttpOnly; Secure; SameSite=Lax`;
+	return `${FLASH_COOKIE}=${value}; ${FLASH_ATTRS}`;
 }
 
 const FLASH_CLEAR = `${FLASH_COOKIE}=; Path=/; Max-Age=0; HttpOnly; Secure; SameSite=Lax`;
+
+/** The rejected booking to prefill a form with, if this flash carries one. */
+function flashDraft(flash: Flash): BookingDraft | undefined {
+	return flash?.kind === 'err' ? flash.draft : undefined;
+}
 
 /** The message text when the flash is of this kind, else undefined. */
 function flashOf(flash: Flash, kind: 'ok' | 'err'): string | undefined {
@@ -1167,15 +1256,23 @@ function readFlash(cookieHeader: string | undefined): Flash {
 		const b64 = m[1].replace(/-/g, '+').replace(/_/g, '/');
 		const bin = atob(b64.padEnd(Math.ceil(b64.length / 4) * 4, '='));
 		const bytes = Uint8Array.from(bin, (ch) => ch.charCodeAt(0));
-		const parsed = JSON.parse(new TextDecoder().decode(bytes)) as { k?: string; m?: string; f?: string };
+		const parsed = JSON.parse(new TextDecoder().decode(bytes)) as { k?: string; m?: string; f?: string; d?: unknown };
 		if ((parsed.k !== 'ok' && parsed.k !== 'err') || typeof parsed.m !== 'string') return null;
 		// The cookie is ours, HttpOnly and short-lived, but it still arrives from
 		// the client and the field name is compared against the form's own input
 		// names. Anything that is not shaped like one of those is dropped rather
 		// than trusted, so a hand-written cookie can at worst suppress the marker
-		// it was trying to forge.
+		// it was trying to forge. The draft is re-validated by `parseDraft` for
+		// the same reason, and neither failing costs more than the other: a lost
+		// marker or a retype, never the message itself.
 		const field = typeof parsed.f === 'string' && /^[A-Za-z]{1,32}$/.test(parsed.f) ? parsed.f : undefined;
-		return { kind: parsed.k, message: parsed.m.slice(0, FLASH_MAX), field };
+		const draft = parsed.d === undefined ? null : parseDraft(parsed.d);
+		return {
+			kind: parsed.k,
+			message: parsed.m.slice(0, FLASH_MAX),
+			...(field ? { field } : {}),
+			...(draft ? { draft } : {}),
+		};
 	} catch {
 		// A malformed cookie is not worth an error page — just show no message.
 		return null;
@@ -1190,10 +1287,10 @@ function readFlash(cookieHeader: string | undefined): Flash {
  * a redirect return to the month that was being viewed or the year being
  * edited.
  */
-function redirectWithFlash(path: string, kind: 'ok' | 'err', message: string, field?: string): Response {
+function redirectWithFlash(path: string, kind: 'ok' | 'err', message: string, extra?: FlashExtra): Response {
 	return new Response(null, {
 		status: 303,
-		headers: { Location: path, 'Set-Cookie': flashCookie(kind, message, field) },
+		headers: { Location: path, 'Set-Cookie': flashCookie(kind, message, extra) },
 	});
 }
 

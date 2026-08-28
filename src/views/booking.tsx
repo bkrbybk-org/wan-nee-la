@@ -1,3 +1,4 @@
+import type { BookingDraft } from '../domain/leave.ts';
 import type { LeaveEntry, LeaveType } from '../types.ts';
 import { SelectField, TextField } from './fields.tsx';
 import { useLang, useT } from '../i18n/context.tsx';
@@ -17,6 +18,13 @@ interface BookingFormProps {
 	 * says which of five fields it is about.
 	 */
 	errorField?: string;
+	/**
+	 * The booking that rejection was about, carried back by the same cookie. It
+	 * wins over every other source of a value: it is what the reader typed, and
+	 * the banner above the form is explaining why it was turned down. `errorField`
+	 * marks which of these values to look at.
+	 */
+	draft?: BookingDraft;
 }
 
 /**
@@ -27,13 +35,25 @@ interface BookingFormProps {
  * `type="date"` gives the native picker on both iOS and Android, which is a far
  * better mobile experience than any date-picker library and costs nothing.
  */
-export function BookingForm({ types, today, compact, entry, defaultDate, errorField }: BookingFormProps) {
+export function BookingForm({ types, today, compact, entry, defaultDate, errorField, draft }: BookingFormProps) {
 	const editing = Boolean(entry);
 	const action = entry ? `/api/leave/${entry.id}/edit` : '/api/leave';
+
+	const startValue = draft?.startDate ?? (entry ? entry.start_date : (defaultDate ?? today));
 	// On a single-day booking the end date is left blank, which is what the
-	// create form defaults to — keeps the two modes rendering identically.
-	const endValue = entry && entry.end_date !== entry.start_date ? entry.end_date : '';
+	// create form defaults to — keeps the two modes rendering identically. A
+	// draft goes through the same rule: `parseBooking` has already turned its
+	// blank end date into a copy of the start, so an equal pair means one day.
+	const endSource = draft ?? (entry ? { startDate: entry.start_date, endDate: entry.end_date } : null);
+	const endValue = endSource && endSource.endDate !== endSource.startDate ? endSource.endDate : '';
 	const uid = entry?.id ?? 'new';
+
+	const typeId = draft?.leaveTypeId ?? entry?.leave_type_id;
+	// A dropped note (see `flashCookie`) leaves `draft.note` undefined, which
+	// falls through to whatever the form held before — an empty string means the
+	// reader deliberately cleared it.
+	const noteValue = draft?.note ?? entry?.note ?? '';
+	const shareNote = draft ? !draft.notePrivate : entry ? !entry.note_private : false;
 
 	const half = (want: string, current: string | undefined, fallback: string) =>
 		(current ?? fallback) === want;
@@ -63,7 +83,7 @@ export function BookingForm({ types, today, compact, entry, defaultDate, errorFi
 		>
 			<SelectField id={`leaveTypeId-${uid}`} name="leaveTypeId" label={t('book.type')} required invalid={bad('leaveTypeId')}>
 				{types.map((type) => (
-					<option value={String(type.id)} selected={entry ? type.id === entry.leave_type_id : undefined}>
+					<option value={String(type.id)} selected={typeId === undefined ? undefined : type.id === typeId}>
 						{lang === 'th' ? type.label_th : type.label_en} · {lang === 'th' ? type.label_en : type.label_th}
 					</option>
 				))}
@@ -76,14 +96,14 @@ export function BookingForm({ types, today, compact, entry, defaultDate, errorFi
 					label={t('book.from')}
 					type="date"
 					required
-					value={entry ? entry.start_date : (defaultDate ?? today)}
+					value={startValue}
 					invalid={bad('startDate')}
 					extra={{ 'data-start': '' }}
 				/>
 				<SelectField id={`startHalf-${uid}`} name="startHalf" label={t('book.startHalf')} invalid={bad('startHalf')} extra={{ 'data-start-half': '' }}>
-					<option value="full" selected={half('full', entry?.start_half, 'full')}>{t('book.fullDay')}</option>
-					<option value="am" selected={half('am', entry?.start_half, 'full')}>{t('book.am')}</option>
-					<option value="pm" selected={half('pm', entry?.start_half, 'full')}>{t('book.pm')}</option>
+					<option value="full" selected={half('full', draft?.startHalf ?? entry?.start_half, 'full')}>{t('book.fullDay')}</option>
+					<option value="am" selected={half('am', draft?.startHalf ?? entry?.start_half, 'full')}>{t('book.am')}</option>
+					<option value="pm" selected={half('pm', draft?.startHalf ?? entry?.start_half, 'full')}>{t('book.pm')}</option>
 				</SelectField>
 			</div>
 
@@ -107,17 +127,17 @@ export function BookingForm({ types, today, compact, entry, defaultDate, errorFi
 					extra={{ 'data-end-half': '' }}
 					fieldExtra={{ 'data-end-half-field': '' }}
 				>
-					<option value="full" selected={half('full', entry?.end_half, 'full')}>{t('book.fullDay')}</option>
-					<option value="am" selected={half('am', entry?.end_half, 'full')}>{t('book.am')}</option>
+					<option value="full" selected={half('full', draft?.endHalf ?? entry?.end_half, 'full')}>{t('book.fullDay')}</option>
+					<option value="am" selected={half('am', draft?.endHalf ?? entry?.end_half, 'full')}>{t('book.am')}</option>
 				</SelectField>
 			</div>
 
-			<TextField id={`note-${uid}`} name="note" label={t('book.note')} maxlength={500} value={entry?.note ?? ''} />
+			<TextField id={`note-${uid}`} name="note" label={t('book.note')} maxlength={500} value={noteValue} />
 			{/* Private by default. The old behaviour was to share every note with
 			    everyone, which was defensible for a shared calendar — the problem
 			    was that the field gave no sign of it (ISSUES.md #17). */}
 			<label class="checkline">
-				<input type="checkbox" name="noteVisibility" value="shared" checked={entry ? !entry.note_private : false} />
+				<input type="checkbox" name="noteVisibility" value="shared" checked={shareNote} />
 				{t('book.shareNote')}
 			</label>
 			<p class="tf-support">{t('book.noteHelp')}</p>

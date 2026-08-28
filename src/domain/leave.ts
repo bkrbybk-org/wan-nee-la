@@ -28,6 +28,17 @@ export interface BookingInput {
 	notePrivate: boolean;
 }
 
+/**
+ * A rejected booking on its way back to the form it came from.
+ *
+ * The same fields as `BookingInput`, except the note is optional: it is the one
+ * field big enough to threaten the cookie that carries this (see `flashCookie`
+ * in `src/index.tsx`), so the encoder is allowed to drop it. `undefined` means
+ * "not carried" and leaves whatever the form already had; an empty string means
+ * the reader cleared the note, which is a different thing.
+ */
+export type BookingDraft = Omit<BookingInput, 'note'> & { note?: string };
+
 export interface ExistingRange {
 	id: string;
 	start_date: string;
@@ -99,6 +110,65 @@ export function parseBooking(form: Record<string, unknown>): BookingInput | { er
 	const notePrivate = String(form.noteVisibility ?? '') !== 'shared';
 
 	return { leaveTypeId, startDate, endDate, startHalf, endHalf, note, notePrivate };
+}
+
+/**
+ * The draft as it travels inside the flash cookie.
+ *
+ * One- and two-character keys, which is not how the rest of this file names
+ * things: the cookie has a hard 4096-byte budget shared with the error message,
+ * and base64 adds a third on top of whatever JSON costs. Full field names would
+ * spend around 60 of those bytes on nothing.
+ */
+export function draftPayload(draft: BookingDraft): Record<string, unknown> {
+	return {
+		t: draft.leaveTypeId,
+		s: draft.startDate,
+		e: draft.endDate,
+		sh: draft.startHalf,
+		eh: draft.endHalf,
+		p: draft.notePrivate,
+		// Omitted rather than sent empty when the note was dropped, so the form
+		// can tell "not carried" from "cleared".
+		...(draft.note === undefined ? {} : { n: draft.note }),
+	};
+}
+
+/**
+ * Read a draft back out of the cookie.
+ *
+ * Every field is re-validated. The cookie is HttpOnly, but it still round-trips
+ * through the client, so what comes back is untrusted input exactly like a form
+ * body — and this one is fed straight into rendered form values.
+ */
+export function parseDraft(value: unknown): BookingDraft | null {
+	if (typeof value !== 'object' || value === null) return null;
+	const v = value as Record<string, unknown>;
+
+	const leaveTypeId = v.t;
+	if (typeof leaveTypeId !== 'number' || !Number.isInteger(leaveTypeId) || leaveTypeId <= 0) return null;
+
+	const startDate = typeof v.s === 'string' ? v.s : '';
+	const endDate = typeof v.e === 'string' ? v.e : '';
+	if (!isValidDate(startDate) || !isValidDate(endDate)) return null;
+
+	const startHalf = parseHalf(v.sh);
+	const endHalf = parseHalf(v.eh);
+	if (!startHalf || !endHalf) return null;
+
+	if (v.n !== undefined && typeof v.n !== 'string') return null;
+
+	return {
+		leaveTypeId,
+		startDate,
+		endDate,
+		startHalf,
+		endHalf,
+		note: v.n === undefined ? undefined : v.n.slice(0, NOTE_MAX),
+		// Private unless the payload says otherwise — the same safe direction
+		// `parseBooking` takes with a missing checkbox.
+		notePrivate: v.p !== false,
+	};
 }
 
 /**

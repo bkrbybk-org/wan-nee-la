@@ -44,7 +44,7 @@ const OTHER = 'other@example.com';
 const STATE = mkdtempSync(join(tmpdir(), 'wnl-smoke-'));
 
 /** Assertions that must run for the suite to be considered complete. */
-const MIN_ASSERTIONS = 146;
+const MIN_ASSERTIONS = 166;
 
 let pass = 0;
 let fail = 0;
@@ -236,7 +236,9 @@ function flashOf(res) {
 		const b64 = m[1].replace(/-/g, '+').replace(/_/g, '/');
 		const json = Buffer.from(b64.padEnd(Math.ceil(b64.length / 4) * 4, '='), 'base64').toString('utf8');
 		const parsed = JSON.parse(json);
-		return { kind: parsed.k, message: parsed.m };
+		// `d` is the rejected booking, carried back so the form can be redisplayed
+		// holding it. Compact keys, same reason the message is base64: cookie room.
+		return { kind: parsed.k, message: parsed.m, field: parsed.f ?? null, draft: parsed.d ?? null };
 	} catch {
 		return null;
 	}
@@ -316,6 +318,55 @@ async function main() {
 	res = await post('/api/leave', { leaveTypeId: '1', startDate: addDays(MON, 7), endDate: addDays(MON, 25) });
 	check('over-quota rejected', /Not enough/.test(flashOf(res)?.message ?? ''), flashOf(res)?.message);
 
+	// --- a rejected booking comes back to the form ---------------------------
+	// A weekend, so this is refused whatever the quota looks like, and the leave
+	// type is the one the suite never books — proof the draft is the submission
+	// rather than the form's defaults.
+	res = await post('/api/leave', {
+		leaveTypeId: '2', startDate: SAT, endDate: addDays(SAT, 1), startHalf: 'pm', endHalf: 'am',
+		note: 'smoke-draft-note', noteVisibility: 'shared',
+	});
+	let draft = flashOf(res)?.draft;
+	eq('rejected booking carries its leave type back', draft?.t, 2);
+	eq('rejected booking carries its start date back', draft?.s, SAT);
+	eq('rejected booking carries its end date back', draft?.e, addDays(SAT, 1));
+	eq('rejected booking carries its half-days back', `${draft?.sh}/${draft?.eh}`, 'pm/am');
+	eq('rejected booking carries its note back', draft?.n, 'smoke-draft-note');
+	eq('rejected booking carries the note visibility back', draft?.p, false);
+
+	// The marker and the draft ride the same cookie and are independent: the
+	// marker says which input to look at, the draft is what to show in it.
+	eq('and names the field the rejection was about', flashOf(res)?.field, 'startDate');
+
+	// A booking that never parsed has no draft to give back, but the key still
+	// names the field — half an answer beats none.
+	res = await post('/api/leave', { leaveTypeId: '', startDate: MON });
+	eq('an unparseable booking still marks its field', flashOf(res)?.field, 'leaveTypeId');
+	eq('and carries no draft', flashOf(res)?.draft, null);
+
+	// The realistic worst case for cookie room: a full-length note in Thai, where
+	// every character costs three bytes before base64 adds a third on top.
+	const thaiNote = '\u0e25\u0e32'.repeat(250);
+	res = await post('/api/leave', { leaveTypeId: '1', startDate: SAT, note: thaiNote });
+	eq('a full-length Thai note still fits in the cookie', flashOf(res)?.draft?.n, thaiNote);
+
+	// A note that does not fit is dropped whole rather than truncated, and the
+	// rest of the draft still arrives. Control characters are what it takes:
+	// JSON spends six bytes on each one.
+	res = await post('/api/leave', { leaveTypeId: '1', startDate: SAT, note: `x${'\u0001'.repeat(499)}` });
+	draft = flashOf(res)?.draft;
+	eq('an oversized note is dropped', draft?.n, undefined);
+	eq('but the rest of the draft still comes back', draft?.s, SAT);
+	for (const cookie of [res, await post('/api/leave', { leaveTypeId: '1', startDate: SAT, note: thaiNote })]) {
+		const header = cookie.headers.get('set-cookie') ?? '';
+		const flashPart = header.split(/,(?=\s*wnl_)/)[0];
+		check('the flash cookie stays inside the 4096-byte limit', flashPart.length < 4096, `${flashPart.length} bytes`);
+	}
+
+	// A booking that never parsed has nothing coherent to prefill with.
+	res = await post('/api/leave', { leaveTypeId: '1', startDate: 'not-a-date' });
+	eq('an unparseable booking carries no draft', flashOf(res)?.draft, null);
+
 	res = await post('/api/leave', { leaveTypeId: '1', startDate: '2026-02-30' });
 	eq('invalid calendar date rejected', flashOf(res)?.kind, 'err');
 
@@ -372,6 +423,20 @@ async function main() {
 		leaveTypeId: '1', startDate: MON, endDate: addDays(MON, 2), note: 'Trip', returnTo: '/?y=2026&m=9',
 	});
 	eq('returnTo accepts a same-origin path with its query', res.headers.get('location'), '/?y=2026&m=9');
+
+	// --- a rejected edit comes back to the edit form -------------------------
+	// SAT is a weekend, so this is refused whatever the quota looks like by now.
+	res = await post(`/api/leave/${bookingId}/edit`, { leaveTypeId: '2', startDate: SAT });
+	eq('a rejected edit lands back on the edit page', res.headers.get('location'), `/leave/${bookingId}/edit`);
+	eq('and carries the rejected leave type', flashOf(res)?.draft?.t, 2);
+	eq('and the rejected date', flashOf(res)?.draft?.s, SAT);
+
+	// A drag on the calendar posts the same endpoint with returnTo, and lands on
+	// a month view whose booking form is a blank create form. Prefilling that
+	// would drop the dragged booking into a form nobody opened.
+	res = await post(`/api/leave/${bookingId}/edit`, { leaveTypeId: '2', startDate: SAT, returnTo: '/?y=2026&m=9' });
+	eq('a rejected drag still reports the error', flashOf(res)?.kind, 'err');
+	eq('but carries no draft back to the calendar', flashOf(res)?.draft, null);
 
 	// --- LINE webhook -------------------------------------------------------
 	const body = JSON.stringify({ events: [{ type: 'message', source: { type: 'group', groupId: 'Csmoke123' } }] });

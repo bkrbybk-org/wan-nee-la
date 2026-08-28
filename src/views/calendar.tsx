@@ -15,7 +15,7 @@ import {
 	weekdayName,
 	MONDAY,
 } from '../domain/dates.ts';
-import { byDate, halfOn, visibleNote } from '../domain/leave.ts';
+import { byDate, halfOn, visibleNote, type BookingDraft } from '../domain/leave.ts';
 import type { Half, Holiday, LeaveEntry, LeaveType, User } from '../types.ts';
 import { Layout } from './layout.tsx';
 import { BookingForm } from './booking.tsx';
@@ -39,6 +39,12 @@ interface CalendarProps {
 	/** The booking-form input the last submission was rejected over, if any. */
 	errorField?: string;
 	notice?: string;
+	/**
+	 * A booking the server just rejected. The create dialog is closed on load, so
+	 * this does not confront anyone with a form — it is there for the reader who
+	 * reopens the dialog after reading the banner, holding what they typed.
+	 */
+	draft?: BookingDraft;
 }
 
 /**
@@ -213,7 +219,7 @@ export function CalendarPage(props: CalendarProps) {
 
 /** Inside the Layout, so `useT` sees the language the Layout provides. */
 function CalendarBody(props: CalendarProps) {
-	const { user, year, month, entries, upcoming, holidays, types, today, error, errorField, notice } = props;
+	const { user, year, month, entries, upcoming, holidays, types, today, error, errorField, notice, draft } = props;
 	const t = useT();
 	const lang = useLang();
 	// Presentation only: rotating the columns changes no arithmetic, and Saturday
@@ -586,7 +592,7 @@ function CalendarBody(props: CalendarProps) {
 						<CloseIcon />
 					</button>
 				</div>
-				<BookingForm types={types} today={today} errorField={errorField} compact />
+				<BookingForm types={types} today={today} errorField={errorField} draft={draft} compact />
 			</dialog>
 
 			<dialog class="popup" data-entry-dialog aria-label={t('popup.details')}>

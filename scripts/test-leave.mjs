@@ -5,9 +5,11 @@
 import {
 	byDate,
 	computeBalances,
+	draftPayload,
 	halfOn,
 	MAX_BACKDATE_DAYS,
 	parseBooking,
+	parseDraft,
 	parseHalf,
 	round,
 	validateBooking,
@@ -258,6 +260,48 @@ eq('note is private when the box is unticked', parseBooking(base).notePrivate, t
 eq('note is shared when the box is ticked', parseBooking({ ...base, noteVisibility: 'shared' }).notePrivate, false);
 eq('an unexpected value falls back to private', parseBooking({ ...base, noteVisibility: 'yes' }).notePrivate, true);
 eq('an empty value falls back to private', parseBooking({ ...base, noteVisibility: '' }).notePrivate, true);
+
+// ---------------------------------------------------------------------------------------
+// The rejected booking carried back to the form through the flash cookie.
+// ---------------------------------------------------------------------------------------
+
+const rejected = parseBooking({
+	leaveTypeId: '1',
+	startDate: '2026-09-01',
+	endDate: '2026-10-15',
+	startHalf: 'pm',
+	endHalf: 'am',
+	note: 'conference',
+	noteVisibility: 'shared',
+});
+
+const roundTrip = parseDraft(JSON.parse(JSON.stringify(draftPayload(rejected))));
+eq('draft round-trip: leave type', roundTrip.leaveTypeId, 1);
+eq('draft round-trip: start date', roundTrip.startDate, '2026-09-01');
+eq('draft round-trip: end date', roundTrip.endDate, '2026-10-15');
+eq('draft round-trip: start half', roundTrip.startHalf, 'pm');
+eq('draft round-trip: end half', roundTrip.endHalf, 'am');
+eq('draft round-trip: note', roundTrip.note, 'conference');
+eq('draft round-trip: note stays shared', roundTrip.notePrivate, false);
+
+// A dropped note and a cleared one have to stay distinguishable, or redisplaying
+// a rejected edit wipes a note the reader never touched.
+eq('a dropped note comes back undefined', parseDraft(draftPayload({ ...rejected, note: undefined })).note, undefined);
+eq('a cleared note comes back empty', parseDraft(draftPayload({ ...rejected, note: '' })).note, '');
+
+// The cookie round-trips through the client, so what comes back is untrusted.
+eq('a draft that is not an object is rejected', parseDraft('not a draft'), null);
+eq('a null draft is rejected', parseDraft(null), null);
+eq('a non-numeric leave type is rejected', parseDraft({ ...draftPayload(rejected), t: '1' }), null);
+eq('a zero leave type is rejected', parseDraft({ ...draftPayload(rejected), t: 0 }), null);
+eq('an impossible date is rejected', parseDraft({ ...draftPayload(rejected), s: '2026-02-30' }), null);
+eq('a missing end date is rejected', parseDraft({ ...draftPayload(rejected), e: undefined }), null);
+eq('an unknown half is rejected', parseDraft({ ...draftPayload(rejected), sh: 'evening' }), null);
+eq('a non-string note is rejected', parseDraft({ ...draftPayload(rejected), n: 42 }), null);
+eq('an over-long note is cut to NOTE_MAX', parseDraft({ ...draftPayload(rejected), n: 'x'.repeat(600) }).note.length, 500);
+// Same safe direction as an unticked checkbox: only an explicit false shares.
+eq('a missing privacy flag falls back to private', parseDraft({ ...draftPayload(rejected), p: undefined }).notePrivate, true);
+eq('a junk privacy flag falls back to private', parseDraft({ ...draftPayload(rejected), p: 'no' }).notePrivate, true);
 
 console.log(failures === 0 ? '\nAll leave tests passed.' : `\n${failures} failure(s).`);
 process.exit(failures === 0 ? 0 : 1);
