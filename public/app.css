@@ -452,13 +452,19 @@ a { color: var(--md-primary); }
 .btn .icon { margin-left: -8px; }
 .btn.text .icon, .btn.ghost .icon { margin-left: 0; }
 
-/* Icon button: 40x40 target around a 24px icon, circular state layer. */
+/* Icon button: a 40dp circular state layer around a 24px icon, inside a 48dp
+   touch target — M3 asks for both, and on a phone the month's prev/next and
+   the dialog's close are otherwise a 40px mark to hit with a thumb.
+   The usual trick for this, an oversized transparent ::after, cannot work
+   here: the element clips its own overflow so the ripple stays inside the
+   circle, and that clips the expander too. So the element itself is 48px and
+   the state layer is inset back to 40. */
 .icon-btn {
 	display: inline-flex;
 	align-items: center;
 	justify-content: center;
-	width: 40px;
-	height: 40px;
+	width: 48px;
+	height: 48px;
 	flex: none;
 	padding: 0;
 	border: 0;
@@ -473,8 +479,9 @@ a { color: var(--md-primary); }
 .icon-btn::before {
 	content: "";
 	position: absolute;
-	inset: 0;
+	inset: 4px;
 	z-index: -1;
+	border-radius: var(--md-shape-full);
 	background: currentColor;
 	opacity: 0;
 	transition: opacity var(--md-dur-short) var(--md-ease);
@@ -559,6 +566,13 @@ a { color: var(--md-primary); }
 .month-jump-form .btn { align-self: center; }
 .month-head .today-link { margin-left: auto; }
 h3.sub { margin: 20px 0 8px; color: var(--md-on-surface-variant); }
+
+/* At 375px the default h1 size wraps "August 2026" onto two lines and shoves
+   the prev/next chevrons down with it. M3 title-large is the next size down
+   and still reads as a heading. */
+@media (max-width: 767px) {
+	.month-head h1 { font-size: 22px; line-height: 28px; white-space: nowrap; }
+}
 
 /* ---------- banners ---------- */
 
@@ -649,6 +663,18 @@ select.tf-input {
 	transform: translateY(-10px) scale(0.75);
 }
 .tf-input:focus ~ .tf-label { color: var(--md-primary); }
+/* The field a rejected submission was about, marked by the flash cookie the
+   redirect carried back. M3's error state recolours the label and the active
+   line; the sentence explaining it stays in the banner at the top of the page
+   rather than being printed a second time under the field. The field also
+   carries `aria-invalid` and takes focus on load, which is what actually gets
+   a screen-reader or keyboard user to the problem. */
+.tf-error .tf-input,
+.tf-error .tf-input:focus { border-bottom-color: var(--md-error); }
+.tf-error .tf-label,
+.tf-error .tf-input:focus ~ .tf-label { color: var(--md-error); }
+.tf-error .tf-select-arrow { color: var(--md-error); }
+
 .tf-support {
 	padding: 4px 16px 0;
 	color: var(--md-on-surface-variant);
@@ -670,7 +696,42 @@ select.tf-input {
 .row.inline { align-items: center; gap: 8px; margin-bottom: 8px; }
 /* Wraps rather than clipping: the person row in /admin carries a name, two
    checkboxes and a Save button, which is wider than a phone. */
-form.inline { display: inline-flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+form.inline {
+	display: inline-flex;
+	gap: 8px;
+	align-items: center;
+	flex-wrap: wrap;
+	/* A form carries a bottom margin from the browser's own stylesheet. In a
+	   row that centres its items — .popup-actions, or another form.inline —
+	   that margin is part of the box being centred, so the button inside sat
+	   half a margin higher than the plain link beside it. */
+	margin: 0;
+}
+
+/* A field's supporting text is laid out under the field but must not add to
+   the height of the field's box. These rows centre what they hold, so a field
+   with supporting text was being centred as a taller box than the field
+   beside it, and the two underlines ended up ten pixels apart — with the
+   button in the row centred on neither. Taking the text out of flow leaves
+   every field in the row exactly one container tall, which is what the
+   centring assumed in the first place. The row then reserves the space the
+   text needs below itself. */
+.row.inline .tf-support,
+form.inline .tf-support {
+	position: absolute;
+	top: 100%;
+	left: 0;
+}
+/* The gap a field keeps under itself when fields are stacked is dead space in
+   a row, and it is inside the box the row centres against — enough on its own
+   to leave the button two pixels below the field's midline. The quota rows in
+   /admin centre their button the other way round, with align-self, but against
+   the same over-tall line, so they need this too. */
+.row.inline .tf,
+form.inline .tf,
+.quota-form .tf { margin-bottom: 0; }
+.row.inline:has(.tf-support),
+form.inline:has(.tf-support) { margin-bottom: 28px; }
 .actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-top: 8px; }
 .preview { font-size: 12px; line-height: 16px; color: var(--md-on-surface-variant); }
 .preview.bad { color: var(--md-error); }
@@ -681,7 +742,9 @@ form.inline { display: inline-flex; gap: 8px; align-items: center; flex-wrap: wr
 	align-items: center;
 	gap: 8px;
 	white-space: nowrap;
-	min-height: 40px;
+	/* The box itself is 18px, so the label's own height is the touch target —
+	   48dp of it, per M3. */
+	min-height: 48px;
 	padding-right: 8px;
 	font-size: 14px;
 }
@@ -783,7 +846,6 @@ form.inline { display: inline-flex; gap: 8px; align-items: center; flex-wrap: wr
 .cell.weekend { background: var(--md-surface-container); }
 .cell.holiday { background: var(--md-tertiary-container); }
 .cell.out { opacity: 0.5; }
-.cell.today { background: var(--md-primary-container); }
 
 /* Fills the cell so any empty space books that day. Sits beneath the chips, so
    a click that lands on an entry opens the entry instead. */
@@ -796,7 +858,9 @@ form.inline { display: inline-flex; gap: 8px; align-items: center; flex-wrap: wr
 .chips { position: relative; z-index: 1; display: flex; flex-direction: column; gap: 4px; }
 
 /* Today is a filled circle around the date, the way every Material calendar
-   marks it — an outline on the whole cell competes with the focus ring. */
+   marks it — an outline on the whole cell competes with the focus ring, and
+   tinting the whole cell as well turns one day into a block that outweighs
+   the month around it. */
 .daynum {
 	display: inline-flex;
 	align-items: center;
@@ -878,12 +942,6 @@ form.inline { display: inline-flex; gap: 8px; align-items: center; flex-wrap: wr
 	   list below, which is the only place it is spelled out. Scoped to the
 	   grid, not to the page. */
 	.cell .holiday-tag { display: none; }
-
-	/* Today is the circled number and nothing else, the way every phone
-	   calendar marks it. Tinting the whole cell as well turns one day into a
-	   block that outweighs the month around it. */
-	.cell.today { background: var(--md-surface-container-low); }
-	.cell.today.weekend { background: var(--md-surface-container); }
 
 	/* Softer than on a laptop: at this size the tint is the only thing marking
 	   a holiday, and at full strength it read as a solid slab. */
@@ -1403,7 +1461,6 @@ form.inline { display: inline-flex; gap: 8px; align-items: center; flex-wrap: wr
 	   shape — a run of names with dates in brackets, where the list below
 	   groups them by day. */
 	.who-summary .who-block + .who-block { display: none; }
-	.legend { display: none; }
 }
 
 /* Narrower or shorter than that: the page scrolls, and the grid keeps a

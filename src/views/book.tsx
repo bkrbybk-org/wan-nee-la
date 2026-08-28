@@ -22,6 +22,7 @@ export function BookPage({
 	date,
 	version,
 	error,
+	errorField,
 	notice,
 }: {
 	user: User;
@@ -30,11 +31,12 @@ export function BookPage({
 	date?: string;
 	version?: string;
 	error?: string;
+	errorField?: string;
 	notice?: string;
 }) {
 	return (
 		<Layout title={translate(toLang(user.lang), 'book.pageTitle')} user={user} active="calendar" version={version}>
-			<BookBody {...{ user, types, today, date, error, notice }} />
+			<BookBody {...{ user, types, today, date, error, errorField, notice }} />
 		</Layout>
 	);
 }
@@ -44,6 +46,7 @@ function BookBody({
 	today,
 	date,
 	error,
+	errorField,
 	notice,
 }: {
 	user: User;
@@ -51,6 +54,7 @@ function BookBody({
 	today: string;
 	date?: string;
 	error?: string;
+	errorField?: string;
 	notice?: string;
 }) {
 	const t = useT();
@@ -69,7 +73,7 @@ function BookBody({
 			</div>
 
 			<section class="card">
-				<BookingForm types={types} today={today} defaultDate={date} compact />
+				<BookingForm types={types} today={today} defaultDate={date} errorField={errorField} compact />
 			</section>
 
 			<p>

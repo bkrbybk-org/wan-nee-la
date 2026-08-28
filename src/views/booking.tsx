@@ -1,6 +1,7 @@
 import type { LeaveEntry, LeaveType } from '../types.ts';
 import { SelectField, TextField } from './fields.tsx';
 import { useLang, useT } from '../i18n/context.tsx';
+import { tRaw } from '../i18n/strings.ts';
 
 interface BookingFormProps {
 	types: readonly LeaveType[];
@@ -10,6 +11,12 @@ interface BookingFormProps {
 	entry?: LeaveEntry;
 	/** Start date to prefill when creating — the day the user clicked on the calendar. */
 	defaultDate?: string;
+	/**
+	 * The input the last submission was rejected over, carried back by the flash
+	 * cookie. The message itself is already at the top of the page; this is what
+	 * says which of five fields it is about.
+	 */
+	errorField?: string;
 }
 
 /**
@@ -20,7 +27,7 @@ interface BookingFormProps {
  * `type="date"` gives the native picker on both iOS and Android, which is a far
  * better mobile experience than any date-picker library and costs nothing.
  */
-export function BookingForm({ types, today, compact, entry, defaultDate }: BookingFormProps) {
+export function BookingForm({ types, today, compact, entry, defaultDate, errorField }: BookingFormProps) {
 	const editing = Boolean(entry);
 	const action = entry ? `/api/leave/${entry.id}/edit` : '/api/leave';
 	// On a single-day booking the end date is left blank, which is what the
@@ -30,6 +37,8 @@ export function BookingForm({ types, today, compact, entry, defaultDate }: Booki
 
 	const half = (want: string, current: string | undefined, fallback: string) =>
 		(current ?? fallback) === want;
+
+	const bad = (name: string) => errorField === name;
 
 	const t = useT();
 	const lang = useLang();
@@ -47,12 +56,12 @@ export function BookingForm({ types, today, compact, entry, defaultDate }: Booki
 			// client fills in after asking the server. Same reasoning as the push
 			// card: the wording stays in the catalogue, not in the bundle.
 			data-booking-strings={JSON.stringify({
-				days: t('book.days'),
+				days: tRaw(lang, 'book.days'),
 				coverage: t('book.coverage'),
 				coverageMore: t('book.coverageMore'),
 			})}
 		>
-			<SelectField id={`leaveTypeId-${uid}`} name="leaveTypeId" label={t('book.type')} required>
+			<SelectField id={`leaveTypeId-${uid}`} name="leaveTypeId" label={t('book.type')} required invalid={bad('leaveTypeId')}>
 				{types.map((type) => (
 					<option value={String(type.id)} selected={entry ? type.id === entry.leave_type_id : undefined}>
 						{lang === 'th' ? type.label_th : type.label_en} · {lang === 'th' ? type.label_en : type.label_th}
@@ -68,9 +77,10 @@ export function BookingForm({ types, today, compact, entry, defaultDate }: Booki
 					type="date"
 					required
 					value={entry ? entry.start_date : (defaultDate ?? today)}
+					invalid={bad('startDate')}
 					extra={{ 'data-start': '' }}
 				/>
-				<SelectField id={`startHalf-${uid}`} name="startHalf" label={t('book.startHalf')} extra={{ 'data-start-half': '' }}>
+				<SelectField id={`startHalf-${uid}`} name="startHalf" label={t('book.startHalf')} invalid={bad('startHalf')} extra={{ 'data-start-half': '' }}>
 					<option value="full" selected={half('full', entry?.start_half, 'full')}>{t('book.fullDay')}</option>
 					<option value="am" selected={half('am', entry?.start_half, 'full')}>{t('book.am')}</option>
 					<option value="pm" selected={half('pm', entry?.start_half, 'full')}>{t('book.pm')}</option>
@@ -85,6 +95,7 @@ export function BookingForm({ types, today, compact, entry, defaultDate }: Booki
 					type="date"
 					value={endValue}
 					support={t('book.toHelp')}
+					invalid={bad('endDate')}
 					extra={{ 'data-end': '' }}
 				/>
 				<SelectField
@@ -92,6 +103,7 @@ export function BookingForm({ types, today, compact, entry, defaultDate }: Booki
 					name="endHalf"
 					label={t('book.endHalf')}
 					class="end-half-field"
+					invalid={bad('endHalf')}
 					extra={{ 'data-end-half': '' }}
 					fieldExtra={{ 'data-end-half-field': '' }}
 				>

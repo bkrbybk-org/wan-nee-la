@@ -15,6 +15,12 @@
  *  - `<input type="date">` and `<select>` never match `:placeholder-shown` —
  *    they always display something — so they are marked `tf-fixed` and keep
  *    the label raised permanently rather than flickering.
+ *
+ * `invalid` paints the M3 error state — error-coloured label and active line —
+ * and, more usefully, exposes it as `aria-invalid` and pulls focus to the
+ * field. The sentence explaining what went wrong is not repeated here: it is
+ * already at the top of the page, and printing it twice on a five-field form
+ * reads as two separate problems.
  */
 import type { Child } from 'hono/jsx';
 import { ChevronDownIcon } from './icons.tsx';
@@ -36,13 +42,15 @@ interface TextFieldProps {
 	support?: Child;
 	class?: string;
 	extra?: Extras;
+	/** The field the last submission was rejected over. See the note above. */
+	invalid?: boolean;
 }
 
 export function TextField(props: TextFieldProps) {
-	const { id, name, label, type = 'text', value, required, maxlength, step, min, max, support, extra } = props;
+	const { id, name, label, type = 'text', value, required, maxlength, step, min, max, support, extra, invalid } = props;
 	const fixed = type === 'date';
 	return (
-		<div class={`tf ${fixed ? 'tf-fixed' : ''} ${props.class ?? ''}`}>
+		<div class={`tf ${fixed ? 'tf-fixed' : ''} ${invalid ? 'tf-error' : ''} ${props.class ?? ''}`}>
 			<input
 				class="tf-input"
 				id={id}
@@ -55,6 +63,8 @@ export function TextField(props: TextFieldProps) {
 				min={min}
 				max={max}
 				placeholder=" "
+				aria-invalid={invalid ? 'true' : undefined}
+				autofocus={invalid}
 				{...(extra ?? {})}
 			/>
 			<label class="tf-label" for={id}>{label}</label>
@@ -74,14 +84,24 @@ interface SelectFieldProps {
 	/** Applied to the wrapper rather than the control — client-script hooks that
 	    need to show or hide the whole field. */
 	fieldExtra?: Extras;
+	/** The field the last submission was rejected over. See the note above. */
+	invalid?: boolean;
 	children?: Child;
 }
 
 export function SelectField(props: SelectFieldProps) {
-	const { id, name, label, required, support, extra, fieldExtra, children } = props;
+	const { id, name, label, required, support, extra, fieldExtra, invalid, children } = props;
 	return (
-		<div class={`tf tf-fixed ${props.class ?? ''}`} {...(fieldExtra ?? {})}>
-			<select class="tf-input" id={id} name={name} required={required} {...(extra ?? {})}>
+		<div class={`tf tf-fixed ${invalid ? 'tf-error' : ''} ${props.class ?? ''}`} {...(fieldExtra ?? {})}>
+			<select
+				class="tf-input"
+				id={id}
+				name={name}
+				required={required}
+				aria-invalid={invalid ? 'true' : undefined}
+				autofocus={invalid}
+				{...(extra ?? {})}
+			>
 				{children}
 			</select>
 			<label class="tf-label" for={id}>{label}</label>

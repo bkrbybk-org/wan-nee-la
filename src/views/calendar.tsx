@@ -36,6 +36,8 @@ interface CalendarProps {
 	today: string;
 	version?: string;
 	error?: string;
+	/** The booking-form input the last submission was rejected over, if any. */
+	errorField?: string;
 	notice?: string;
 }
 
@@ -211,7 +213,7 @@ export function CalendarPage(props: CalendarProps) {
 
 /** Inside the Layout, so `useT` sees the language the Layout provides. */
 function CalendarBody(props: CalendarProps) {
-	const { user, year, month, entries, upcoming, holidays, types, today, error, notice } = props;
+	const { user, year, month, entries, upcoming, holidays, types, today, error, errorField, notice } = props;
 	const t = useT();
 	const lang = useLang();
 	// Presentation only: rotating the columns changes no arithmetic, and Saturday
@@ -412,7 +414,7 @@ function CalendarBody(props: CalendarProps) {
 													{/* The number alone reads as a bare digit out of context, so the
 													    full date is announced instead and the digit is hidden. */}
 													<span class="visually-hidden">{longDate(date, lang)}</span>
-													{holiday ? <span class="holiday-tag">{holiday}</span> : null}
+													{holiday ? <span class="holiday-tag" title={holiday}>{holiday}</span> : null}
 												</div>
 												{/* A cell is only as tall as the month allows once the grid
 												    has to fit the window, so it shows the first few and says
@@ -485,17 +487,6 @@ function CalendarBody(props: CalendarProps) {
 						))
 					)}
 				</section>
-
-				{/* Both languages, whichever the reader has chosen: the legend is where
-				    someone learns that ลาป่วย and Sick leave are the same chip colour. */}
-				<section class="legend">
-					{types.map((type) => (
-						<span class="legend-item">
-							<span class="dot" style={`--chip: ${type.color}`} /> {lang === 'th' ? type.label_th : type.label_en}
-							<span class="muted"> · {lang === 'th' ? type.label_en : type.label_th}</span>
-						</span>
-					))}
-				</section>
 				</div>
 
 				<aside class="cal-side" aria-label={t('cal.whoIsOut')}>
@@ -560,6 +551,17 @@ function CalendarBody(props: CalendarProps) {
 				    navigation model to be honest, and announcing "grid" without one is
 				    worse than saying nothing. */}
 					<UpcomingList entries={upcoming} today={today} user={user} lang={lang} />
+
+					{/* Both languages, whichever the reader has chosen: the legend is where
+					    someone learns that ลาป่วย and Sick leave are the same chip colour. */}
+					<section class="legend">
+						{types.map((type) => (
+							<span class="legend-item">
+								<span class="dot" style={`--chip: ${type.color}`} /> {lang === 'th' ? type.label_th : type.label_en}
+								<span class="muted"> · {lang === 'th' ? type.label_en : type.label_th}</span>
+							</span>
+						))}
+					</section>
 				</aside>
 			</div>
 
@@ -571,7 +573,7 @@ function CalendarBody(props: CalendarProps) {
 			<dialog
 				class="popup"
 				data-create-dialog
-				aria-label={t('cal.book')}
+				aria-labelledby="create-dialog-title"
 				data-dialog-strings={JSON.stringify({
 					book: t('cal.book'),
 					bookOn: t('cal.bookOnShort'),
@@ -579,12 +581,12 @@ function CalendarBody(props: CalendarProps) {
 				})}
 			>
 				<div class="popup-head">
-					<h2 data-create-title>{t('cal.book')}</h2>
+					<h2 id="create-dialog-title" data-create-title>{t('cal.book')}</h2>
 					<button type="button" class="icon-btn popup-x" data-popup-close aria-label={t('popup.close')}>
 						<CloseIcon />
 					</button>
 				</div>
-				<BookingForm types={types} today={today} compact />
+				<BookingForm types={types} today={today} errorField={errorField} compact />
 			</dialog>
 
 			<dialog class="popup" data-entry-dialog aria-label={t('popup.details')}>

@@ -15,13 +15,15 @@ interface EditProps {
 	onBehalfOf?: string;
 	version?: string;
 	error?: string;
+	/** The booking-form input the last submission was rejected over, if any. */
+	errorField?: string;
 	notice?: string;
 }
 
-export function EditPage({ user, entry, types, today, onBehalfOf, version, error, notice }: EditProps) {
+export function EditPage({ user, entry, types, today, onBehalfOf, version, error, errorField, notice }: EditProps) {
 	return (
 		<Layout title={translate(toLang(user.lang), 'edit.title')} user={user} active="me" version={version}>
-			<EditBody {...{ entry, types, today, onBehalfOf, error, notice }} />
+			<EditBody {...{ entry, types, today, onBehalfOf, error, errorField, notice }} />
 		</Layout>
 	);
 }
@@ -32,6 +34,7 @@ function EditBody({
 	today,
 	onBehalfOf,
 	error,
+	errorField,
 	notice,
 }: Omit<EditProps, 'user' | 'version'>) {
 	const t = useT();
@@ -49,7 +52,7 @@ function EditBody({
 			</div>
 
 			{onBehalfOf ? (
-				<div class="banner error">{t('edit.onBehalf', { name: onBehalfOf })}</div>
+				<div class="banner">{t('edit.onBehalf', { name: onBehalfOf })}</div>
 			) : null}
 
 			<section class="card">
@@ -68,7 +71,7 @@ function EditBody({
 
 			<section class="card">
 				<h2>{t('edit.change')}</h2>
-				<BookingForm types={types} today={today} entry={entry} compact />
+				<BookingForm types={types} today={today} entry={entry} errorField={errorField} compact />
 			</section>
 
 			<section class="card">

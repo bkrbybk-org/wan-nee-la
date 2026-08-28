@@ -147,10 +147,17 @@ const PAIRS = [
 	['on-tertiary-container', 'tertiary-container', 4.5],
 	['on-error-container', 'error-container', 4.5],
 	['error', 'surface', 4.5], ['error', 'surface-container', 4.5],
+	// A text field in its error state: the container is surface-container-highest
+	// and both the label and the active line turn error-coloured.
+	['error', 'surface-container-highest', 4.5],
 	['primary', 'surface', 4.5], ['primary', 'surface-container', 4.5],
 	['inverse-on-surface', 'inverse-surface', 4.5],
 	['outline', 'surface', 3], ['outline', 'surface-container', 3],
 	['primary', 'surface-container-highest', 3],
+	// .card, .cell, .balance-card, .who-block, .agenda-view and .booking all
+	// paint this as their background and set both body and secondary text on
+	// top of it, same as the other surface-container tones above.
+	['on-surface', 'surface-container-low', 4.5], ['on-surface-variant', 'surface-container-low', 4.5],
 ];
 
 let bad = 0;
@@ -160,6 +167,50 @@ for (const [scheme, map] of [['light', light], ['dark', dark]]) {
 		const ok = r >= min;
 		if (!ok) bad++;
 		console.error(`${ok ? 'ok  ' : 'FAIL'} ${scheme.padEnd(5)} ${fg} on ${bg}: ${r.toFixed(2)} (min ${min})`);
+	}
+}
+
+// --- calendar chip: colour-mix against on-surface text ---------------------
+
+/*
+ * The chip background isn't a role pair — it's `color-mix(in srgb, <chip> 24%,
+ * var(--md-chip-base))`, a leave type's own colour blended into a surface
+ * tone. That mix falls outside what PAIRS can express, so it needs its own
+ * arithmetic: replicate the browser's srgb color-mix (linear interpolation
+ * per channel, in gamma-encoded sRGB, no linear-light conversion) and check
+ * the result against the on-surface text the chip actually carries.
+ *
+ * These five hexes are seed data (migrations/0002_seed.sql and
+ * migrations/0009_medical_leave.sql, the `color` column of `leave_types`),
+ * not something derived from the token system above. An admin cannot edit
+ * them today, so this is a guard on the theme staying legible against a fixed
+ * palette, not a validator of arbitrary user input.
+ */
+const LEAVE_TYPE_COLORS = {
+	annual: '#2563eb',
+	sick: '#dc2626',
+	personal: '#7c3aed',
+	unpaid: '#64748b',
+	medical: '#059669',
+};
+
+const CHIP_BASE_ROLE = { light: 'surface-container-lowest', dark: 'surface-container-high' };
+
+function srgbColorMix(hexA, pctA, hexB) {
+	const a = [1, 3, 5].map((i) => parseInt(hexA.slice(i, i + 2), 16));
+	const b = [1, 3, 5].map((i) => parseInt(hexB.slice(i, i + 2), 16));
+	const mixed = a.map((v, i) => Math.round(v * pctA + b[i] * (1 - pctA)));
+	return hex(mixed);
+}
+
+for (const [scheme, map] of [['light', light], ['dark', dark]]) {
+	const base = map[CHIP_BASE_ROLE[scheme]];
+	for (const [code, colour] of Object.entries(LEAVE_TYPE_COLORS)) {
+		const mixed = srgbColorMix(colour, 0.24, base);
+		const r = contrast(map['on-surface'], mixed);
+		const ok = r >= 4.5;
+		if (!ok) bad++;
+		console.error(`${ok ? 'ok  ' : 'FAIL'} ${scheme.padEnd(5)} chip ${code.padEnd(8)} on-surface on ${mixed}: ${r.toFixed(2)} (min 4.5)`);
 	}
 }
 

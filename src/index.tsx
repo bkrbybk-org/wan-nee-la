@@ -13,7 +13,7 @@ import {
 	parseWeekStart,
 	shortDate,
 } from './domain/dates.ts';
-import { parseBooking, round, validateBooking, visibleNote } from './domain/leave.ts';
+import { fieldForError, parseBooking, round, validateBooking, visibleNote } from './domain/leave.ts';
 import { parseHolidayList } from './domain/holidays.ts';
 import { isLang, t, tm, toLang, type Lang, type Message, type StringKey } from './i18n/strings.ts';
 import * as db from './repo/db.ts';
@@ -295,6 +295,7 @@ app.get('/', async (c) => {
 			today={today}
 			version={c.env.CF_VERSION_METADATA?.id}
 			error={flashOf(c.get('flash'), 'err')}
+			errorField={flashField(c.get('flash'))}
 			notice={flashOf(c.get('flash'), 'ok')}
 		/>,
 	);
@@ -319,6 +320,7 @@ app.get('/book', async (c) => {
 			date={raw && isValidDate(raw) ? raw : undefined}
 			version={c.env.CF_VERSION_METADATA?.id}
 			error={flashOf(c.get('flash'), 'err')}
+			errorField={flashField(c.get('flash'))}
 			notice={flashOf(c.get('flash'), 'ok')}
 		/>,
 	);
@@ -482,11 +484,11 @@ app.post('/api/leave', async (c) => {
 
 	const form = await c.req.parseBody();
 	const parsed = parseBooking(form as Record<string, unknown>);
-	if ('error' in parsed) return redirectWithFlash(back, 'err', sayMessage(c, parsed.error));
+	if ('error' in parsed) return redirectWithFlash(back, 'err', sayMessage(c, parsed.error), fieldForError(parsed.error));
 
 	const ctx = await buildBookingContext(c.env, user.email, parsed, today);
 	const check = validateBooking(parsed, ctx);
-	if (!check.ok) return redirectWithFlash(back, 'err', sayMessage(c, check.error));
+	if (!check.ok) return redirectWithFlash(back, 'err', sayMessage(c, check.error), fieldForError(check.error));
 
 	const row: LeaveRequest = {
 		id: crypto.randomUUID(),
@@ -558,6 +560,7 @@ app.get('/leave/:id/edit', async (c) => {
 			onBehalfOf={entry.user_email === user.email ? undefined : entry.display_name}
 			version={c.env.CF_VERSION_METADATA?.id}
 			error={flashOf(c.get('flash'), 'err')}
+			errorField={flashField(c.get('flash'))}
 			notice={flashOf(c.get('flash'), 'ok')}
 		/>,
 	);
@@ -582,14 +585,14 @@ app.post('/api/leave/:id/edit', async (c) => {
 	const back = returnTo ?? `/leave/${id}/edit`;
 	const done = returnTo ?? '/me';
 	const parsed = parseBooking(form as Record<string, unknown>);
-	if ('error' in parsed) return redirectWithFlash(back, 'err', sayMessage(c, parsed.error));
+	if ('error' in parsed) return redirectWithFlash(back, 'err', sayMessage(c, parsed.error), fieldForError(parsed.error));
 
 	// Validate against the owner of the booking, not whoever is editing it — an
 	// admin fixing someone else's leave must be checked against that person's
 	// quota and their other bookings.
 	const ctx = await buildBookingContext(c.env, owned.row.user_email, parsed, today, owned.row);
 	const check = validateBooking(parsed, ctx);
-	if (!check.ok) return redirectWithFlash(back, 'err', sayMessage(c, check.error));
+	if (!check.ok) return redirectWithFlash(back, 'err', sayMessage(c, check.error), fieldForError(check.error));
 
 	const changed = await db.updateLeave(c.env.DB, id, {
 		leave_type_id: parsed.leaveTypeId,
@@ -661,6 +664,7 @@ app.get('/me', async (c) => {
 			vapidPublicKey={pushConfigured(c.env) ? c.env.VAPID_PUBLIC_KEY : undefined}
 			version={c.env.CF_VERSION_METADATA?.id}
 			error={flashOf(c.get('flash'), 'err')}
+			errorField={flashField(c.get('flash'))}
 			notice={flashOf(c.get('flash'), 'ok')}
 		/>,
 	);
@@ -1126,10 +1130,10 @@ function referrerPath(referer: string | undefined, requestUrl: string): string |
 const FLASH_COOKIE = 'wnl_flash';
 const FLASH_MAX = 300;
 
-export type Flash = { kind: 'ok' | 'err'; message: string } | null;
+export type Flash = { kind: 'ok' | 'err'; message: string; field?: string } | null;
 
-function flashCookie(kind: 'ok' | 'err', message: string): string {
-	const payload = JSON.stringify({ k: kind, m: message.slice(0, FLASH_MAX) });
+function flashCookie(kind: 'ok' | 'err', message: string, field?: string): string {
+	const payload = JSON.stringify({ k: kind, m: message.slice(0, FLASH_MAX), f: field });
 	const b64 = btoa(String.fromCharCode(...new TextEncoder().encode(payload)))
 		.replace(/\+/g, '-')
 		.replace(/\//g, '_')
@@ -1146,6 +1150,15 @@ function flashOf(flash: Flash, kind: 'ok' | 'err'): string | undefined {
 	return flash && flash.kind === kind ? flash.message : undefined;
 }
 
+/**
+ * The form field a rejected submission was about, so the booking form can mark
+ * it rather than leaving the reader to work out which of five inputs the
+ * sentence at the top of the page is complaining about. Only errors carry one.
+ */
+function flashField(flash: Flash): string | undefined {
+	return flash && flash.kind === 'err' ? flash.field : undefined;
+}
+
 function readFlash(cookieHeader: string | undefined): Flash {
 	if (!cookieHeader) return null;
 	const m = new RegExp(`(?:^|;\\s*)${FLASH_COOKIE}=([^;]+)`).exec(cookieHeader);
@@ -1154,9 +1167,15 @@ function readFlash(cookieHeader: string | undefined): Flash {
 		const b64 = m[1].replace(/-/g, '+').replace(/_/g, '/');
 		const bin = atob(b64.padEnd(Math.ceil(b64.length / 4) * 4, '='));
 		const bytes = Uint8Array.from(bin, (ch) => ch.charCodeAt(0));
-		const parsed = JSON.parse(new TextDecoder().decode(bytes)) as { k?: string; m?: string };
+		const parsed = JSON.parse(new TextDecoder().decode(bytes)) as { k?: string; m?: string; f?: string };
 		if ((parsed.k !== 'ok' && parsed.k !== 'err') || typeof parsed.m !== 'string') return null;
-		return { kind: parsed.k, message: parsed.m.slice(0, FLASH_MAX) };
+		// The cookie is ours, HttpOnly and short-lived, but it still arrives from
+		// the client and the field name is compared against the form's own input
+		// names. Anything that is not shaped like one of those is dropped rather
+		// than trusted, so a hand-written cookie can at worst suppress the marker
+		// it was trying to forge.
+		const field = typeof parsed.f === 'string' && /^[A-Za-z]{1,32}$/.test(parsed.f) ? parsed.f : undefined;
+		return { kind: parsed.k, message: parsed.m.slice(0, FLASH_MAX), field };
 	} catch {
 		// A malformed cookie is not worth an error page — just show no message.
 		return null;
@@ -1171,10 +1190,10 @@ function readFlash(cookieHeader: string | undefined): Flash {
  * a redirect return to the month that was being viewed or the year being
  * edited.
  */
-function redirectWithFlash(path: string, kind: 'ok' | 'err', message: string): Response {
+function redirectWithFlash(path: string, kind: 'ok' | 'err', message: string, field?: string): Response {
 	return new Response(null, {
 		status: 303,
-		headers: { Location: path, 'Set-Cookie': flashCookie(kind, message) },
+		headers: { Location: path, 'Set-Cookie': flashCookie(kind, message, field) },
 	});
 }
 

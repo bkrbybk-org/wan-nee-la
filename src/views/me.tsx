@@ -20,6 +20,7 @@ interface MeProps {
 	vapidPublicKey?: string;
 	version?: string;
 	error?: string;
+	errorField?: string;
 	notice?: string;
 }
 
@@ -32,7 +33,7 @@ export function MePage(props: MeProps) {
 }
 
 function MeBody(props: MeProps) {
-	const { user, year, minYear, maxYear, balances, entries, types, today, vapidPublicKey, error, notice } = props;
+	const { user, year, minYear, maxYear, balances, entries, types, today, vapidPublicKey, error, errorField, notice } = props;
 	const t = useT();
 	const lang = useLang();
 	const upcoming = entries.filter((e) => e.status === 'confirmed' && e.end_date >= today);
@@ -91,7 +92,7 @@ function MeBody(props: MeProps) {
 
 			<section class="card">
 				<h2>{t('book.submit')}</h2>
-				<BookingForm types={types} today={today} compact />
+				<BookingForm types={types} today={today} errorField={errorField} compact />
 			</section>
 
 			<section class="card">

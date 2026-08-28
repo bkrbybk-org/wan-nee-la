@@ -343,3 +343,18 @@ export function t(lang: Lang, key: StringKey, vars?: Record<string, string | num
 	}
 	return text;
 }
+
+/**
+ * Look up one string's raw value, pipe and placeholders untouched.
+ *
+ * A template that crosses into the browser — handed to client-side JS as a
+ * `data-*` attribute for it to fill in itself — has to keep both the singular
+ * and the plural side, because the count it will choose between is only known
+ * once the page is live, not at render time. Collapsing the pipe here, the way
+ * `t()` does, would bake in a choice before the client ever sees the number.
+ */
+export function tRaw(lang: Lang, key: StringKey): string {
+	const entry = STRINGS[key] as Entry | undefined;
+	if (!entry) return String(key);
+	return entry[lang] ?? entry.en;
+}

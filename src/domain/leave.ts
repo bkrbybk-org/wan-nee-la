@@ -9,7 +9,7 @@
 
 import { addDays, countLeaveDays, daysBetween, isValidDate, rangesOverlap, type Half } from './dates.ts';
 import type { Balance, LeaveEntry, LeaveType, Quota } from '../types.ts';
-import { msg, type Message } from '../i18n/strings.ts';
+import { msg, type Message, type StringKey } from '../i18n/strings.ts';
 
 export const HALVES: readonly Half[] = ['full', 'am', 'pm'];
 
@@ -194,4 +194,48 @@ export function halfOn(entry: LeaveEntry, date: string): Half {
 	if (date === entry.start_date) return entry.start_half;
 	if (date === entry.end_date) return entry.end_half;
 	return 'full';
+}
+
+/**
+ * Which form field a booking error is about.
+ *
+ * Every rejection above is a `Message` carrying a catalogue key, and every key
+ * is raised by exactly one check, so the offending input is already known —
+ * it is just not reported. Without it the only feedback is a sentence at the
+ * top of the page, which on a five-field form leaves the reader hunting for
+ * what to change.
+ *
+ * A table rather than a `field` on each error: the return types here are also
+ * the contract `scripts/test-leave.mjs` and `scripts/test-dates.mjs` assert
+ * against, and widening them for a presentation concern would be paying in the
+ * domain for something only the form needs. The names are the `name`
+ * attributes the form submits, which is the same vocabulary `parseBooking`
+ * reads, so the two drift together or not at all.
+ *
+ * A key with no entry — anything raised outside the booking rules — simply has
+ * no field, and the page-level message stands alone as it did before.
+ */
+const ERROR_FIELD: Partial<Record<StringKey, string>> = {
+	'error.pickType': 'leaveTypeId',
+	'error.unknownType': 'leaveTypeId',
+	// The quota belongs to the leave type, and switching type is the usual way
+	// out of this one — more usual than shortening the booking.
+	'error.notEnough': 'leaveTypeId',
+	'error.badStart': 'startDate',
+	'error.tooFarBack': 'startDate',
+	'error.notAWorkingDay': 'startDate',
+	// The range is start-and-end, but only the start is guaranteed to be filled
+	// in: a blank end date means a single day.
+	'error.noWorkingDays': 'startDate',
+	'error.overlap': 'startDate',
+	'error.badEnd': 'endDate',
+	'error.endBeforeStart': 'endDate',
+	'error.tooFarAhead': 'endDate',
+	'error.tooLong': 'endDate',
+	'error.badHalf': 'startHalf',
+	'error.halfOnMultiDay': 'startHalf',
+};
+
+export function fieldForError(m: Message): string | undefined {
+	return ERROR_FIELD[m.key];
 }
