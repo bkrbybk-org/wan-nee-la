@@ -1,7 +1,7 @@
 import { formatDays } from '../domain/dates.ts';
 import type { Holiday, LeaveType, Quota, User } from '../types.ts';
 import type { AuditRow, LeaveSnapshot, NotificationRun } from '../repo/db.ts';
-import { Layout } from './layout.tsx';
+import { FlashBanner, Layout } from './layout.tsx';
 import { SelectField, TextField } from './fields.tsx';
 import { DeleteIcon } from './icons.tsx';
 import { useLang, useT } from '../i18n/context.tsx';
@@ -41,8 +41,7 @@ function AdminBody(props: AdminProps) {
 
 	return (
 		<>
-			{error ? <div class="banner error">{error}</div> : null}
-			{notice ? <div class="banner ok">{notice}</div> : null}
+			<FlashBanner error={error} notice={notice} />
 
 			<div class="page-head">
 				<h1>{t('admin.title')}</h1>

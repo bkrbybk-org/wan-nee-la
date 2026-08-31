@@ -1,7 +1,7 @@
 import { describeRange, formatDays } from '../domain/dates.ts';
 import type { BookingDraft } from '../domain/leave.ts';
 import type { Balance, LeaveEntry, LeaveType, User } from '../types.ts';
-import { Layout, YearNav } from './layout.tsx';
+import { FlashBanner, Layout, YearNav } from './layout.tsx';
 import { BookingForm } from './booking.tsx';
 import { TextField } from './fields.tsx';
 import { BellIcon, CheckIcon, DeleteIcon, EditIcon } from './icons.tsx';
@@ -25,6 +25,8 @@ interface MeProps {
 	notice?: string;
 	/** A booking the server just rejected, to hand back to the form. */
 	draft?: BookingDraft;
+	/** The booking whose last change this page is offering to undo. */
+	undo?: string;
 }
 
 export function MePage(props: MeProps) {
@@ -36,7 +38,7 @@ export function MePage(props: MeProps) {
 }
 
 function MeBody(props: MeProps) {
-	const { user, year, minYear, maxYear, balances, entries, types, today, vapidPublicKey, error, errorField, notice, draft } = props;
+	const { user, year, minYear, maxYear, balances, entries, types, today, vapidPublicKey, error, errorField, notice, draft, undo } = props;
 	const t = useT();
 	const lang = useLang();
 	const upcoming = entries.filter((e) => e.status === 'confirmed' && e.end_date >= today);
@@ -44,8 +46,7 @@ function MeBody(props: MeProps) {
 
 	return (
 		<>
-			{error ? <div class="banner error">{error}</div> : null}
-			{notice ? <div class="banner ok">{notice}</div> : null}
+			<FlashBanner error={error} notice={notice} undo={undo} />
 
 			<div class="page-head">
 				<h1>{t('me.title')}</h1>

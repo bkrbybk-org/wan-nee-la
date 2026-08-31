@@ -198,6 +198,36 @@ function LayoutShell({
 }
 
 /** Previous / next year links, shared by /me and /u/:email. */
+/**
+ * The flash banners, and the undo offer that sometimes rides with one.
+ *
+ * One component rather than the two lines every page used to repeat: the undo
+ * button would otherwise have to be added, and kept in step, in five places.
+ *
+ * The offer is a real form posting to a real route, so it works with scripting
+ * off like everything else here. It is deliberately not a link — undoing is a
+ * mutation, and a GET that changes data is one prefetch away from firing on its
+ * own.
+ */
+export function FlashBanner({ error, notice, undo }: { error?: string; notice?: string; undo?: string }) {
+	const t = useT();
+	return (
+		<>
+			{error ? <div class="banner error">{error}</div> : null}
+			{notice ? (
+				<div class="banner ok">
+					<span>{notice}</span>
+					{undo ? (
+						<form method="post" action={`/api/leave/${undo}/undo`} class="banner-action">
+							<button type="submit" class="btn text">{t('flash.undo')}</button>
+						</form>
+					) : null}
+				</div>
+			) : null}
+		</>
+	);
+}
+
 export function YearNav({ basePath, year, minYear, maxYear }: { basePath: string; year: number; minYear: number; maxYear: number }) {
 	const t = useT();
 	return (

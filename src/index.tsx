@@ -18,10 +18,12 @@ import {
 	fieldForError,
 	parseBooking,
 	parseDraft,
+	parseHalf,
 	round,
 	validateBooking,
 	visibleNote,
 	type BookingDraft,
+	type BookingInput,
 } from './domain/leave.ts';
 import { parseHolidayList } from './domain/holidays.ts';
 import { isLang, t, tm, toLang, type Lang, type Message, type StringKey } from './i18n/strings.ts';
@@ -307,6 +309,7 @@ app.get('/', async (c) => {
 			errorField={flashField(c.get('flash'))}
 			notice={flashOf(c.get('flash'), 'ok')}
 			draft={flashDraft(c.get('flash'))}
+			undo={flashUndo(c.get('flash'))}
 		/>,
 	);
 });
@@ -333,6 +336,7 @@ app.get('/book', async (c) => {
 			errorField={flashField(c.get('flash'))}
 			notice={flashOf(c.get('flash'), 'ok')}
 			draft={flashDraft(c.get('flash'))}
+			undo={flashUndo(c.get('flash'))}
 		/>,
 	);
 });
@@ -582,6 +586,7 @@ app.get('/leave/:id/edit', async (c) => {
 			errorField={flashField(c.get('flash'))}
 			notice={flashOf(c.get('flash'), 'ok')}
 			draft={flashDraft(c.get('flash'))}
+			undo={flashUndo(c.get('flash'))}
 		/>,
 	);
 });
@@ -646,6 +651,9 @@ app.post('/api/leave/:id/edit', async (c) => {
 			type: check.type.label_en.toLowerCase(),
 			typeTh: check.type.label_th,
 		}),
+		// This is the path a drag-to-move lands on, and a drag is the easiest
+		// change in the app to make by accident.
+		{ undo: id },
 	);
 });
 
@@ -658,9 +666,148 @@ app.post('/api/leave/:id/cancel', async (c) => {
 
 	const done = await db.cancelLeave(c.env.DB, id, c.get('user').email);
 	return done
-		? redirectWithFlash(back, 'ok', say(c, 'flash.cancelled'))
+		? redirectWithFlash(back, 'ok', say(c, 'flash.cancelled'), { undo: id })
 		: redirectWithFlash(back, 'err', say(c, 'flash.alreadyCancelled'));
 });
+
+/**
+ * How long an undo stays available on the server.
+ *
+ * The offer itself disappears with the flash cookie after 30 seconds, but the
+ * route has to decide for itself: the cookie is base64 JSON and a determined
+ * caller can write their own. Ten minutes is long enough for someone to notice
+ * a mis-drop and act on it, and short enough that this stays an undo rather
+ * than becoming a general rollback API for anything in the audit trail.
+ */
+const UNDO_WINDOW_MS = 10 * 60 * 1000;
+
+/**
+ * Undo the last change to a booking.
+ *
+ * Two shapes, because the two changes lose different things:
+ *
+ *  - A cancellation only set a status. The row never went anywhere, so putting
+ *    it back needs nothing from the audit trail — including the note, which the
+ *    trail deliberately does not carry.
+ *  - An edit replaced values. Those come back from the snapshot — but the note
+ *    is restored from the row rather than the snapshot, for the same reason.
+ *    A drag-to-move resends the note unchanged, so leaving it alone is right.
+ *
+ * Both re-run the booking rules first. Time passes between a change and its
+ * undo, and quota can be spent or the dates taken in between; an undo that
+ * skipped validation would be the one way into the app to overdraw a balance
+ * or double-book a day.
+ */
+app.post('/api/leave/:id/undo', async (c) => {
+	const back = referrerPath(c.req.header('Referer'), c.req.url) ?? '/me';
+	const today = c.get('today');
+	const id = c.req.param('id');
+
+	const owned = await ownedLeave(c, id);
+	if (!owned.ok) return redirectWithFlash(back, 'err', owned.error);
+
+	const last = await db.latestAudit(c.env.DB, id);
+	if (!last || (last.action !== 'cancelled' && last.action !== 'edited')) {
+		return redirectWithFlash(back, 'err', say(c, 'flash.nothingToUndo'));
+	}
+	if (Date.now() - Date.parse(last.at) > UNDO_WINDOW_MS) {
+		return redirectWithFlash(back, 'err', say(c, 'flash.undoExpired'));
+	}
+
+	const row = owned.row;
+	// The note and its visibility always come from the row, never the snapshot.
+	const restoring: BookingInput | null =
+		last.action === 'cancelled'
+			? {
+					leaveTypeId: row.leave_type_id,
+					startDate: row.start_date,
+					endDate: row.end_date,
+					startHalf: row.start_half,
+					endHalf: row.end_half,
+					note: row.note ?? '',
+					notePrivate: Boolean(row.note_private),
+				}
+			: snapshotToBooking(last.before, row);
+	if (!restoring) return redirectWithFlash(back, 'err', say(c, 'flash.nothingToUndo'));
+
+	// A cancelled booking is not in `confirmedRanges`, so it cannot clash with
+	// itself; a confirmed one being edited back has to be excluded by hand.
+	const ctx = await buildBookingContext(
+		c.env,
+		row.user_email,
+		restoring,
+		today,
+		last.action === 'edited' ? row : undefined,
+	);
+	const check = validateBooking(restoring, ctx);
+	if (!check.ok) return redirectWithFlash(back, 'err', sayMessage(c, check.error));
+
+	const actor = c.get('user').email;
+	if (last.action === 'cancelled') {
+		const done = await db.restoreLeave(c.env.DB, id, actor);
+		return done
+			? redirectWithFlash(back, 'ok', say(c, 'flash.restored'))
+			: redirectWithFlash(back, 'err', say(c, 'flash.nothingToUndo'));
+	}
+
+	const changed = await db.updateLeave(
+		c.env.DB,
+		id,
+		{
+			leave_type_id: restoring.leaveTypeId,
+			start_date: restoring.startDate,
+			end_date: restoring.endDate,
+			start_half: restoring.startHalf,
+			end_half: restoring.endHalf,
+			days_total: check.days,
+			note: row.note,
+			note_private: row.note_private,
+		},
+		actor,
+	);
+	return changed
+		? redirectWithFlash(back, 'ok', say(c, 'flash.undone'))
+		: redirectWithFlash(back, 'err', say(c, 'flash.nothingToUndo'));
+});
+
+/**
+ * A stored `before` snapshot as something the booking rules can check.
+ *
+ * The snapshot is JSON written by this app, but it has been through the
+ * database and a schema change could have left an older shape behind, so every
+ * field is checked rather than cast. Returns null when it cannot be trusted,
+ * and the caller declines the undo rather than restoring a half-read booking.
+ */
+function snapshotToBooking(raw: string | null, row: LeaveRequest): BookingInput | null {
+	if (!raw) return null;
+	let parsed: unknown;
+	try {
+		parsed = JSON.parse(raw);
+	} catch {
+		return null;
+	}
+	if (typeof parsed !== 'object' || parsed === null) return null;
+	const v = parsed as Record<string, unknown>;
+
+	const leaveTypeId = v.leave_type_id;
+	if (typeof leaveTypeId !== 'number' || !Number.isInteger(leaveTypeId) || leaveTypeId <= 0) return null;
+	const startDate = typeof v.start_date === 'string' ? v.start_date : '';
+	const endDate = typeof v.end_date === 'string' ? v.end_date : '';
+	if (!isValidDate(startDate) || !isValidDate(endDate)) return null;
+	const startHalf = parseHalf(v.start_half);
+	const endHalf = parseHalf(v.end_half);
+	if (!startHalf || !endHalf) return null;
+
+	return {
+		leaveTypeId,
+		startDate,
+		endDate,
+		startHalf,
+		endHalf,
+		note: row.note ?? '',
+		notePrivate: Boolean(row.note_private),
+	};
+}
 
 // ---------------------------------------------------------------------------
 // Personal dashboard
@@ -698,6 +845,7 @@ app.get('/me', async (c) => {
 			errorField={flashField(c.get('flash'))}
 			notice={flashOf(c.get('flash'), 'ok')}
 			draft={flashDraft(c.get('flash'))}
+			undo={flashUndo(c.get('flash'))}
 		/>,
 	);
 });
@@ -1187,9 +1335,13 @@ const FLASH_ATTRS = 'Path=/; Max-Age=30; HttpOnly; Secure; SameSite=Lax';
 interface FlashExtra {
 	field?: string;
 	draft?: BookingDraft;
+	/** The booking whose last change this message is offering to undo. */
+	undo?: string;
 }
 
-export type Flash = { kind: 'ok' | 'err'; message: string; field?: string; draft?: BookingDraft } | null;
+export type Flash =
+	| { kind: 'ok' | 'err'; message: string; field?: string; draft?: BookingDraft; undo?: string }
+	| null;
 
 function encodeFlash(payload: unknown): string {
 	return btoa(String.fromCharCode(...new TextEncoder().encode(JSON.stringify(payload))))
@@ -1209,6 +1361,7 @@ function flashCookie(kind: 'ok' | 'err', message: string, extra?: FlashExtra): s
 		k: kind,
 		m: message.slice(0, FLASH_MAX),
 		...(extra?.field ? { f: extra.field } : {}),
+		...(extra?.undo ? { u: extra.undo } : {}),
 	};
 	const draft = extra?.draft;
 	let value = encodeFlash(draft ? { ...base, d: draftPayload(draft) } : base);
@@ -1228,6 +1381,11 @@ function flashCookie(kind: 'ok' | 'err', message: string, extra?: FlashExtra): s
 }
 
 const FLASH_CLEAR = `${FLASH_COOKIE}=; Path=/; Max-Age=0; HttpOnly; Secure; SameSite=Lax`;
+
+/** The booking this message offers to undo, if any. Only successes offer one. */
+function flashUndo(flash: Flash): string | undefined {
+	return flash?.kind === 'ok' ? flash.undo : undefined;
+}
 
 /** The rejected booking to prefill a form with, if this flash carries one. */
 function flashDraft(flash: Flash): BookingDraft | undefined {
@@ -1256,7 +1414,13 @@ function readFlash(cookieHeader: string | undefined): Flash {
 		const b64 = m[1].replace(/-/g, '+').replace(/_/g, '/');
 		const bin = atob(b64.padEnd(Math.ceil(b64.length / 4) * 4, '='));
 		const bytes = Uint8Array.from(bin, (ch) => ch.charCodeAt(0));
-		const parsed = JSON.parse(new TextDecoder().decode(bytes)) as { k?: string; m?: string; f?: string; d?: unknown };
+		const parsed = JSON.parse(new TextDecoder().decode(bytes)) as {
+			k?: string;
+			m?: string;
+			f?: string;
+			d?: unknown;
+			u?: string;
+		};
 		if ((parsed.k !== 'ok' && parsed.k !== 'err') || typeof parsed.m !== 'string') return null;
 		// The cookie is ours, HttpOnly and short-lived, but it still arrives from
 		// the client and the field name is compared against the form's own input
@@ -1267,11 +1431,16 @@ function readFlash(cookieHeader: string | undefined): Flash {
 		// marker or a retype, never the message itself.
 		const field = typeof parsed.f === 'string' && /^[A-Za-z]{1,32}$/.test(parsed.f) ? parsed.f : undefined;
 		const draft = parsed.d === undefined ? null : parseDraft(parsed.d);
+		// A booking id, and nothing else, so a hand-written cookie cannot turn the
+		// undo button into a link at an arbitrary path. The route re-authorises
+		// whatever arrives regardless — this only keeps the markup well formed.
+		const undo = typeof parsed.u === 'string' && /^[0-9a-f-]{36}$/.test(parsed.u) ? parsed.u : undefined;
 		return {
 			kind: parsed.k,
 			message: parsed.m.slice(0, FLASH_MAX),
 			...(field ? { field } : {}),
 			...(draft ? { draft } : {}),
+			...(undo ? { undo } : {}),
 		};
 	} catch {
 		// A malformed cookie is not worth an error page — just show no message.

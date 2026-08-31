@@ -44,7 +44,7 @@ const OTHER = 'other@example.com';
 const STATE = mkdtempSync(join(tmpdir(), 'wnl-smoke-'));
 
 /** Assertions that must run for the suite to be considered complete. */
-const MIN_ASSERTIONS = 166;
+const MIN_ASSERTIONS = 183;
 
 let pass = 0;
 let fail = 0;
@@ -238,7 +238,7 @@ function flashOf(res) {
 		const parsed = JSON.parse(json);
 		// `d` is the rejected booking, carried back so the form can be redisplayed
 		// holding it. Compact keys, same reason the message is base64: cookie room.
-		return { kind: parsed.k, message: parsed.m, field: parsed.f ?? null, draft: parsed.d ?? null };
+		return { kind: parsed.k, message: parsed.m, field: parsed.f ?? null, draft: parsed.d ?? null, undo: parsed.u ?? null };
 	} catch {
 		return null;
 	}
@@ -650,6 +650,57 @@ async function main() {
 	check('a person sees their own balances', ownPage.includes('class="balances"'), 'own balances missing');
 
 	eq('unknown person 404s', (await fetch(`${BASE}/u/nobody%40example.com`)).status, 404);
+
+	// --- undo ---------------------------------------------------------------
+	//
+	// Booked here rather than reusing a booking from earlier: undo acts on the
+	// *last* thing that happened to a row, so a test that inherited one would
+	// depend on whatever the previous section did to it last.
+	const undoStart = addDays(MON, 28);
+	res = await post('/api/leave', { leaveTypeId: '1', startDate: undoStart, note: 'smoke-undo-note' });
+	eq('a booking to undo was made', flashOf(res)?.kind, 'ok');
+	const undoId = (await feed(undoStart, undoStart)).entries[0]?.id;
+
+	// A cancel offers an undo; the id it offers is the booking's own.
+	res = await post(`/api/leave/${undoId}/cancel`);
+	eq('cancelling offers an undo', flashOf(res)?.undo, undoId);
+	eq('and the booking is gone from the feed', (await feed(undoStart, undoStart)).entries.length, 0);
+
+	res = await post(`/api/leave/${undoId}/undo`);
+	eq('undo restores the booking', flashOf(res)?.kind, 'ok');
+	eq('and it is back in the feed', (await feed(undoStart, undoStart)).entries.length, 1);
+	// Cancelling never deleted the row, so the note was never rebuilt from the
+	// audit snapshot — which deliberately does not carry note text.
+	eq('with its note intact', (await feed(undoStart, undoStart)).entries[0]?.note, 'smoke-undo-note');
+	eq('and recorded as restored', d1Rows(`SELECT action FROM leave_audit WHERE leave_id = '${undoId}' ORDER BY id DESC LIMIT 1`)[0]?.action, 'restored');
+
+	// Nothing left to undo: the last action is now the restore itself.
+	res = await post(`/api/leave/${undoId}/undo`);
+	eq('a restore is not itself undoable', flashOf(res)?.kind, 'err');
+
+	// An edit offers an undo, and undoing it puts the old dates back.
+	res = await post(`/api/leave/${undoId}/edit`, { leaveTypeId: '1', startDate: undoStart, endDate: addDays(undoStart, 1), note: 'smoke-undo-note' });
+	eq('editing offers an undo', flashOf(res)?.undo, undoId);
+	eq('and the edit took', (await feed(undoStart, addDays(undoStart, 1))).entries[0]?.end, addDays(undoStart, 1));
+
+	res = await post(`/api/leave/${undoId}/undo`);
+	eq('undo reverts the edit', flashOf(res)?.kind, 'ok');
+	eq('and the end date is back', (await feed(undoStart, addDays(undoStart, 1))).entries[0]?.end, undoStart);
+	eq('the note survived the revert', (await feed(undoStart, undoStart)).entries[0]?.note, 'smoke-undo-note');
+
+	// Undo re-runs the booking rules. Cancel, book the freed day with something
+	// else, then try to undo: the restore would now overlap and must be refused.
+	await post(`/api/leave/${undoId}/cancel`);
+	const blockerRes = await post('/api/leave', { leaveTypeId: '2', startDate: undoStart });
+	eq('the freed day was taken by another booking', flashOf(blockerRes)?.kind, 'ok');
+	res = await post(`/api/leave/${undoId}/undo`);
+	eq('undo is refused when the dates are no longer free', flashOf(res)?.kind, 'err');
+	check('and says why', /already have leave/.test(flashOf(res)?.message ?? ''), flashOf(res)?.message);
+	eq('the booking stays cancelled', d1Rows(`SELECT status FROM leave_requests WHERE id = '${undoId}'`)[0]?.status, 'cancelled');
+
+	// Tidy up so the sections after this one see the roster they expect.
+	const blockerId = (await feed(undoStart, undoStart)).entries[0]?.id;
+	await post(`/api/leave/${blockerId}/cancel`);
 
 	// --- a colleague cannot read a private note -----------------------------
 	const colleagueView = await (await fetch(`${BASE}/?y=${MON.slice(0, 4)}&m=${Number(MON.slice(5, 7))}`)).text();

@@ -1,7 +1,7 @@
 import { describeRange, formatDays } from '../domain/dates.ts';
 import type { BookingDraft } from '../domain/leave.ts';
 import type { LeaveEntry, LeaveType, User } from '../types.ts';
-import { Layout } from './layout.tsx';
+import { FlashBanner, Layout } from './layout.tsx';
 import { BookingForm } from './booking.tsx';
 import { ChevronLeftIcon, DeleteIcon } from './icons.tsx';
 import { useLang, useT } from '../i18n/context.tsx';
@@ -21,12 +21,14 @@ interface EditProps {
 	notice?: string;
 	/** A rejected edit, to hand back to the form instead of the stored booking. */
 	draft?: BookingDraft;
+	/** The booking whose last change this page is offering to undo. */
+	undo?: string;
 }
 
-export function EditPage({ user, entry, types, today, onBehalfOf, version, error, errorField, notice, draft }: EditProps) {
+export function EditPage({ user, entry, types, today, onBehalfOf, version, error, errorField, notice, draft, undo }: EditProps) {
 	return (
 		<Layout title={translate(toLang(user.lang), 'edit.title')} user={user} active="me" version={version}>
-			<EditBody {...{ entry, types, today, onBehalfOf, error, errorField, notice, draft }} />
+			<EditBody {...{ entry, types, today, onBehalfOf, error, errorField, notice, draft, undo }} />
 		</Layout>
 	);
 }
@@ -40,13 +42,13 @@ function EditBody({
 	errorField,
 	notice,
 	draft,
+	undo,
 }: Omit<EditProps, 'user' | 'version'>) {
 	const t = useT();
 	const lang = useLang();
 	return (
 		<>
-			{error ? <div class="banner error">{error}</div> : null}
-			{notice ? <div class="banner ok">{notice}</div> : null}
+			<FlashBanner error={error} notice={notice} undo={undo} />
 
 			<div class="page-head">
 				<a class="icon-btn" href="/me" aria-label={t('edit.back')}>

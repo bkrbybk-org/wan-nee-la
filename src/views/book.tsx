@@ -1,7 +1,7 @@
 import { shortDate } from '../domain/dates.ts';
 import type { BookingDraft } from '../domain/leave.ts';
 import type { LeaveType, User } from '../types.ts';
-import { Layout } from './layout.tsx';
+import { FlashBanner, Layout } from './layout.tsx';
 import { BookingForm } from './booking.tsx';
 import { ChevronLeftIcon } from './icons.tsx';
 import { useLang, useT } from '../i18n/context.tsx';
@@ -26,6 +26,7 @@ export function BookPage({
 	errorField,
 	notice,
 	draft,
+	undo,
 }: {
 	user: User;
 	types: LeaveType[];
@@ -37,10 +38,12 @@ export function BookPage({
 	notice?: string;
 	/** A booking the server just rejected, to hand back to the form. */
 	draft?: BookingDraft;
+	/** The booking whose last change this page is offering to undo. */
+	undo?: string;
 }) {
 	return (
 		<Layout title={translate(toLang(user.lang), 'book.pageTitle')} user={user} active="calendar" version={version}>
-			<BookBody {...{ user, types, today, date, error, errorField, notice, draft }} />
+			<BookBody {...{ user, types, today, date, error, errorField, notice, draft, undo }} />
 		</Layout>
 	);
 }
@@ -53,6 +56,7 @@ function BookBody({
 	errorField,
 	notice,
 	draft,
+	undo,
 }: {
 	user: User;
 	types: LeaveType[];
@@ -62,13 +66,13 @@ function BookBody({
 	errorField?: string;
 	notice?: string;
 	draft?: BookingDraft;
+	undo?: string;
 }) {
 	const t = useT();
 	const lang = useLang();
 	return (
 		<>
-			{error ? <div class="banner error">{error}</div> : null}
-			{notice ? <div class="banner ok">{notice}</div> : null}
+			<FlashBanner error={error} notice={notice} undo={undo} />
 
 			<div class="page-head">
 				<a class="icon-btn" href="/" aria-label={t('book.back')}>

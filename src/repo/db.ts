@@ -350,11 +350,43 @@ export async function cancelLeave(db: D1Database, id: string, actor: string): Pr
 	return ((cancel.meta as { changes?: number }).changes ?? 0) > 0;
 }
 
+/**
+ * Put a cancelled booking back.
+ *
+ * Cancelling sets a status; it never deleted the row, so everything the booking
+ * had — the note included — is still here and nothing has to be rebuilt from
+ * the audit snapshot, which deliberately does not carry note text.
+ *
+ * The caller re-checks the booking rules first: days spent while it was
+ * cancelled, or leave booked over the same dates, are both possible and both
+ * mean the booking cannot simply come back.
+ */
+export async function restoreLeave(db: D1Database, id: string, actor: string): Promise<boolean> {
+	const row = await getLeave(db, id);
+	if (!row || row.status !== 'cancelled') return false;
+
+	const [restore] = await db.batch([
+		db
+			.prepare(`UPDATE leave_requests SET status = 'confirmed', cancelled_at = NULL WHERE id = ? AND status = 'cancelled'`)
+			.bind(id),
+		// `before` is null: what it is being restored from is an absence, which is
+		// exactly what a cancel records as its own `after`.
+		auditStatement(db, id, actor, row.user_email, 'restored', null, row),
+	]);
+	return ((restore.meta as { changes?: number }).changes ?? 0) > 0;
+}
+
 // ---------------------------------------------------------------------------
 // Audit trail
 // ---------------------------------------------------------------------------
 
-export type AuditAction = 'created' | 'edited' | 'cancelled';
+/**
+ * `restored` is its own action rather than an `edited` with a status in the
+ * snapshot. Undoing a cancellation is the one change that puts a booking back
+ * into the calendar, and an admin reading the trail should not have to infer
+ * that from two rows either side of it.
+ */
+export type AuditAction = 'created' | 'edited' | 'cancelled' | 'restored';
 
 export interface AuditRow {
 	id: number;
@@ -416,6 +448,19 @@ function snapshot(row: {
  * the mutation functions above batch them, which is as close to atomic as D1
  * offers, and means no code path can perform a change without recording it.
  */
+/**
+ * The most recent thing that happened to one booking — what an undo acts on.
+ *
+ * By id rather than by `at`: two changes inside the same second are possible,
+ * and the autoincrement is the only ordering that cannot tie.
+ */
+export async function latestAudit(db: D1Database, leaveId: string): Promise<AuditRow | null> {
+	return await db
+		.prepare('SELECT * FROM leave_audit WHERE leave_id = ? ORDER BY id DESC LIMIT 1')
+		.bind(leaveId)
+		.first<AuditRow>();
+}
+
 function auditStatement(
 	db: D1Database,
 	leaveId: string,

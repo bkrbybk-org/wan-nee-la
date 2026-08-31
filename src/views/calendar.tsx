@@ -17,7 +17,7 @@ import {
 } from '../domain/dates.ts';
 import { byDate, halfOn, visibleNote, type BookingDraft } from '../domain/leave.ts';
 import type { Half, Holiday, LeaveEntry, LeaveType, User } from '../types.ts';
-import { Layout } from './layout.tsx';
+import { FlashBanner, Layout } from './layout.tsx';
 import { BookingForm } from './booking.tsx';
 import { SelectField } from './fields.tsx';
 import { ChevronDownIcon, ChevronLeftIcon, ChevronRightIcon, CloseIcon, DeleteIcon, EditIcon, PlusIcon } from './icons.tsx';
@@ -45,6 +45,8 @@ interface CalendarProps {
 	 * reopens the dialog after reading the banner, holding what they typed.
 	 */
 	draft?: BookingDraft;
+	/** The booking whose last change this page is offering to undo. */
+	undo?: string;
 }
 
 /**
@@ -227,7 +229,7 @@ export function CalendarPage(props: CalendarProps) {
 
 /** Inside the Layout, so `useT` sees the language the Layout provides. */
 function CalendarBody(props: CalendarProps) {
-	const { user, year, month, entries, upcoming, holidays, types, today, error, errorField, notice, draft } = props;
+	const { user, year, month, entries, upcoming, holidays, types, today, error, errorField, notice, draft, undo } = props;
 	const t = useT();
 	const lang = useLang();
 	// Presentation only: rotating the columns changes no arithmetic, and Saturday
@@ -293,8 +295,7 @@ function CalendarBody(props: CalendarProps) {
 
 	return (
 		<>
-			{error ? <div class="banner error">{error}</div> : null}
-			{notice ? <div class="banner ok">{notice}</div> : null}
+			<FlashBanner error={error} notice={notice} undo={undo} />
 
 			<div class="month-head">
 				{/* The heading is the control. Stepping a month at a time is fine for
