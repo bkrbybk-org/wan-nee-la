@@ -593,6 +593,10 @@ h3.sub { margin: 20px 0 8px; color: var(--md-on-surface-variant); }
 	color: var(--md-on-secondary-container);
 }
 .banner.error { background: var(--md-error-container); color: var(--md-on-error-container); }
+/* The undo offer, pushed to the far end of the banner it belongs to. `auto`
+   rather than `space-between` on the banner itself, because a banner without an
+   action must keep its message hard against the left edge. */
+.banner-action { margin-left: auto; display: flex; align-items: center; }
 .banner.ok { background: var(--md-tertiary-container); color: var(--md-on-tertiary-container); }
 
 /* ---------- text fields ---------- */
@@ -1304,11 +1308,29 @@ form.inline:has(.tf-support) { margin-bottom: 28px; }
 .upcoming-list { list-style: none; margin: 0; padding: 0; }
 .upcoming-day + .upcoming-day { margin-top: 16px; }
 .upcoming-date {
-	margin: 0 0 4px;
+	/* Widened by the same -8px .upcoming-item uses for its hover gutters, so
+	   the opaque background below covers an item edge to edge instead of
+	   leaving a sliver where it peeks out at the sides as the group scrolls
+	   underneath. */
+	margin: 0 -8px 4px;
+	padding: 0 8px;
 	font-size: 12px;
 	line-height: 16px;
 	font-weight: 500;
 	color: var(--md-on-surface-variant);
+	/* Sticks to whichever ancestor is actually scrolling — the sidebar itself
+	   on a laptop, the page once the aside has stacked under the grid below
+	   1024px — so a long day's names never carry its heading out of view.
+	   --md-surface is opaque and matches the page behind it in both cases,
+	   since .cal-upcoming sits straight on the body background rather than
+	   inside a .card. z-index is needed because a later, unpositioned
+	   .upcoming-item would otherwise paint over a sticky sibling by DOM order
+	   alone; the item's own ::before stacks at -1 only within its own
+	   isolated context, so it does not save us here. */
+	position: sticky;
+	top: 0;
+	z-index: 1;
+	background: var(--md-surface);
 }
 .upcoming-day.today .upcoming-date { color: var(--md-primary); font-weight: 600; }
 .upcoming-item {
@@ -1364,11 +1386,14 @@ form.inline:has(.tf-support) { margin-bottom: 28px; }
 	   sidebar; between the two it stacks under the grid and scrolls with the
 	   page, which is what the fit-viewport layout cannot do. */
 	.cal-upcoming { display: block; }
-	/* "Next 7 days" is the agenda's summary of what the day list does not show.
-	   Beside a full Upcoming list it says the same thing twice, in a worse shape
-	   — a run of names with dates in brackets, where the list groups them by
-	   day. Hidden wherever the list itself is showing. */
-	.who-summary .who-block + .who-block { display: none; }
+	/* The Upcoming list's own day loop starts at max(entry.start_date, today)
+	   and labels the today group with cal.today — it already answers "who's
+	   out today" and "who's out this week", grouped by day instead of split
+	   into two lists that say almost the same thing. Once that list is on
+	   screen, .who-summary (both the two-block card and its "quiet" one-line
+	   variant) would just repeat it, so the whole card steps aside rather
+	   than only trimming one block of it. */
+	.who-summary { display: none; }
 	.calendar-actions .book-inline { display: inline-flex; }
 	/* Describes the month grid, which only exists at this width. */
 	.calendar-actions .hint { display: inline; }
@@ -1381,7 +1406,6 @@ form.inline:has(.tf-support) { margin-bottom: 28px; }
 	.chip-more { display: block; }
 	.wrap { padding: 24px; }
 	.foot { padding-bottom: var(--pad); }
-	.who-summary { grid-template-columns: 1fr 1fr; gap: var(--pad); }
 
 	/* M3 primary tabs. The active tab is marked by a 3dp indicator under the
 	   label, not by a filled pill — that is the navigation bar's language, and
@@ -1476,8 +1500,6 @@ form.inline:has(.tf-support) { margin-bottom: 28px; }
 		overflow-y: auto;
 		padding-right: 4px;
 	}
-	/* Stacked in the sidebar, where there is no room for two columns. */
-	.who-summary { grid-template-columns: 1fr; margin-bottom: var(--pad); }
 }
 
 /* Narrower or shorter than that: the page scrolls, and the grid keeps a
