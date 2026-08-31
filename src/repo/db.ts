@@ -51,7 +51,19 @@ export async function listUsers(db: D1Database): Promise<User[]> {
 export async function ensureUser(db: D1Database, email: string, year: number): Promise<User> {
 	const existing = await getUser(db, email);
 	if (existing) {
-		await ensureQuotas(db, email, year);
+		// Every authenticated page load comes through here, so an unconditional
+		// ensureQuotas() would mean a write on every single request — the INSERT
+		// OR IGNORE is cheap per-call, but it is still a write, and D1's write
+		// throughput is the tighter budget. The seeding is only ever needed twice
+		// in a user's lifetime: the moment they first sign in (handled below, on
+		// the insert branch) and the moment the calendar rolls into a year we
+		// have not seeded for them yet. hasQuotas() turns the common case (same
+		// user, same year, already seeded) into a read, and only falls through to
+		// the write on 1 January — or the first request of the year, whichever
+		// comes first — when a row genuinely needs creating.
+		if (!(await hasQuotas(db, email, year))) {
+			await ensureQuotas(db, email, year);
+		}
 		return existing;
 	}
 
@@ -135,6 +147,48 @@ export async function listQuotas(db: D1Database, email: string, year: number): P
 		.bind(email, year)
 		.all<Quota>();
 	return res.results ?? [];
+}
+
+/**
+ * All quota rows for a year, across every user, in one round trip.
+ *
+ * /admin needs exactly this — quotas for the whole staff list for one year —
+ * and used to get there by calling listQuotas() once per user, which is one
+ * D1 round trip per row in the users table. Filtering by year alone (rather
+ * than also binding the user list) keeps this a single indexed WHERE clause;
+ * the admin route already has the full user list to join against in memory,
+ * and a deactivated or since-deleted user's leftover quota row is harmless
+ * dead weight, not a correctness problem.
+ */
+export async function listQuotasForYear(db: D1Database, year: number): Promise<Quota[]> {
+	const res = await db.prepare('SELECT * FROM quotas WHERE year = ?').bind(year).all<Quota>();
+	return res.results ?? [];
+}
+
+/**
+ * Whether this user already has a quota row for every leave type this year —
+ * the check that lets the common path skip the seeding write. See the comment
+ * in ensureUser().
+ *
+ * Counts rather than merely asking whether any row exists. `ensureQuotas` is an
+ * INSERT OR IGNORE across every leave type, so it also filled the gap when a
+ * new type appeared mid-year — which is exactly how planned medical leave
+ * arrived in migration 0009, types being addable only by SQL. An existence
+ * check would have skipped that case forever and left existing staff with no
+ * allowance for the new type, silently, until the next January.
+ *
+ * Both counts are index lookups on a table of a handful of rows, and they ride
+ * in one round trip, so this still costs less than the write it avoids.
+ */
+async function hasQuotas(db: D1Database, email: string, year: number): Promise<boolean> {
+	const row = await db
+		.prepare(
+			`SELECT (SELECT COUNT(*) FROM quotas WHERE user_email = ? AND year = ?) AS have,
+			        (SELECT COUNT(*) FROM leave_types) AS want`,
+		)
+		.bind(email, year)
+		.first<{ have: number; want: number }>();
+	return (row?.have ?? 0) >= (row?.want ?? 0);
 }
 
 /** Seed any missing quota rows for the year from `leave_types.default_days`. */

@@ -46,9 +46,16 @@ import {
 	vapidKeys,
 } from './notify/digest.ts';
 import { parseSubscription, sendPush } from './notify/push.ts';
-import type { Env, LeaveRequest, User } from './types.ts';
+import type { Env, LeaveRequest, LeaveType, User } from './types.ts';
 
-type Vars = { user: User; today: string; flash: Flash };
+// `leaveTypes` caches db.listLeaveTypes() for the lifetime of one request. It
+// deliberately lives on the per-request Hono context rather than a module-level
+// variable: a module global in a Worker isolate survives across requests (and
+// across different users), and leave types can change out from under us via
+// direct SQL or a migration, so a global would keep serving stale data with no
+// event that would ever clear it. Scoping the cache to `c` means it is created
+// fresh every request and simply falls out of scope when the request ends.
+type Vars = { user: User; today: string; flash: Flash; leaveTypes?: LeaveType[] };
 const app = new Hono<{ Bindings: Env; Variables: Vars }>();
 
 /**
@@ -258,6 +265,21 @@ function sayMessage(c: Ctx, m: Message): string {
 	return tm(toLang(c.get('user')?.lang), m);
 }
 
+/**
+ * Leave types, memoised on `c` for this request. Several routes need the list
+ * more than once (once to build a form, again to validate what came back from
+ * it), and the data is static seed data within a request's lifetime, so the
+ * repeat calls were pure waste. See the comment on `Vars` for why this is a
+ * per-request cache and not a module-level one.
+ */
+async function leaveTypesOf(c: Ctx): Promise<LeaveType[]> {
+	const cached = c.get('leaveTypes');
+	if (cached) return cached;
+	const types = await db.listLeaveTypes(c.env.DB);
+	c.set('leaveTypes', types);
+	return types;
+}
+
 // ---------------------------------------------------------------------------
 // Calendar
 // ---------------------------------------------------------------------------
@@ -290,7 +312,7 @@ app.get('/', async (c) => {
 	const [entries, holidays, types, upcoming] = await Promise.all([
 		db.listLeaveInRange(c.env.DB, from, to),
 		db.listHolidays(c.env.DB, from, to),
-		db.listLeaveTypes(c.env.DB),
+		leaveTypesOf(c),
 		db.listLeaveInRange(c.env.DB, today, addDays(today, UPCOMING_DAYS)),
 	]);
 
@@ -323,7 +345,7 @@ app.get('/book', async (c) => {
 	const user = c.get('user');
 	const today = c.get('today');
 	const raw = c.req.query('date');
-	const types = await db.listLeaveTypes(c.env.DB);
+	const types = await leaveTypesOf(c);
 
 	return c.html(
 		<BookPage
@@ -456,6 +478,14 @@ function summariseCoverage(coverage: Map<string, string[]>, headcount: number, l
  * would be rejected as a clash with the very row it is rewriting — and its days
  * are credited back before the balance check, so shortening or retyping a
  * booking is never refused for a quota the booking itself is consuming.
+ *
+ * Takes `env`, not the Hono context `c`, so it cannot reach the per-request
+ * leaveTypesOf(c) memo — it calls db.listLeaveTypes() directly instead. That is
+ * fine rather than a gap: every caller invokes this function at most once per
+ * request and does not also call listLeaveTypes()/leaveTypesOf() itself, so
+ * there is no repeat query here for a memo to save. Threading `c` through
+ * purely to reuse the cache would add a parameter with no request that
+ * benefits from it.
  */
 async function buildBookingContext(
 	env: Env,
@@ -571,7 +601,7 @@ app.get('/leave/:id/edit', async (c) => {
 		return redirectWithFlash('/me', 'err', say(c, 'flash.cancelledRebook'));
 	}
 
-	const [entry, types] = await Promise.all([db.getLeaveEntry(c.env.DB, id), db.listLeaveTypes(c.env.DB)]);
+	const [entry, types] = await Promise.all([db.getLeaveEntry(c.env.DB, id), leaveTypesOf(c)]);
 	if (!entry) return redirectWithFlash('/me', 'err', say(c, 'flash.gone'));
 
 	return c.html(
@@ -820,7 +850,7 @@ app.get('/me', async (c) => {
 	const year = clampInt(c.req.query('y'), nowYear, 2000, 2100);
 	const { minYear, maxYear } = yearNavBounds(nowYear);
 
-	const types = await db.listLeaveTypes(c.env.DB);
+	const types = await leaveTypesOf(c);
 	const [balances, entries] = await Promise.all([
 		db.balancesFor(c.env.DB, user.email, year, types),
 		db.listUserLeave(c.env.DB, user.email, year),
@@ -880,7 +910,7 @@ app.get('/u/:email', async (c) => {
 	const canSeeBalances = viewer.email === subject.email || viewer.is_admin;
 	const [entries, balances] = await Promise.all([
 		db.listUserLeave(c.env.DB, subject.email, year),
-		canSeeBalances ? db.balancesFor(c.env.DB, subject.email, year, await db.listLeaveTypes(c.env.DB)) : Promise.resolve(undefined),
+		canSeeBalances ? db.balancesFor(c.env.DB, subject.email, year, await leaveTypesOf(c)) : Promise.resolve(undefined),
 	]);
 
 	return c.html(
@@ -1023,14 +1053,14 @@ app.get('/admin', async (c) => {
 
 	const [users, types, holidays, groupId, log, audit] = await Promise.all([
 		db.listUsers(c.env.DB),
-		db.listLeaveTypes(c.env.DB),
+		leaveTypesOf(c),
 		db.listHolidays(c.env.DB, `${year}-01-01`, `${year + 1}-12-31`),
 		resolveGroupId(c.env),
 		db.recentNotifications(c.env.DB),
 		db.recentAudit(c.env.DB),
 	]);
 
-	const quotas = (await Promise.all(users.map((u) => db.listQuotas(c.env.DB, u.email, year)))).flat();
+	const quotas = await db.listQuotasForYear(c.env.DB, year);
 	const configured = lineConfigured(c.env);
 
 	return c.html(
@@ -1058,7 +1088,7 @@ app.post('/admin/quotas', async (c) => {
 	const year = Number(form.year);
 	if (!email || !Number.isInteger(year)) return redirectWithFlash('/admin', 'err', say(c, 'flash.badRequest'));
 
-	const types = await db.listLeaveTypes(c.env.DB);
+	const types = await leaveTypesOf(c);
 	for (const t of types) {
 		const raw = form[`q_${t.id}`];
 		if (raw === undefined) continue;
@@ -1079,7 +1109,7 @@ app.post('/admin/quotas/bulk', async (c) => {
 		return redirectWithFlash('/admin', 'err', say(c, 'flash.daysRange'));
 	}
 
-	const types = await db.listLeaveTypes(c.env.DB);
+	const types = await leaveTypesOf(c);
 	if (!types.some((t) => t.id === leaveTypeId)) {
 		return redirectWithFlash('/admin', 'err', say(c, 'flash.unknownType'));
 	}
