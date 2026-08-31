@@ -1,8 +1,17 @@
 name: CI
 
-# Runs on every push to main and every pull request. Deliberately needs no
-# secrets: the checks below are all local, so they work unchanged on pull
-# requests from forks, which GitHub never gives secrets to.
+# Runs on every push to main and every pull request.
+#
+# The `check`, `hygiene` and `scan` jobs are local and need no secrets, so they
+# work unchanged on pull requests from forks, which GitHub never gives secrets
+# to. `sonar` is the exception — it authenticates against a Sonar server — and
+# it carries the guard that keeps a fork's pull request green rather than
+# failing it on a secret the fork was never going to have.
+#
+# Third-party actions are pinned to a commit, not a tag: in March 2026 someone
+# moved 75 of aquasecurity/trivy-action's tags to a credential stealer, and a
+# tag is a mutable pointer that a scanner job would have handed a runner token.
+# GitHub's own actions stay on major tags, which is what they document.
 on:
   push:
     branches: [main]
@@ -20,7 +29,12 @@ jobs:
       # collect telemetry about.
       WRANGLER_SEND_METRICS: false
     steps:
-      - uses: actions/checkout@v4
+      # v7 refuses by default to check out fork code under `pull_request_target`
+      # or `workflow_run`, the shape of the "pwn request" hole. This workflow
+      # triggers on plain `pull_request`, which never had that problem, so no
+      # opt-in is needed here — but the default is worth being on the right side
+      # of if a trigger is ever added.
+      - uses: actions/checkout@v7
 
       - uses: actions/setup-node@v4
         with:
@@ -68,7 +82,7 @@ jobs:
     name: nothing sensitive committed
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Local-only files must stay untracked
         # These hold real credentials and real infrastructure ids. This repo is
@@ -101,3 +115,98 @@ jobs:
             exit 1
           fi
           echo "clean"
+
+  scan:
+    name: vulnerabilities, secrets, misconfiguration
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      # Only to file findings under Security → Code scanning. The upload step
+      # is skipped on a fork's pull request, where GitHub withholds this.
+      security-events: write
+    steps:
+      - uses: actions/checkout@v7
+
+      # Two passes over the same tree, because they answer different questions.
+      # The first files everything it finds for someone to read later; the
+      # second is the gate, and only the second can fail the build. Running the
+      # gate alone would put low-severity findings nowhere, and running the
+      # report alone would let a critical one merge.
+      - name: Trivy — report everything
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          scan-type: fs
+          scan-ref: .
+          # `vuln` reads package-lock.json rather than node_modules, so it sees
+          # the tree that would actually be installed. `secret` overlaps the
+          # hygiene job above and is kept anyway: that one greps for shapes we
+          # thought of, this one carries a rule set we did not write.
+          scanners: vuln,secret,misconfig
+          format: sarif
+          output: trivy.sarif
+          skip-dirs: node_modules,.wrangler
+          # Never fails. The gate below is what fails.
+          exit-code: '0'
+
+      - name: File the findings
+        # A fork's pull request has no security-events permission, so this would
+        # fail on a contribution rather than on anything wrong with it.
+        if: github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository
+        uses: github/codeql-action/upload-sarif@v4
+        with:
+          sarif_file: trivy.sarif
+
+      - name: Trivy — fail on HIGH or CRITICAL
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          scan-type: fs
+          scan-ref: .
+          scanners: vuln,secret
+          severity: HIGH,CRITICAL
+          # A vulnerability with no released fix cannot be actioned by merging
+          # something, and blocking every unrelated change until upstream ships
+          # a patch is how a red pipeline gets ignored. It is still reported
+          # above and still visible in the Security tab.
+          ignore-unfixed: true
+          skip-dirs: node_modules,.wrangler
+          exit-code: '1'
+
+  sonarqube:
+    name: SonarQube
+    runs-on: ubuntu-latest
+    # The only job here that needs a secret. A pull request from a fork gets
+    # none, so it would fail on every outside contribution — skipped there
+    # instead, which leaves the fork's other checks meaningful.
+    if: github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          # Sonar dates a line from git history to decide what counts as new
+          # code. A shallow clone has none, and every line looks new.
+          fetch-depth: 0
+
+      - name: Is Sonar configured?
+        id: sonar
+        # Adding this job should not turn main red before anyone has created the
+        # project and the token. Until SONAR_TOKEN exists the scan is skipped
+        # and the job passes, saying so in the log.
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+        run: |
+          if [ -n "$SONAR_TOKEN" ]; then
+            echo "configured=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "configured=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::SONAR_TOKEN is not set — skipping the scan. Add the secret to enable it."
+          fi
+
+      - name: Scan
+        if: steps.sonar.outputs.configured == 'true'
+        uses: SonarSource/sonarqube-scan-action@22918119ff8e1ca75a623e15c8296b6ea4fbe28f # v8.2.1
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+          # Unset for SonarQube Cloud, which the action defaults to. Set the
+          # secret to point this at a self-hosted SonarQube Server; nothing else
+          # in this file changes. The project key lives in
+          # sonar-project.properties.
+          SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
