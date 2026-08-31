@@ -115,30 +115,38 @@ function UpcomingList({
 		<section class="cal-upcoming">
 			<h2>{t('cal.upcoming')}</h2>
 			{days.length === 0 ? (
+				// The empty message already names the window, so the caption below
+				// would only say it twice.
 				<p class="muted">{t('cal.nothingUpcoming', { days: UPCOMING_DAYS })}</p>
 			) : (
-				<ol class="upcoming-list">
-					{days.map(([date, dayEntries]) => (
-						<li class={`upcoming-day ${date === today ? 'today' : ''}`}>
-							<p class="upcoming-date">{date === today ? t('cal.today') : longDate(date, lang)}</p>
-							{dayEntries.map((e) => (
-								<a
-									class={`upcoming-item ${canEdit(e) ? 'mine' : ''}`}
-									href={canEdit(e) ? `/leave/${e.id}/edit` : '#'}
-									aria-label={entryLabel(e, date, lang)}
-									{...entryData(e, canEdit(e), visibleNote(e, user), lang)}
-								>
-									<span class="dot" style={`--chip: ${e.color}`} />
-									<span class="upcoming-name">{e.display_name}</span>
-									<span class="upcoming-type">
-										{typeLabel(e, lang)}
-										{halfMark(halfOn(e, date), lang)}
-									</span>
-								</a>
-							))}
-						</li>
-					))}
-				</ol>
+				<>
+					{/* The list is anchored to today, not to the month on screen.
+					    Without saying so, paging forward to November and still
+					    seeing September reads as a bug rather than as the point. */}
+					<p class="upcoming-window">{t('cal.upcomingWindow', { days: UPCOMING_DAYS })}</p>
+					<ol class="upcoming-list">
+						{days.map(([date, dayEntries]) => (
+							<li class={`upcoming-day ${date === today ? 'today' : ''}`}>
+								<p class="upcoming-date">{date === today ? t('cal.today') : longDate(date, lang)}</p>
+								{dayEntries.map((e) => (
+									<a
+										class={`upcoming-item ${canEdit(e) ? 'mine' : ''}`}
+										href={canEdit(e) ? `/leave/${e.id}/edit` : '#'}
+										aria-label={entryLabel(e, date, lang)}
+										{...entryData(e, canEdit(e), visibleNote(e, user), lang)}
+									>
+										<span class="dot" style={`--chip: ${e.color}`} />
+										<span class="upcoming-name">{e.display_name}</span>
+										<span class="upcoming-type">
+											{typeLabel(e, lang)}
+											{halfMark(halfOn(e, date), lang)}
+										</span>
+									</a>
+								))}
+							</li>
+						))}
+					</ol>
+				</>
 			)}
 		</section>
 	);

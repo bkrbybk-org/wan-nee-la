@@ -56,6 +56,7 @@ export const STRINGS = {
 	'cal.bookOn': { en: 'Book leave on {date}', th: 'แจ้งลาวันที่ {date}' },
 	'cal.upcoming': { en: 'Upcoming', th: 'ที่กำลังจะถึง' },
 	'cal.nothingUpcoming': { en: 'Nothing booked in the next {days} days.', th: 'ไม่มีการลาใน {days} วันข้างหน้า' },
+	'cal.upcomingWindow': { en: 'Next {days} days, from today', th: '{days} วันข้างหน้า นับจากวันนี้' },
 	'cal.more': { en: '+{n} more', th: 'อีก {n}' },
 	'cal.whoIsOut': { en: 'Who is out', th: 'ใครลาบ้าง' },
 	'cal.outToday': { en: 'Out today', th: 'ลาวันนี้' },

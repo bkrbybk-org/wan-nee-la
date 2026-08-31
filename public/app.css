@@ -1279,8 +1279,9 @@ form.inline:has(.tf-support) { margin-bottom: 28px; }
 
 .cal-layout { display: block; }
 .cal-side { display: block; }
-/* The upcoming list is a laptop's use of spare width. A phone has the day
-   list under the grid, which answers the same question in its own way. */
+/* A phone has the agenda list under the grid, which answers the same question
+   in its own way and in a shape that suits a narrow screen. From 768px up the
+   agenda is hidden and this takes over — see the min-width: 768px block. */
 .cal-upcoming { display: none; }
 
 .cal-upcoming h2 {
@@ -1290,6 +1291,14 @@ form.inline:has(.tf-support) { margin-bottom: 28px; }
 	font-weight: 500;
 	text-transform: uppercase;
 	letter-spacing: 0.08em;
+	color: var(--md-on-surface-variant);
+}
+/* Sits under the heading, in the heading's own register — the list is anchored
+   to today, and paging to another month does not move it. */
+.upcoming-window {
+	margin: -8px 0 12px;
+	font-size: 12px;
+	line-height: 16px;
 	color: var(--md-on-surface-variant);
 }
 .upcoming-list { list-style: none; margin: 0; padding: 0; }
@@ -1350,6 +1359,16 @@ form.inline:has(.tf-support) { margin-bottom: 28px; }
 	.account-name { display: inline; margin-right: 4px; color: var(--md-on-surface-variant); }
 	.agenda-view { display: none; }
 	.fab { display: none; }
+	/* On from the same breakpoint that hides the agenda, so the two never leave
+	   a reader with neither. Above 1024px and 700px tall it lands in the
+	   sidebar; between the two it stacks under the grid and scrolls with the
+	   page, which is what the fit-viewport layout cannot do. */
+	.cal-upcoming { display: block; }
+	/* "Next 7 days" is the agenda's summary of what the day list does not show.
+	   Beside a full Upcoming list it says the same thing twice, in a worse shape
+	   — a run of names with dates in brackets, where the list groups them by
+	   day. Hidden wherever the list itself is showing. */
+	.who-summary .who-block + .who-block { display: none; }
 	.calendar-actions .book-inline { display: inline-flex; }
 	/* Describes the month grid, which only exists at this width. */
 	.calendar-actions .hint { display: inline; }
@@ -1430,7 +1449,11 @@ form.inline:has(.tf-support) { margin-bottom: 28px; }
 		flex: 1;
 		min-height: 0;
 		display: grid;
-		grid-template-columns: minmax(0, 1fr) 300px;
+		/* The floor is what the list needs before names start ellipsising; the
+		   ceiling stops a 2560px monitor handing a column of five words half the
+		   screen. Between them it takes a share of the width rather than a fixed
+		   slice of it. */
+		grid-template-columns: minmax(0, 1fr) clamp(260px, 22%, 380px);
 		gap: 24px;
 	}
 	body.fit-viewport .cal-main { min-height: 0; display: flex; flex-direction: column; }
@@ -1453,14 +1476,8 @@ form.inline:has(.tf-support) { margin-bottom: 28px; }
 		overflow-y: auto;
 		padding-right: 4px;
 	}
-	.cal-upcoming { display: block; }
 	/* Stacked in the sidebar, where there is no room for two columns. */
 	.who-summary { grid-template-columns: 1fr; margin-bottom: var(--pad); }
-	/* "Next 7 days" is the phone's summary of what the day list does not show.
-	   Beside a full Upcoming list it says the same thing twice, in a worse
-	   shape — a run of names with dates in brackets, where the list below
-	   groups them by day. */
-	.who-summary .who-block + .who-block { display: none; }
 }
 
 /* Narrower or shorter than that: the page scrolls, and the grid keeps a
