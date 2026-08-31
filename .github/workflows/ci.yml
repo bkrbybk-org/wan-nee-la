@@ -36,7 +36,7 @@ jobs:
       # of if a trigger is ever added.
       - uses: actions/checkout@v7
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           # Single source of truth with local development. The test scripts
           # import .ts files directly via type stripping, which needs Node 24.
@@ -146,7 +146,7 @@ jobs:
           output: trivy.sarif
           skip-dirs: node_modules,.wrangler
           # Never fails. The gate below is what fails.
-          exit-code: '0'
+          exit-code: "0"
 
       - name: File the findings
         # A fork's pull request has no security-events permission, so this would
@@ -169,7 +169,7 @@ jobs:
           # above and still visible in the Security tab.
           ignore-unfixed: true
           skip-dirs: node_modules,.wrangler
-          exit-code: '1'
+          exit-code: "1"
 
   sonarqube:
     name: SonarQube
@@ -205,8 +205,3 @@ jobs:
         uses: SonarSource/sonarqube-scan-action@22918119ff8e1ca75a623e15c8296b6ea4fbe28f # v8.2.1
         env:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
-          # Unset for SonarQube Cloud, which the action defaults to. Set the
-          # secret to point this at a self-hosted SonarQube Server; nothing else
-          # in this file changes. The project key lives in
-          # sonar-project.properties.
-          SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
