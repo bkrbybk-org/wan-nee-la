@@ -52,6 +52,18 @@ export default tseslint.config(
 		},
 	},
 	{
+		// Ordinary browser scripts served straight from /public — not bundled, not
+		// service workers. `sw.js` is excluded because it needs the service-worker
+		// globals instead, and gets its own block below.
+		files: ['public/**/*.js'],
+		ignores: ['public/sw.js'],
+		// SwaggerUIBundle is defined by the CDN bundle the docs page loads in a
+		// <script> before this one, so it is a global here rather than an import.
+		languageOptions: { globals: { ...globals.browser, SwaggerUIBundle: 'readonly' } },
+		plugins: { '@stylistic': stylistic },
+		rules: { ...stylisticRules },
+	},
+	{
 		files: ['public/sw.js'],
 		languageOptions: {
 			globals: { ...globals.serviceworker },
