@@ -567,11 +567,24 @@ a { color: var(--md-primary); }
 .month-head .today-link { margin-left: auto; }
 h3.sub { margin: 20px 0 8px; color: var(--md-on-surface-variant); }
 
-/* At 375px the default h1 size wraps "August 2026" onto two lines and shoves
-   the prev/next chevrons down with it. M3 title-large is the next size down
-   and still reads as a heading. */
+/* At 375px the default h1 size wraps "August 2026" onto two lines and breaks
+   the row, carrying the jump control and the Today link down with it. M3
+   title-large is the next size down and still reads as a heading. The prev and
+   next chevrons sit ahead of the heading and are unaffected either way — that
+   is the point of their being there. */
 @media (max-width: 767px) {
 	.month-head h1 { font-size: 22px; line-height: 28px; white-space: nowrap; }
+
+	/* The jump popup is wider than a phone, and it hangs from a control that
+	   sits partway across the header — anchored to that control it starts around
+	   300px in and runs off the side of the screen. Making the header the
+	   positioning context instead lets it span the full width and wrap inside,
+	   which is the only place on a 375px screen it can fit. Desktop keeps the
+	   popup hanging from the control, where there is room for it. */
+	.month-head { position: relative; }
+	.month-jump { position: static; }
+	.month-jump-form { left: 0; right: 0; flex-wrap: wrap; }
+	.month-jump-form .tf { flex: 1 1 128px; }
 }
 
 /* ---------- banners ---------- */

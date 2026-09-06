@@ -298,6 +298,19 @@ function CalendarBody(props: CalendarProps) {
 			<FlashBanner error={error} notice={notice} undo={undo} />
 
 			<div class="month-head">
+				{/* Ahead of the heading, not after it, so stepping through the year
+				    does not move the thing you are clicking. Month names differ in
+				    length in both languages — May against September, ก.พ. against
+				    ธ.ค. — and buttons that followed the name shifted sideways on
+				    every press, which is how a run of clicks lands on the wrong
+				    one. Their own position is now fixed and only the label
+				    changes. */}
+				<a class="icon-btn" href={`/?y=${prev.year}&m=${prev.month}`} aria-label={t('cal.prevMonth')}>
+					<ChevronLeftIcon />
+				</a>
+				<a class="icon-btn" href={`/?y=${next.year}&m=${next.month}`} aria-label={t('cal.nextMonth')}>
+					<ChevronRightIcon />
+				</a>
 				{/* The heading is the control. Stepping a month at a time is fine for
 				    next week and useless for next January — five clicks to get
 				    there, and five back. A disclosure keeps the header as quiet as
@@ -336,12 +349,6 @@ function CalendarBody(props: CalendarProps) {
 						<button type="submit" class="btn tonal">{t('cal.go')}</button>
 					</form>
 				</details>
-				<a class="icon-btn" href={`/?y=${prev.year}&m=${prev.month}`} aria-label={t('cal.prevMonth')}>
-					<ChevronLeftIcon />
-				</a>
-				<a class="icon-btn" href={`/?y=${next.year}&m=${next.month}`} aria-label={t('cal.nextMonth')}>
-					<ChevronRightIcon />
-				</a>
 				<a class="btn text today-link" href="/">{t('cal.today')}</a>
 			</div>
 
