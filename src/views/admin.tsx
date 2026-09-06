@@ -15,7 +15,7 @@ interface AdminProps {
 	quotas: Quota[];
 	holidays: Holiday[];
 	today: string;
-	line: { configured: boolean; groupId: string | null; ready: boolean };
+	line: { enabled: boolean; configured: boolean; groupId: string | null; ready: boolean };
 	log: NotificationRun[];
 	audit: AuditRow[];
 	version?: string;
@@ -182,6 +182,8 @@ function AdminBody(props: AdminProps) {
 				<p class="muted">{t('admin.lineHelp')}</p>
 
 				<dl class="popup-facts">
+					<dt>{t('admin.channel')}</dt>
+					<dd>{line.enabled ? t('admin.tokenSet') : t('admin.lineOff')}</dd>
 					<dt>{t('admin.channelToken')}</dt>
 					<dd>{line.configured ? t('admin.tokenSet') : 'not set — run wrangler secret put LINE_CHANNEL_ACCESS_TOKEN'}</dd>
 					<dt>{t('admin.group')}</dt>
@@ -207,7 +209,12 @@ function AdminBody(props: AdminProps) {
 					    not a LINE channel exists, and the outcome says which went. */}
 					<button type="submit" class="btn primary">{t('admin.sendNow')}</button>
 				</form>
-				{!line.ready ? (
+				{/* Switched off and not set up are different problems, and the note
+				    says which one this is rather than sending an admin to look for a
+				    secret that was never the reason. */}
+				{!line.enabled ? (
+					<p class="muted">{t('admin.lineDisabled')}</p>
+				) : !line.ready ? (
 					<p class="muted">{t('admin.lineIncomplete')}</p>
 				) : null}
 

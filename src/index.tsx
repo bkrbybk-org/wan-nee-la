@@ -39,6 +39,7 @@ import { groupIdFromWebhook, verifyLineSignature } from './notify/line.ts';
 import {
 	GROUP_ID_KEY,
 	lineConfigured,
+	lineEnabled,
 	pushConfigured,
 	resolveGroupId,
 	runDigest,
@@ -1100,6 +1101,7 @@ app.get('/admin', async (c) => {
 
 	const quotas = await db.listQuotasForYear(c.env.DB, year);
 	const configured = lineConfigured(c.env);
+	const enabled = lineEnabled(c.env);
 
 	return c.html(
 		<AdminPage
@@ -1111,7 +1113,7 @@ app.get('/admin', async (c) => {
 			holidays={holidays}
 			audit={audit}
 			today={today}
-			line={{ configured, groupId, ready: configured && Boolean(groupId) }}
+			line={{ enabled, configured, groupId, ready: enabled && configured && Boolean(groupId) }}
 			log={log}
 			version={c.env.CF_VERSION_METADATA?.id}
 			error={flashOf(c.get('flash'), 'err')}

@@ -44,7 +44,7 @@ const OTHER = 'other@example.com';
 const STATE = mkdtempSync(join(tmpdir(), 'wnl-smoke-'));
 
 /** Assertions that must run for the suite to be considered complete. */
-const MIN_ASSERTIONS = 183;
+const MIN_ASSERTIONS = 185;
 
 let pass = 0;
 let fail = 0;
@@ -488,6 +488,20 @@ async function main() {
 		flashOf(res)?.message,
 	);
 	eq('digest: nothing logged when nothing was sent', d1Rows('SELECT COUNT(*) AS n FROM notification_runs')[0]?.n, 0);
+
+	// LINE_ENABLED is not set in this harness, so the channel is switched off and
+	// must not claim a run even though the webhook captured a group id above.
+	// "Not configured" is what surfaces, because push is the one still fixable.
+	eq(
+		'a disabled LINE channel claims nothing',
+		d1Rows("SELECT COUNT(*) AS n FROM notification_runs WHERE channel = 'line'")[0]?.n,
+		0,
+	);
+	check(
+		'and the admin page says LINE is switched off',
+		(await (await fetch(`${BASE}/admin`)).text()).includes('switched off'),
+		'admin page does not report the channel as off',
+	);
 
 	// --- note visibility ----------------------------------------------------
 	//

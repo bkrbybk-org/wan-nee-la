@@ -20,6 +20,7 @@ export type DigestStatus =
 	| 'skipped_weekend'
 	| 'skipped_not_monday'
 	| 'skipped_duplicate'
+	| 'disabled'
 	| 'not_configured'
 	| 'no_subscribers'
 	| 'dry_run'
@@ -46,6 +47,20 @@ export interface DigestOutcome {
 /** The group to post to: captured by the webhook, or pinned in config. */
 export async function resolveGroupId(env: Env): Promise<string | null> {
 	return (await db.getConfig(env.DB, GROUP_ID_KEY)) ?? (env.LINE_GROUP_ID || null);
+}
+
+/**
+ * The LINE channel's on/off switch, separate from whether it is configured.
+ *
+ * Two different questions, and collapsing them would lose the answer an admin
+ * needs: "no token" sends someone looking for a missing secret, "switched off"
+ * tells them the secret is not the problem.
+ *
+ * Absent reads as off. LINE posts into a company group and bills per member, so
+ * the variable going missing must not be what starts it sending.
+ */
+export function lineEnabled(env: Env): boolean {
+	return env.LINE_ENABLED === '1';
 }
 
 export function lineConfigured(env: Env): boolean {
@@ -83,8 +98,15 @@ function rollUp(channels: ChannelOutcome[]): { status: DigestStatus; error?: str
 	// Nothing was sent and nothing failed. Report the most specific reason
 	// available rather than flattening "nobody has subscribed" into "not
 	// configured", which would send an admin looking for a missing secret.
-	const specific = channels.find((c) => c.status !== 'not_configured');
-	return { status: specific?.status ?? 'not_configured' };
+	//
+	// A channel that is switched off or unconfigured was never in play, so
+	// neither can be the most specific answer while another channel has a real
+	// one. Between those two, "not configured" wins: it names something that can
+	// be fixed, where "disabled" is a decision already taken.
+	const specific = channels.find((c) => c.status !== 'not_configured' && c.status !== 'disabled');
+	if (specific) return { status: specific.status };
+	if (channels.some((c) => c.status === 'not_configured')) return { status: 'not_configured' };
+	return { status: channels.length > 0 ? 'disabled' : 'not_configured' };
 }
 
 /**
@@ -101,6 +123,11 @@ async function runLine(
 	people: number,
 	force: boolean,
 ): Promise<ChannelOutcome> {
+	// Before the configuration check, not after: a channel that is switched off
+	// should not report a missing token, or the first thing an admin does is go
+	// hunting for a secret that was never the reason.
+	if (!lineEnabled(env)) return { channel: 'line', status: 'disabled' };
+
 	const groupId = await resolveGroupId(env);
 	if (!lineConfigured(env) || !groupId) return { channel: 'line', status: 'not_configured' };
 

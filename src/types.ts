@@ -6,6 +6,15 @@ export interface Env {
 	ACCESS_AUD: string;
 	DEV_AUTH_BYPASS: string;
 	DEV_EMAIL: string;
+	/**
+	 * Feature flag for the whole LINE channel. "1" turns it on; anything else,
+	 * including the variable being absent, leaves it off.
+	 *
+	 * Fails closed on purpose. LINE bills a group push per member and posts
+	 * into a company chat, so an unset variable must never be the thing that
+	 * starts it sending.
+	 */
+	LINE_ENABLED: string;
 	/** LINE Messaging API. Set with `wrangler secret put` — never in wrangler.jsonc. */
 	LINE_CHANNEL_ACCESS_TOKEN: string;
 	LINE_CHANNEL_SECRET: string;

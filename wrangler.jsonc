@@ -74,6 +74,15 @@
 		"DEV_AUTH_BYPASS": "0",
 		"DEV_EMAIL": "dev@example.com",
 
+		// Feature flag for the whole LINE channel. "1" turns it on; anything else,
+		// including this key being absent, leaves it off.
+		//
+		// Off by default and fails closed on purpose: LINE posts into a company
+		// group and bills a push per member (ISSUES #2), so a missing variable
+		// must never be the thing that starts it sending. Browser push is
+		// unaffected and has its own switch — the VAPID pair.
+		"LINE_ENABLED": "0",
+
 		// Optional pin for the LINE group. Normally left empty: /line/webhook
 		// captures the group id into app_config the first time the bot sees a
 		// message in the group.
