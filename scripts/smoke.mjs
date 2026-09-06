@@ -285,6 +285,22 @@ async function main() {
 	check('personal dashboard renders', (await fetch(`${BASE}/me`)).status === 200, 'expected 200');
 	check('first user is admin', (await fetch(`${BASE}/admin`)).status === 200, 'expected 200');
 
+	// --- API reference -----------------------------------------------------
+	// /docs is a Worker route rather than a page under public/ precisely so it
+	// carries the security headers, which assets served ahead of the Worker do
+	// not get. Asserting the header is the point: moving the page to a static
+	// file would still render, and would silently lose this.
+	const docs = await fetch(`${BASE}/docs`);
+	eq('docs: reference renders', docs.status, 200);
+	check(
+		'docs: carries the CSP, so it is served by the Worker and not as an asset',
+		(docs.headers.get('Content-Security-Policy') ?? '').includes("script-src 'self'"),
+		`got ${JSON.stringify(docs.headers.get('Content-Security-Policy'))}`,
+	);
+	const spec = await fetch(`${BASE}/openapi.yaml`);
+	eq('docs: the spec it loads is served', spec.status, 200);
+	check('docs: spec is the OpenAPI document', (await spec.text()).includes('openapi: 3.1.0'), 'expected an openapi version line');
+
 	// --- CSRF guard --------------------------------------------------------
 	let res = await post('/api/leave', { leaveTypeId: '1', startDate: MON }, { origin: 'https://evil.example' });
 	eq('CSRF: cross-origin POST rejected', res.status, 403);

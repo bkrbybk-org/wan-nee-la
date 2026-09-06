@@ -1,0 +1,592 @@
+# wan-nee-la — the JSON surface.
+#
+# Deliberately not the whole app. Of the 28 routes the Worker serves, six
+# render HTML pages and fourteen are form posts that answer with a 303 and a
+# flash cookie; those are a browser flow, and describing them here would
+# document the shape of a redirect rather than an interface anyone can call.
+# What follows is the part a program would use.
+#
+# Served from /openapi.yaml by the assets binding and rendered at /docs. Both
+# sit behind Cloudflare Access like everything else on the hostname.
+#
+# Hand-written, and therefore able to drift. When a route below changes, this
+# changes in the same commit.
+openapi: 3.1.0
+
+info:
+  title: wan-nee-la
+  version: 0.1.0
+  summary: Employee leave tracker — the endpoints that answer in JSON.
+  description: |
+    Two things are worth knowing before calling anything here.
+
+    **Every route except `/line/webhook` sits behind Cloudflare Access**, which
+    authenticates at the edge, before the Worker runs. There is no API key and
+    no signup: an Access identity the app has not seen becomes a user on its
+    first request, with the current year's quotas seeded. Access *service
+    tokens* deliberately cannot use the app — a token has no email, and every
+    row here is keyed by one.
+
+    **Mutations require an `Origin` header matching `Host`.** Access is an
+    authentication gate, not a CSRF defence: its cookie rides along on a form
+    post from any origin. A missing `Origin` is refused rather than waved
+    through, so a non-browser client must send one explicitly. `/line/webhook`
+    is the exception and proves itself with an HMAC signature instead.
+
+servers:
+  - url: https://{hostname}
+    description: The deployment. One per company; there is no shared instance.
+    variables:
+      hostname:
+        default: wan-nee-la.example.com
+
+tags:
+  - name: Operations
+    description: Health and delivery.
+  - name: Leave
+    description: Reading the shared calendar, and costing a booking before making one.
+  - name: Push
+    description: Web Push subscriptions for the 08:00 digest.
+  - name: LINE
+    description: The one route Access cannot protect.
+
+paths:
+  /health:
+    get:
+      operationId: health
+      tags: [Operations]
+      summary: Which build answered, and whether D1 responds
+      description: |
+        Registered above the authentication middleware, so it needs no user —
+        but it is still behind Access at the edge, which is why an anonymous
+        uptime check cannot reach it without a Bypass rule on this path.
+
+        Deliberately dull: it leaks nothing about who works here or when they
+        are away. `devAuthBypass` is surfaced precisely so a production check
+        can catch the local development bypass being left switched on.
+      security: []
+      responses:
+        '200':
+          description: |
+            Always 200, including when the database is unreachable — `ok` and
+            `db` carry that, so a check can distinguish "the Worker is down"
+            from "the Worker is up and D1 is not".
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [ok, db, version, deployedAt, bangkokToday, accessConfigured, devAuthBypass]
+                properties:
+                  ok:
+                    type: boolean
+                    description: Currently synonymous with `db`.
+                  db:
+                    type: boolean
+                    description: A `SELECT 1` against D1 returned.
+                  version:
+                    type: [string, 'null']
+                    description: Worker version id, from Cloudflare's version metadata binding.
+                  deployedAt:
+                    type: [string, 'null']
+                    format: date-time
+                  bangkokToday:
+                    $ref: '#/components/schemas/Date'
+                    description: |
+                      Today in Asia/Bangkok, which is the only "today" this app
+                      recognises. Workers run in UTC, and between 17:00 and
+                      23:59 UTC that is yesterday in Bangkok.
+                  accessConfigured:
+                    type: boolean
+                    description: Both ACCESS_TEAM_DOMAIN and ACCESS_AUD are set.
+                  devAuthBypass:
+                    type: boolean
+                    description: |
+                      True means identity verification is switched off and every
+                      visitor is signed in as DEV_EMAIL. Must never be true in
+                      production; this field exists so a check can assert that.
+              example:
+                ok: true
+                db: true
+                version: 66d73c7e-0c3f-4d1e-9c2a-7f3b1e0a5d21
+                deployedAt: '2026-08-31T03:12:44.000Z'
+                bangkokToday: '2026-08-31'
+                accessConfigured: true
+                devAuthBypass: false
+
+  /api/leave:
+    get:
+      operationId: listLeave
+      tags: [Leave]
+      summary: Everyone's confirmed leave over a date range
+      description: |
+        The shared calendar as data. Cancelled bookings are absent, and so are
+        deactivated people — those surfaces answer "who of us is out", and a
+        former employee is not one of us.
+
+        Emails are not in the feed. A name and a leave type are what the
+        calendar shows; an address is what turns a leave tracker into a
+        directory.
+      parameters:
+        - name: from
+          in: query
+          description: |
+            Inclusive. Anything that is not a valid `YYYY-MM-DD` falls back to
+            the first of the current Bangkok month rather than erroring.
+          schema:
+            $ref: '#/components/schemas/Date'
+        - name: to
+          in: query
+          description: Inclusive. Defaults to the last day of the current Bangkok month.
+          schema:
+            $ref: '#/components/schemas/Date'
+      responses:
+        '200':
+          description: The range, echoed back, and the entries inside it.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [from, to, entries]
+                properties:
+                  from: { $ref: '#/components/schemas/Date' }
+                  to: { $ref: '#/components/schemas/Date' }
+                  entries:
+                    type: array
+                    items: { $ref: '#/components/schemas/LeaveEntry' }
+              example:
+                from: '2026-08-01'
+                to: '2026-08-31'
+                entries:
+                  - id: a8ebb987-ca40-4f19-b13e-417e91870c6d
+                    name: Chatchai W
+                    type: annual
+                    label: Annual
+                    color: '#2563eb'
+                    start: '2026-08-17'
+                    end: '2026-08-20'
+                    startHalf: full
+                    endHalf: full
+                    days: 4
+                    note: Trip
+        '400':
+          description: '`from` is later than `to`.'
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error: { type: string }
+              example:
+                error: from is after to
+
+  /api/leave/preview:
+    get:
+      operationId: previewLeave
+      tags: [Leave]
+      summary: What a booking would cost, and who else is already away
+      description: |
+        The booking form's live preview. The client asks rather than counting
+        locally: a second copy of the half-day and holiday rules would drift,
+        and the number shown before submitting would stop matching the number
+        the quota is actually charged.
+
+        Coverage is advisory. Nothing here can refuse a booking — the app does
+        not know who covers for whom. It reports the *worst single day* in the
+        range rather than a total, because five people out on five separate
+        days is a normal week and five people out on the same Tuesday is the
+        thing worth seeing before you book.
+      parameters:
+        - name: leaveTypeId
+          in: query
+          schema: { type: integer, default: 1 }
+        - name: start
+          in: query
+          required: true
+          schema: { $ref: '#/components/schemas/Date' }
+        - name: end
+          in: query
+          description: Omit for a single day.
+          schema: { $ref: '#/components/schemas/Date' }
+        - name: startHalf
+          in: query
+          schema: { $ref: '#/components/schemas/Half' }
+        - name: endHalf
+          in: query
+          schema: { $ref: '#/components/schemas/Half' }
+        - name: exclude
+          in: query
+          description: |
+            A booking id to leave out of the coverage count. Set when editing,
+            so the booking being changed is not reported as somebody else
+            already away on those days.
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: |
+            **Always 200, including when the input is rejected.** A preview that
+            cannot be computed is not a transport failure, and this endpoint
+            fires on every keystroke in a date field — half of what it is asked
+            is a half-typed date. Check for the `error` member, not the status.
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: '#/components/schemas/Preview'
+                  - $ref: '#/components/schemas/PreviewRejected'
+              examples:
+                counted:
+                  summary: A costed range with a coverage warning
+                  value:
+                    days: 4
+                    coverage:
+                      date: 24 Aug
+                      out: 3
+                      headcount: 4
+                      busy: true
+                      names: [Bob, Chatchai W]
+                      more: 0
+                quiet:
+                  summary: Nobody else away
+                  value:
+                    days: 1
+                    coverage: null
+                rejected:
+                  summary: A range the rules refuse
+                  value:
+                    error:
+                      key: error.noWorkingDays
+
+  /api/push/subscribe:
+    post:
+      operationId: pushSubscribe
+      tags: [Push]
+      summary: Register this browser for the morning digest
+      description: |
+        Stored against the caller's own identity. One person may have several
+        browsers subscribed; each is a separate row keyed by its endpoint.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/PushSubscription' }
+      responses:
+        '200':
+          description: Stored.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Ok' }
+        '400':
+          description: The body is not a usable push subscription.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Failed' }
+        '403': { $ref: '#/components/responses/CrossOrigin' }
+
+  /api/push/unsubscribe:
+    post:
+      operationId: pushUnsubscribe
+      tags: [Push]
+      summary: Stop pushing to one browser
+      description: |
+        Scoped to the owner. A push endpoint is not a secret — it travels to
+        the push service on every send — so knowing someone else's must not let
+        you silence their notifications.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [endpoint]
+              properties:
+                endpoint: { type: string, format: uri }
+      responses:
+        '200':
+          description: |
+            Returned whether or not a row was actually deleted. By this point
+            the browser has already unsubscribed locally, so reporting a
+            failure would only invite it to retry something that can never
+            succeed.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Ok' }
+        '400':
+          description: No endpoint in the body.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Failed' }
+        '403': { $ref: '#/components/responses/CrossOrigin' }
+
+  /api/push/test:
+    post:
+      operationId: pushTest
+      tags: [Push]
+      summary: Send a test notification to the caller's own browsers
+      description: |
+        Without this, the only way to learn whether push works is to wait until
+        08:00 the next working day — which is how a broken setup stays broken.
+
+        Sends to every browser the caller has subscribed, and prunes any the
+        push service reports as gone. A test is exactly when a stale
+        subscription surfaces.
+      responses:
+        '200':
+          description: At least one browser accepted it.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Ok'
+                  - type: object
+                    properties:
+                      delivered:
+                        type: integer
+                        description: How many browsers accepted the push.
+        '409':
+          description: This account has no subscriptions yet.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Failed' }
+        '502':
+          description: No browser accepted the push.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Failed' }
+        '503':
+          description: The server has no VAPID pair configured.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Failed' }
+        '403': { $ref: '#/components/responses/CrossOrigin' }
+
+  /line/webhook:
+    post:
+      operationId: lineWebhook
+      tags: [LINE]
+      summary: Capture the group id LINE will not show you
+      description: |
+        The one publicly reachable route in the app: LINE's servers must reach
+        it and cannot carry an Access token, so it needs a Bypass rule on this
+        path in the Access policy.
+
+        It therefore defends itself. The raw body is read exactly once and its
+        HMAC checked before anything is parsed — `json()` consumes the stream,
+        and a later re-read would verify the signature over an empty body. An
+        unsigned request is refused outright rather than logged and allowed.
+
+        The only state it may write is the group id, which is not visible in
+        the LINE app and arrives here as `source.groupId` on a `join` or
+        `message` event. Capture it once and this route has done its job.
+      security:
+        - lineSignature: []
+      requestBody:
+        required: true
+        description: A LINE Messaging API webhook payload.
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                destination: { type: string }
+                events:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      type: { type: string, examples: [join, message] }
+                      source:
+                        type: object
+                        properties:
+                          type: { type: string, examples: [group] }
+                          groupId: { type: string }
+      responses:
+        '200':
+          description: |
+            Acknowledged — including when the event carried nothing wanted.
+            LINE retries on any non-2xx, and a retry is how a group gets two
+            copies of the 08:00 post.
+          content:
+            text/plain:
+              schema: { type: string, examples: [ok] }
+        '400':
+          description: Body is not JSON. Signature had already passed.
+          content:
+            text/plain: { schema: { type: string, examples: [Bad JSON.] } }
+        '401':
+          description: Missing or wrong `X-Line-Signature`.
+          content:
+            text/plain: { schema: { type: string, examples: [Bad signature.] } }
+        '503':
+          description: No LINE channel secret configured on this deployment.
+          content:
+            text/plain: { schema: { type: string, examples: ['LINE is not configured.'] } }
+
+components:
+  securitySchemes:
+    cloudflareAccess:
+      type: apiKey
+      in: cookie
+      name: CF_Authorization
+      description: |
+        Issued by Cloudflare Access on sign-in and verified against the
+        application's audience before the Worker runs. The Worker also accepts
+        the `Cf-Access-Jwt-Assertion` header, which is what Access forwards.
+
+        Not something a client mints. There is no token endpoint here, and
+        Access service tokens are refused by design: a service token carries no
+        email, and every row in this app is keyed by one.
+    lineSignature:
+      type: apiKey
+      in: header
+      name: X-Line-Signature
+      description: |
+        base64(HMAC-SHA256(raw request body, LINE channel secret)), compared in
+        constant time. Applies to `/line/webhook` alone.
+
+  responses:
+    CrossOrigin:
+      description: |
+        `Origin` was absent, or did not match `Host`. Every browser sends
+        `Origin` on a POST, so absence means something that is not one of our
+        pages — and "allow when the header is missing" is the standard way this
+        check is quietly defeated.
+      content:
+        text/plain:
+          schema: { type: string, examples: ['Cross-origin request rejected.'] }
+
+  schemas:
+    Date:
+      type: string
+      format: date
+      pattern: '^\d{4}-\d{2}-\d{2}$'
+      description: A calendar date in Asia/Bangkok. No time, no zone — leave is booked in days.
+      examples: ['2026-08-31']
+
+    Half:
+      type: string
+      enum: [full, am, pm]
+      default: full
+      description: |
+        Which half of the boundary day is taken. A multi-day booking cannot
+        start `am` or end `pm` — that would be a range with a hole at one end.
+
+    LeaveEntry:
+      type: object
+      required: [id, name, type, label, color, start, end, startHalf, endHalf, days, note]
+      properties:
+        id: { type: string, format: uuid }
+        name:
+          type: string
+          description: Display name. The email is deliberately not in this feed.
+        type: { type: string, examples: [annual, sick, medical, personal, unpaid] }
+        label: { type: string, description: English label of the leave type. }
+        color:
+          type: string
+          pattern: '^#[0-9a-f]{6}$'
+          description: The type's calendar colour, mixed into the chip background.
+        start: { $ref: '#/components/schemas/Date' }
+        end: { $ref: '#/components/schemas/Date' }
+        startHalf: { $ref: '#/components/schemas/Half' }
+        endHalf: { $ref: '#/components/schemas/Half' }
+        days:
+          type: number
+          description: |
+            Working days charged, holidays and weekends removed. Halves make it
+            fractional, so 0.5 and 3.5 are ordinary values.
+        note:
+          type: [string, 'null']
+          description: |
+            Null when the booking has no note *and* when it has a private one.
+            A private note is absent from the feed rather than hidden by
+            whatever renders it — the alternative tells a colleague that a note
+            they may not read exists.
+
+    Preview:
+      type: object
+      required: [days, coverage]
+      properties:
+        days:
+          type: number
+          description: Working days the range would cost.
+        coverage:
+          oneOf:
+            - type: 'null'
+            - type: object
+              required: [date, out, headcount, busy, names, more]
+              properties:
+                date:
+                  type: string
+                  description: |
+                    The worst day, already formatted in the caller's language —
+                    a client would otherwise need month names in two languages
+                    to turn 2026-08-24 into 24 ส.ค.
+                  examples: ['24 Aug']
+                out:
+                  type: integer
+                  description: People away that day, including the caller.
+                headcount: { type: integer, description: Active roster size. }
+                busy:
+                  type: boolean
+                  description: |
+                    True once `out` reaches a third of the roster, and never at
+                    fewer than two people — so the warning neither fires on one
+                    colleague in a team of forty nor stays silent when both
+                    halves of a team of two book the same Tuesday.
+                names:
+                  type: array
+                  items: { type: string }
+                  maxItems: 3
+                more: { type: integer, description: Names beyond the three listed. }
+
+    PreviewRejected:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: object
+          description: |
+            A message *key*, not a sentence. Booking rules are pure functions
+            with no idea which language the request arrived in, so they name
+            the message and the caller renders it. Note this differs from the
+            `error` of `/api/leave`, which is a plain string.
+          required: [key]
+          properties:
+            key: { type: string, examples: [error.noWorkingDays, error.tooFarBack] }
+            vars:
+              type: object
+              additionalProperties: { type: [string, number] }
+              description: Values to substitute into the message's placeholders.
+
+    PushSubscription:
+      type: object
+      description: A browser's `PushSubscription`, as `toJSON()` renders it.
+      required: [endpoint, keys]
+      properties:
+        endpoint: { type: string, format: uri }
+        expirationTime: { type: [string, 'null'] }
+        keys:
+          type: object
+          required: [p256dh, auth]
+          properties:
+            p256dh:
+              type: string
+              description: The client's public key, base64url, uncompressed P-256 point.
+            auth:
+              type: string
+              description: base64url authentication secret, 16 bytes.
+
+    Ok:
+      type: object
+      required: [ok]
+      properties:
+        ok: { type: boolean, const: true }
+
+    Failed:
+      type: object
+      required: [ok, error]
+      properties:
+        ok: { type: boolean, const: false }
+        error: { type: string, description: English, and meant for a developer rather than a reader. }
+
+security:
+  - cloudflareAccess: []

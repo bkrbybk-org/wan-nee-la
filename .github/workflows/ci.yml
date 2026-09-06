@@ -64,6 +64,13 @@ jobs:
         # so nothing else would catch a break.
         run: npm run build:client
 
+      - name: Vendor Swagger UI
+        # /docs loads these two files from this origin. They are copied out of
+        # node_modules and gitignored, so a rename in a new swagger-ui-dist
+        # would otherwise surface as a blank page in production rather than
+        # here.
+        run: npm run build:docs
+
       - name: Route smoke tests
         # Boots a real worker against a scratch database and exercises the HTTP
         # layer: CSRF, ownership, booking rules, the digest's decisions and the

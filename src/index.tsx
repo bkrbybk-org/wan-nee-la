@@ -337,6 +337,44 @@ app.get('/', async (c) => {
 });
 
 /**
+ * API reference.
+ *
+ * Rendered by the Worker rather than dropped into `public/` as a static page,
+ * for two reasons. Assets are served before the Worker runs, so a page there
+ * would arrive with none of the security headers every other response
+ * carries — no CSP, no frame refusal. And this way it sits behind the same
+ * authentication as the rest of the app rather than only behind Access.
+ *
+ * Swagger UI itself is 1.7MB of vendored build, copied out of node_modules by
+ * `npm run build:docs` and gitignored, exactly as `public/app.js` is. It loads
+ * from this origin, which is all `script-src 'self'` permits, and
+ * `connect-src 'self'` means the page cannot call anything but this app even
+ * if a future version of it tried to.
+ */
+app.get('/docs', (c) =>
+	c.html(
+		<html lang="en">
+			<head>
+				<meta charset="utf-8" />
+				<meta name="viewport" content="width=device-width, initial-scale=1" />
+				<title>API · wan-nee-la</title>
+				<link rel="stylesheet" href="/docs/swagger-ui.css" />
+				{/* Swagger UI paints its own white surface and does not follow the
+				    app's theme. Saying so here stops the browser handing it a dark
+				    form control on a light panel. */}
+				<meta name="color-scheme" content="light" />
+				<style>{'body { margin: 0; } .swagger-ui .topbar { display: none; }'}</style>
+				<script src="/docs/swagger-ui-bundle.js"></script>
+				<script src="/docs/init.js"></script>
+			</head>
+			<body>
+				<div id="swagger-ui"></div>
+			</body>
+		</html>,
+	),
+);
+
+/**
  * Standalone booking page — the no-JS destination for the calendar's day cells
  * and Book leave button. With scripting on, those clicks open a dialog instead
  * and never reach this route.

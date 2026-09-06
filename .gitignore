@@ -4,5 +4,10 @@ node_modules/
 dist/
 worker-configuration.d.ts
 public/app.js
+# Vendored Swagger UI, copied out of node_modules by `npm run build:docs`.
+# 1.7MB of somebody else's minified build has no business in a public repo's
+# history; the same reasoning that keeps public/app.js out.
+public/docs/swagger-ui-bundle.js
+public/docs/swagger-ui.css
 .claude/worktrees/
 wrangler.local.jsonc
