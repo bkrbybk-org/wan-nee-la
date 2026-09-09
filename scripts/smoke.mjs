@@ -44,7 +44,7 @@ const OTHER = 'other@example.com';
 const STATE = mkdtempSync(join(tmpdir(), 'wnl-smoke-'));
 
 /** Assertions that must run for the suite to be considered complete. */
-const MIN_ASSERTIONS = 185;
+const MIN_ASSERTIONS = 191;
 
 let pass = 0;
 let fail = 0;
@@ -246,6 +246,30 @@ function flashOf(res) {
 
 const feed = async (from, to) => (await fetch(`${BASE}/api/leave?from=${from}&to=${to}`)).json();
 
+/**
+ * A Monday about a month out whose whole working week is clear of holidays.
+ *
+ * Nearly every assertion downstream counts on Mon-Fri being five working days
+ * and Mon-Wed being three. The offset is relative to today, so the window walks
+ * through the calendar as the weeks pass, and Thailand has enough public
+ * holidays that it lands on one several times a year — at which point the suite
+ * goes red on a date rather than on a defect, which is the kind of red that
+ * teaches people to ignore it. Asking the seeded holidays which week is clear
+ * costs one query and removes the whole class of failure.
+ *
+ * Bounded at eight weeks of searching: the fixtures book up to a year and a
+ * month past this date, and MAX_FUTURE_DAYS is 550.
+ */
+function clearFutureMonday(weeksAhead = 4) {
+	const holidays = new Set(d1Rows('SELECT date FROM holidays').map((r) => r.date));
+	for (let extra = 0; extra <= 8; extra++) {
+		const mon = futureMonday(weeksAhead + extra);
+		const week = Array.from({ length: 5 }, (_, i) => addDays(mon, i));
+		if (!week.some((d) => holidays.has(d))) return mon;
+	}
+	throw new Error('no holiday-free working week within eight weeks of the usual offset');
+}
+
 /** A Monday about a month out — inside the booking window, never a weekend. */
 function futureMonday(weeksAhead = 4) {
 	const d = new Date();
@@ -268,7 +292,7 @@ async function main() {
 		d1(null, `migrations/${file}`);
 	}
 
-	const MON = futureMonday();
+	const MON = clearFutureMonday();
 	const FRI = addDays(MON, 4);
 	const SAT = addDays(MON, 5);
 
@@ -382,6 +406,46 @@ async function main() {
 	// A booking that never parsed has nothing coherent to prefill with.
 	res = await post('/api/leave', { leaveTypeId: '1', startDate: 'not-a-date' });
 	eq('an unparseable booking carries no draft', flashOf(res)?.draft, null);
+
+	// --- next year draws on next year's allowance ----------------------------
+	//
+	// A booking is charged to the year it *starts* in. The check used to read
+	// today's year instead, so leave booked for next January was measured
+	// against this year's remaining days and then recorded against next year's
+	// — spending this year's allowance stopped you booking next year's at all.
+	//
+	// +364 days keeps the weekday and lands in the following calendar year.
+	const NEXT_MON = addDays(MON, 364);
+	eq('the next-year fixture really is a year on', Number(NEXT_MON.slice(0, 4)), Number(MON.slice(0, 4)) + 1);
+
+	const annualUsed = (year) =>
+		d1Rows(
+			`SELECT COALESCE(SUM(days_total), 0) AS d FROM leave_requests
+			 WHERE status = 'confirmed' AND leave_type_id = 1 AND user_email = '${ADMIN}'
+			   AND start_date BETWEEN '${year}-01-01' AND '${year}-12-31'`,
+		)[0]?.d;
+	const usedThisYearBefore = annualUsed(Number(MON.slice(0, 4)));
+
+	// Ten working days next year — more than this year has left, which is what
+	// the old code measured it against and refused.
+	res = await post('/api/leave', { leaveTypeId: '1', startDate: NEXT_MON, endDate: addDays(NEXT_MON, 11) });
+	eq('next year is booked against its own allowance', flashOf(res)?.kind, 'ok');
+	const nextYearId = (await feed(NEXT_MON, addDays(NEXT_MON, 11))).entries[0]?.id;
+
+	eq('and this year is untouched by it', annualUsed(Number(MON.slice(0, 4))), usedThisYearBefore);
+	check(
+		'while next year carries the days',
+		annualUsed(Number(NEXT_MON.slice(0, 4))) > 0,
+		`next year used: ${annualUsed(Number(NEXT_MON.slice(0, 4)))}`,
+	);
+
+	// The allowance still binds — against the right year now. Nobody has been
+	// seeded for next year, so the type default is what stands in.
+	res = await post('/api/leave', { leaveTypeId: '1', startDate: addDays(NEXT_MON, 21), endDate: addDays(NEXT_MON, 32) });
+	check('and next year runs out on its own quota', /Not enough/.test(flashOf(res)?.message ?? ''), flashOf(res)?.message);
+
+	await post(`/api/leave/${nextYearId}/cancel`);
+	eq('next-year fixture cleaned up', (await feed(NEXT_MON, addDays(NEXT_MON, 11))).entries.length, 0);
 
 	res = await post('/api/leave', { leaveTypeId: '1', startDate: '2026-02-30' });
 	eq('invalid calendar date rejected', flashOf(res)?.kind, 'err');
