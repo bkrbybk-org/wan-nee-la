@@ -212,6 +212,29 @@ export function validateBooking(input: BookingInput, ctx: BookingContext): Valid
 }
 
 /**
+ * The allowance for one leave type in one year.
+ *
+ * An explicit quota row wins. Where there is none the type's own `default_days`
+ * stands in, because quota rows are only ever seeded for a year somebody has
+ * signed in during — so a year still ahead of us has none at all, and reading
+ * that absence as a zero allowance is what refused next January's leave to
+ * anyone who had spent this year's.
+ *
+ * A fallback rather than a write: seeding here would put an INSERT in front of
+ * every balance page and every booking check, and it would freeze whatever
+ * `default_days` happened to say that day. An admin who has set a number
+ * already has a row, and the row still wins.
+ *
+ * One place on purpose. The booking check, the balance cards and the admin
+ * editor all have to agree on what next year's allowance is; three copies of
+ * `?? 0` is how they would quietly stop agreeing.
+ */
+export function allottedFor(type: LeaveType, quotas: readonly Quota[]): number {
+	const row = quotas.find((q) => q.leave_type_id === type.id);
+	return row ? row.days_allotted : type.default_days;
+}
+
+/**
  * Balance per leave type for one user in one year.
  *
  * `used` counts confirmed leave only, and a leave request is attributed to the
@@ -227,7 +250,7 @@ export function computeBalances(
 	return [...types]
 		.sort((a, b) => a.sort_order - b.sort_order)
 		.map((type) => {
-			const allotted = quotas.find((q) => q.leave_type_id === type.id)?.days_allotted ?? 0;
+			const allotted = allottedFor(type, quotas);
 			const spent = used.get(type.id) ?? 0;
 			return {
 				type,

@@ -14,6 +14,7 @@ import {
 	shortDate,
 } from './domain/dates.ts';
 import {
+	allottedFor,
 	draftPayload,
 	fieldForError,
 	parseBooking,
@@ -533,7 +534,13 @@ async function buildBookingContext(
 	today: string,
 	replacing?: LeaveRequest,
 ) {
-	const year = Number(today.slice(0, 4));
+	// The year a booking draws from is the year it *starts* in, not the year it
+	// happens to be booked in. `usedByType` has always attributed it that way and
+	// `computeBalances` documents the rule, but the check read today's year — so
+	// leave booked for next January was measured against this year's remaining
+	// days and then recorded against next year's, and neither year was right.
+	// Spending this year's allowance stopped you booking next year's.
+	const year = Number(parsed.startDate.slice(0, 4));
 	const [types, existing, quotas, used, holidays] = await Promise.all([
 		db.listLeaveTypes(env.DB),
 		db.confirmedRanges(env.DB, email),
@@ -546,7 +553,7 @@ async function buildBookingContext(
 
 	const remaining = new Map<number, number>();
 	for (const t of types) {
-		const allotted = quotas.find((q) => q.leave_type_id === t.id)?.days_allotted ?? 0;
+		const allotted = allottedFor(t, quotas);
 		let spent = used.get(t.id) ?? 0;
 		if (replacing && replacing.leave_type_id === t.id) spent = round(spent - replacing.days_total);
 		remaining.set(t.id, round(allotted - spent));

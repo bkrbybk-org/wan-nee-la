@@ -1,4 +1,5 @@
 import { formatDays } from '../domain/dates.ts';
+import { allottedFor } from '../domain/leave.ts';
 import type { Holiday, LeaveType, Quota, User } from '../types.ts';
 import type { AuditRow, LeaveSnapshot, NotificationRun } from '../repo/db.ts';
 import { FlashBanner, Layout } from './layout.tsx';
@@ -35,8 +36,11 @@ function AdminBody(props: AdminProps) {
 	const { year, users, types, quotas, holidays, today, line, log, audit, error, notice } = props;
 	const t = useT();
 	const lang = useLang();
-	const quotaFor = (email: string, typeId: number) =>
-		quotas.find((q) => q.user_email === email && q.leave_type_id === typeId)?.days_allotted ?? 0;
+	// Through the same helper the booking check and the balance cards use, so the
+	// number an admin sees for a year nobody has been seeded for is the number
+	// the app will actually enforce, rather than a zero the editor invented.
+	const quotaFor = (email: string, type: LeaveType) =>
+		allottedFor(type, quotas.filter((q) => q.user_email === email));
 	const typeName = (type: { label_en: string; label_th: string }) => (lang === 'th' ? type.label_th : type.label_en);
 
 	return (
@@ -111,7 +115,7 @@ function AdminBody(props: AdminProps) {
 													name={`q_${t.id}`}
 													label={typeName(t)}
 													type="number"
-													value={formatDays(quotaFor(u.email, t.id))}
+													value={formatDays(quotaFor(u.email, t))}
 													step="0.5"
 													min="0"
 													max="365"

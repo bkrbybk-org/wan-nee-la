@@ -4,6 +4,7 @@
 // Run: npm run test:leave
 import {
 	byDate,
+	allottedFor,
 	computeBalances,
 	draftPayload,
 	halfOn,
@@ -171,7 +172,23 @@ eq('balances: used', balances[0].used, 2.5);
 eq('balances: remaining', balances[0].remaining, 7.5);
 eq('balances: untouched type keeps the full allowance', balances[1].remaining, 30);
 eq('balances: unpaid has no remaining', balances[2].remaining, 0);
-eq('balances: missing quota row reads as zero', computeBalances(TYPES, [], new Map())[0].allotted, 0);
+// A year nobody has been seeded for has no quota rows at all, and reading that
+// absence as a zero allowance is what used to refuse next January's leave. The
+// type's own default stands in until an admin sets a number.
+eq('balances: a year with no rows falls back to the type default', computeBalances(TYPES, [], new Map())[0].allotted, 10);
+eq('and the fallback is spendable', computeBalances(TYPES, [], new Map([[1, 2.5]]))[0].remaining, 7.5);
+
+// allottedFor is the one place that rule lives — the booking check, the balance
+// cards and the admin editor all read through it.
+eq('allottedFor: an explicit row wins over the default', allottedFor(TYPES[0], quotas), 10);
+eq('allottedFor: no row falls back to the default', allottedFor(TYPES[1], []), 30);
+// An admin setting a deliberate zero is not the same as no row at all, and must
+// not be quietly promoted back to the default.
+eq(
+	'allottedFor: an explicit zero is honoured, not treated as missing',
+	allottedFor(TYPES[0], [{ user_email: 'a@x.com', year: 2027, leave_type_id: 1, days_allotted: 0 }]),
+	0,
+);
 
 // Float subtraction must not leak 7.499999999999999 onto a dashboard.
 eq('round: half-day precision', round(10 - 2.5), 7.5);
