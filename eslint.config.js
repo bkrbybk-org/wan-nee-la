@@ -26,7 +26,18 @@ const stylisticRules = {
 
 export default tseslint.config(
 	{
-		ignores: ['public/app.js', 'node_modules/**', '.wrangler/**', 'worker-configuration.d.ts'],
+		// Build artifacts and vendored copies. `public/app.js` is the esbuild
+		// bundle; `public/docs/swagger-ui-*` is copied in from node_modules by
+		// `npm run build:docs`. Both are gitignored, and neither exists until a
+		// build has run — which is how the swagger bundle slipped past this list
+		// once already, clean on a fresh checkout and 27k errors after a deploy.
+		ignores: [
+			'public/app.js',
+			'public/docs/swagger-ui-*',
+			'node_modules/**',
+			'.wrangler/**',
+			'worker-configuration.d.ts',
+		],
 	},
 	js.configs.recommended,
 	...tseslint.configs.recommended,
