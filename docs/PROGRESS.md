@@ -96,9 +96,9 @@ Two consequences worth remembering:
 
 **Booking** — half-day granularity, live day-count preview from the server, overlap detection, quota enforcement, weekend and holiday rejection, a 90-day backdate window and a far-future guard. Edit and remove on every confirmed booking, past ones included.
 
-**Leave types** — annual, sick, planned medical, personal, unpaid. Planned medical is deliberately separate from sick leave: sick leave is unplanned and often entered after the fact, while a scheduled appointment or procedure is booked in advance like any other absence, and folding the two together would let planned treatment eat the allowance meant for being unexpectedly ill. It carries no allowance, so it is recorded but never refused — the only honest default without a stated policy.
+**Leave types** — annual, sick, planned medical, personal. Unpaid leave was seeded in 0002, never booked once, and removed in 0010. Planned medical is deliberately separate from sick leave: sick leave is unplanned and often entered after the fact, while a scheduled appointment or procedure is booked in advance like any other absence, and folding the two together would let planned treatment eat the allowance meant for being unexpectedly ill. It carries no allowance, so it is recorded but never refused — the only honest default without a stated policy.
 
-**Balances** — per leave type, per year. Unpaid and planned medical draw no quota. Editing credits a booking's own days back before checking the balance, so shortening or retyping is never refused by the quota that booking is itself holding.
+**Balances** — per leave type, per year. Planned medical draws no quota. Editing credits a booking's own days back before checking the balance, so shortening or retyping is never refused by the quota that booking is itself holding.
 
 **Admin** — quota editing per person or in bulk across active users, holiday management, user roles, LINE status and run log.
 
@@ -219,7 +219,8 @@ Features — iCal, CSV export, team grouping, coverage scoped to a team, an admi
 ## Decisions log
 
 - Self-serve booking. No approval workflow, no pending state. — owner
-- Per-type annual quota (annual / sick / personal / unpaid). No carry-over in v1. — owner
+- Per-type annual quota (annual / sick / personal). No carry-over in v1. — owner
+- Unpaid leave removed (migration 0010). Seeded from the start and never booked once in production; the migration refuses to delete a type that has bookings, because the entry query inner-joins leave_types and an orphaned request would silently vanish rather than error. — owner
 - Deactivated users disappear from the calendar, feed and digest; their history stays for admins. Those three surfaces answer "who of us is out", and a former employee is not.
 - The digest is plain text, not a Flex bubble: a Flex payload is a second thing that can be rejected at 08:00 with nobody watching, and costs the same under per-member billing.
 - Flash messages travel in a cookie, never the query string — free prose in a URL was blocked by the WAF (#15).

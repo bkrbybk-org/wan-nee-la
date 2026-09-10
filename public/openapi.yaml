@@ -478,7 +478,7 @@ components:
         name:
           type: string
           description: Display name. The email is deliberately not in this feed.
-        type: { type: string, examples: [annual, sick, medical, personal, unpaid] }
+        type: { type: string, examples: [annual, sick, medical, personal] }
         label: { type: string, description: English label of the leave type. }
         color:
           type: string

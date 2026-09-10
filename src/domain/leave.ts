@@ -256,8 +256,9 @@ export function computeBalances(
 				type,
 				allotted,
 				used: spent,
-				// Unpaid leave has no allowance to run down, so "remaining" is
-				// meaningless for it; report 0 and let the view hide the bar.
+				// A type with counts_quota = 0 has no allowance to run down, so
+				// "remaining" is meaningless for it; report 0 and let the view hide
+				// the bar. Planned medical is the one that behaves this way today.
 				remaining: type.counts_quota ? round(allotted - spent) : 0,
 			};
 		});

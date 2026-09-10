@@ -34,7 +34,7 @@ const TODAY = '2026-08-17';
 const TYPES = [
 	{ id: 1, code: 'annual', label_th: 'ลาพักร้อน', label_en: 'Annual', color: '#2563eb', default_days: 10, counts_quota: 1, sort_order: 1 },
 	{ id: 2, code: 'sick', label_th: 'ลาป่วย', label_en: 'Sick', color: '#dc2626', default_days: 30, counts_quota: 1, sort_order: 2 },
-	{ id: 4, code: 'unpaid', label_th: 'ลาไม่รับค่าจ้าง', label_en: 'Unpaid', color: '#64748b', default_days: 0, counts_quota: 0, sort_order: 4 },
+	{ id: 5, code: 'medical', label_th: 'ลาพบแพทย์', label_en: 'Planned medical', color: '#059669', default_days: 0, counts_quota: 0, sort_order: 3 },
 ];
 
 function ctx(overrides = {}) {
@@ -136,8 +136,10 @@ rejects(
 	'error.notEnough',
 );
 okDays('exactly the remaining balance', validateBooking(booking({ endDate: '2026-08-21' }), ctx({ remaining: new Map([[1, 5]]) })), 5);
-// Unpaid leave has no allowance, so a zero balance must not block it.
-okDays('unpaid leave ignores quota', validateBooking(booking({ leaveTypeId: 4, endDate: '2026-08-21' }), ctx()), 5);
+// Planned medical leave carries no allowance, so a zero balance must not block
+// it. Unpaid leave used to be the fixture for this; it was removed in 0010, and
+// medical is the type that actually has counts_quota = 0 now.
+okDays('a type with no allowance ignores quota', validateBooking(booking({ leaveTypeId: 5, endDate: '2026-08-21' }), ctx()), 5);
 
 // Backdating window.
 okDays('backdated within the window', validateBooking(booking({ startDate: '2026-08-10', endDate: '2026-08-10' }), ctx()), 1);
@@ -171,7 +173,7 @@ eq('balances: allotted', balances[0].allotted, 10);
 eq('balances: used', balances[0].used, 2.5);
 eq('balances: remaining', balances[0].remaining, 7.5);
 eq('balances: untouched type keeps the full allowance', balances[1].remaining, 30);
-eq('balances: unpaid has no remaining', balances[2].remaining, 0);
+eq('balances: a type with no allowance has no remaining', balances[2].remaining, 0);
 // A year nobody has been seeded for has no quota rows at all, and reading that
 // absence as a zero allowance is what used to refuse next January's leave. The
 // type's own default stands in until an admin sets a number.

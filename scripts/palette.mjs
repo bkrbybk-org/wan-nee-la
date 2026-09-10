@@ -190,7 +190,6 @@ const LEAVE_TYPE_COLORS = {
 	annual: '#2563eb',
 	sick: '#dc2626',
 	personal: '#7c3aed',
-	unpaid: '#64748b',
 	medical: '#059669',
 };
 

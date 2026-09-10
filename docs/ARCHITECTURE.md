@@ -46,12 +46,12 @@ CREATE TABLE users (
 
 CREATE TABLE leave_types (
   id            INTEGER PRIMARY KEY,
-  code          TEXT NOT NULL UNIQUE,      -- annual | sick | medical | personal | unpaid
+  code          TEXT NOT NULL UNIQUE,      -- annual | sick | medical | personal
   label_th      TEXT NOT NULL,
   label_en      TEXT NOT NULL,
   color         TEXT NOT NULL,             -- calendar chip colour
   default_days  REAL NOT NULL,             -- seeds new quota rows only
-  counts_quota  INTEGER NOT NULL DEFAULT 1,-- unpaid and planned medical are 0
+  counts_quota  INTEGER NOT NULL DEFAULT 1,-- planned medical is 0
   sort_order    INTEGER NOT NULL DEFAULT 0
 );
 
