@@ -31,7 +31,7 @@ Sources: [End of service for LINE Notify](https://notify-bot.line.me/closing-ann
 
 LINE counts a push to a group as one message *per person in the chat*. A push with 4 message objects to a 5-person group = 5 messages counted.
 
-So a daily 08:00 post to a group of N people costs **N × (days with leave)** per month, not 30.
+So a daily 09:00 post to a group of N people costs **N × (days with leave)** per month, not 30.
 
 | Group size | Worst case (30 posts/mo) |
 | --- | --- |
@@ -49,6 +49,8 @@ Mitigations already in the design:
 If the allowance still doesn't fit: fall back to a Cloudflare Email Service digest, or upgrade the OA plan. Decide after 0.4.
 
 Source: [Messaging API pricing](https://developers.line.biz/en/docs/messaging-api/pricing/)
+
+**2026-09-06:** moot for now. The channel sits behind `LINE_ENABLED`, off by default and fail-closed, so an absent variable can never start it sending. Browser push carries the digest for free.
 
 ---
 
@@ -301,7 +303,7 @@ Accepted. Everyone who can probe it is an authenticated colleague, the staff **n
 
 `/u/:email` never renders the free-text note, for anyone, including the person themselves and admins.
 
-The calendar already shows notes team-wide, which is #17's open question. A page that gathered one person's notes into a single chronological list would make that materially worse — scattered context across a month is not the same as a readable history of why someone was away. Until #17 is decided, this page shows schedule and nothing else.
+The calendar shows a note only to its author, admins, and — when the booker chose to share it — colleagues (#17). A page that gathered one person's notes into a single chronological list would still turn scattered context into a readable history of why someone was away, so this page shows schedule and nothing else, for everyone.
 
 Balances follow a different rule and are visible to the person and to admins only: "12 of 30 sick days used" is an aggregate the calendar does not reveal, and is closer to a medical fact than a scheduling one. Enforced in the route, which passes `undefined` to the view rather than letting the template decide, and covered by the smoke suite.
 
@@ -332,7 +334,9 @@ The encryption is checked against RFC 8291's own worked example byte for byte, a
 
 It cannot be tested from a terminal: it needs a real browser subscription, which needs a real person granting permission. The automation browser used during development has notifications denied at the profile level.
 
-Closing this is one click: sign in, turn notifications on from `/me`, press **Send a test**. If a push service rejects the request its status and body are surfaced verbatim in the response and in `/admin`, which is where a wrong `VAPID_SUBJECT` or a malformed key would show up.
+**As of 2026-09-13** it cannot be closed from the app either: `VAPID_PRIVATE_KEY` has never been set in production, so the notifications card is hidden, `push_subscriptions` and `notification_runs` are both empty, and the 09:00 digest has sent nothing. The public key is deployed. A local run with a throwaway keypair confirmed the rest of the path — card offered, subscription stored, run claimed, delivery attempted and recorded — so the remaining unknown is exactly a real push service and a real device.
+
+Closing this is one click once the secret is set: sign in, turn notifications on from `/me`, press **Send a test**. If a push service rejects the request its status and body are surfaced verbatim in the response and in `/admin`, which is where a wrong `VAPID_SUBJECT` or a malformed key would show up.
 
 ---
 
@@ -462,3 +466,38 @@ A review comparing the `.md` files against the code found several claims that ha
 - `PLAN.md` claimed smoke covered "16 of 20 routes". A recount says 27 of 27 — `/me/name` and `/admin/holiday/delete` were the last two, and are now covered.
 
 Worth noting how each was found, because it says something about which claims rot: the schema drift was a known open item nobody had acted on, the bundle size was a number nobody re-measured, and the route coverage was a ratio that quietly went stale as routes were added. All three were the kind of fact that only stays true if something checks it.
+
+---
+
+## #36 — Leave was checked against the wrong year's quota `resolved`
+
+Two bugs with one root: the code deciding which year a booking belongs to disagreed with the code recording it.
+
+1. **2026-09-09.** The booking check read `today`'s year, while `usedByType` attributes a booking to its start date's year. Leave for next January was measured against this year's remaining days and recorded against next year's. Once this year was spent, next year's bookings were refused — "5 days requested, 1 remaining" for a March booking made in September — and while this year had room they consumed nothing. Fixed by deriving the year from the start date. That alone would have refused every future-year booking, because quota rows are seeded only for a year someone signs in during, so `allottedFor` supplies the type's `default_days` where no row exists.
+2. **2026-09-13**, found by the review that updated this file. An edit credits a booking's own days back before checking the balance — correct within one year. After the first fix, the year checked is the booking's *new* start year, and the credit had no year check, so moving a booking across New Year subtracted days that had never been counted there. Reproduced against a real Worker: 8 days booked in 2027, a 5-day 2026 booking moved into March 2027, accepted — 13 days against a 10-day allowance. Now credited only when the booking already starts in the year being checked. Drag-to-move and undoing an edit share the path.
+
+Both were reproduced before being fixed, and both are pinned by smoke tests. The second is the one worth remembering: correcting an attribution rule in one place moved the ground under a calculation elsewhere that had quietly assumed the old rule.
+
+---
+
+## #37 — The smoke suite failed on a public holiday, not a defect `resolved`
+
+The Mon–Fri fixture is an offset from today, so it walks through the calendar as weeks pass, and nearly every assertion downstream counts on that week being five working days. On 2026-09-09 it landed on the week of 2026-10-12, where King Bhumibol Memorial Day falls on the Tuesday, and three assertions failed asking why five days had become four. Nothing was broken.
+
+The harness now asks the seeded holidays for a clear week, searching up to eight weeks past the usual offset. Red that comes from the calendar rather than the code teaches people to ignore red.
+
+---
+
+## #38 — The linter is not enforced `open`
+
+ESLint arrived on 2026-09-01 (PLAN 4.6), tuned to pass on the existing code. It is not in CI, and lint on `main` has since broken twice without anything noticing: a docs script added after the linter had no globals block, and the fix for that then linted the 1.5MB vendored Swagger bundle once `build:docs` had created it — clean on a fresh checkout, 27,101 errors after the first deploy. Both are fixed. The remaining gap is one CI step (PLAN 4.10).
+
+---
+
+## #39 — A leave type with history cannot simply be deleted `open — owner's call`
+
+There are no foreign keys, and `ENTRY_FROM` joins `leave_types` with an INNER JOIN. Deleting a type that has bookings raises no error anywhere; its bookings simply stop being returned by every entry query — the calendar, the feed, `/me`, the digest — while the rows sit in the table.
+
+Migration 0010 removed unpaid leave safely because it had never been booked, and it refuses to delete a type that has: the DELETE is guarded by `NOT EXISTS`, and the guard was tested against a database holding an unpaid booking.
+
+Personal leave was asked to go next, and it has one confirmed booking from 2026-08-21. The options are to retire the type — an `active` flag, hidden from the booking form, still rendered in history; recommended, and the mechanism any later removal will also need — to reassign that booking to another type first, which rewrites the record and draws a day from that type's balance, or to cancel it, which erases a day that was actually taken. PLAN 2.4.

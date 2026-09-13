@@ -1,6 +1,6 @@
 # wan-nee-la — Architecture
 
-Employee leave tracker. Cloudflare Workers, SSR, D1, LINE push at 08:00 Asia/Bangkok.
+Employee leave tracker. Cloudflare Workers, SSR, D1, and a weekday 09:00 Asia/Bangkok digest by browser push, with LINE as an optional second channel.
 
 Name: วันนี้ลา — "on leave today".
 
@@ -13,8 +13,8 @@ Name: วันนี้ลา — "on leave today".
 | Data | D1 (SQLite) | Relational: users × quotas × requests. KV can't do the date-range queries the calendar needs. |
 | Auth | Cloudflare Access (configured manually by owner) | Worker reads identity from the Access JWT. No password, no session store. |
 | Client JS | esbuild IIFE bundles into `public/` | Same pattern as a sibling Workers project (`build:client`). Progressive enhancement only. |
-| Notify | LINE **Messaging API** push | LINE Notify is dead (see ISSUES.md #1). |
-| Schedule | Workers Cron Trigger `0 1 * * *` | 01:00 UTC = 08:00 Asia/Bangkok. Thailand has no DST, so the offset is fixed at UTC+7 forever. |
+| Notify | Web Push (VAPID); LINE Messaging API behind `LINE_ENABLED`, off by default | Push is free; LINE bills per group member. LINE Notify is dead (ISSUES.md #1). |
+| Schedule | Workers Cron Trigger `0 2 * * 1-5` | 02:00 UTC = 09:00 Asia/Bangkok, Mon–Fri. Thailand has no DST, so the offset is fixed at UTC+7. The weekday range is evaluated in UTC and only matches the Bangkok week because 02:00 UTC is the same calendar day there. |
 | Dates | `YYYY-MM-DD` strings, Bangkok-local | Leave is a calendar concept, not an instant. Storing UTC timestamps causes off-by-one-day bugs at the boundary. |
 
 ## Auth model
@@ -31,7 +31,7 @@ Admin = `users.is_admin` flag in D1, not an Access group (keeps the app self-con
 
 ## Data model (D1)
 
-Nine migrations, applied in order. This is the schema they produce — checked against a database with all of them applied, not written from memory.
+Ten migrations, applied in order; `0010` removed the unused unpaid leave type and changed data only. This is the schema they produce — checked against a database with all of them applied, not written from memory.
 
 ```sql
 CREATE TABLE users (
@@ -87,7 +87,7 @@ CREATE TABLE leave_audit (
   leave_id      TEXT NOT NULL,
   actor_email   TEXT NOT NULL,
   subject_email TEXT NOT NULL,
-  action        TEXT NOT NULL,             -- created | edited | cancelled
+  action        TEXT NOT NULL,             -- created | edited | cancelled | restored
   at            TEXT NOT NULL,
   before        TEXT,                      -- JSON snapshot; records whether a note
   after         TEXT                       -- existed, never the note itself
@@ -133,43 +133,54 @@ Two notes on things that used to be documented here and were not true. There is 
 
 `days_total` is always recomputed on the server from `start_date`/`end_date`/halves minus weekends minus `holidays`. Client-submitted totals are ignored.
 
+Leave is charged to the year its **start date** falls in. `usedByType` and the booking check agree on that, and a booking spanning New Year draws entirely from its first year. Quota rows exist only for years someone has signed in during, so `allottedFor` falls back to the type's `default_days` where a row is missing; an explicit row, including a deliberate 0, always wins. An edit credits the booking's own days back only when it already starts in the year being checked — otherwise a booking moved across New Year would be measured against a balance inflated by its own size (ISSUES.md #36).
+
 Self-serve model (owner's decision): a POST creates a `confirmed` row directly. No approver, no pending state. Overlap with an existing confirmed request for the same user is rejected.
 
 ## Routes
 
 | Method | Path | Purpose |
 | --- | --- | --- |
-| GET | `/` | Global calendar. Month grid on ≥768px, agenda list on mobile. |
-| GET | `/book?date=` | Booking page, prefilled. The no-JS destination for the calendar's day cells. |
-| GET | `/leave/:id/edit` | Edit one booking. Also the no-JS destination for a calendar entry. |
-| POST | `/api/leave/:id/edit` | Save an edit. |
-| GET | `/api/leave?from=&to=` | JSON feed for the calendar, all users. |
-| GET | `/me` | Personal dashboard: balance per leave type, upcoming + past leave. |
-| POST | `/api/leave` | Book leave. Server computes days, checks overlap + balance. |
-| POST | `/api/leave/:id/cancel` | Cancel own leave (admin can cancel any). |
-| GET | `/admin` | Users, quotas, holidays, notification log. Admin only. |
-| POST | `/admin/quotas` | Edit one person's quota rows. |
-| POST | `/admin/quotas/bulk` | Set one leave type's quota for every active user. |
-| POST | `/admin/notify/preview` | Dry-run the digest through the real job. |
-| POST | `/admin/notify/send` | Send the digest now, or retry a failed date. |
-| POST | `/line/webhook` | Capture the group ID; verify `X-Line-Signature` (HMAC-SHA256 of raw body with the channel secret). |
-| GET | `/health` | Version metadata + D1 ping + LINE config presence. |
+| GET | `/health` | Above the app's auth, still behind Access. Version, deploy time, D1 ping, Bangkok date, `accessConfigured`, `devAuthBypass`. |
+| POST | `/line/webhook` | Above auth. Verifies `X-Line-Signature` (HMAC-SHA256 of the raw body); only writes the group id. |
+| GET | `/` | Calendar. A month grid at every width — names on a laptop, dots on a phone with the day list beneath. Upcoming list, month/year jump. |
+| GET | `/book?date=` | Booking page, prefilled. The no-JS destination for a day cell. |
+| GET | `/docs` | API reference, Swagger UI over `/openapi.yaml`. A Worker route rather than an asset, so it carries the CSP. |
+| GET | `/api/leave?from=&to=` | JSON feed, active users only. No email addresses; notes filtered per viewer. |
+| GET | `/api/leave/preview` | Server-side day count and coverage for the form's live preview. |
+| POST | `/api/leave` | Book. Server computes days, checks overlap and the start year's balance. A refusal carries the submission and the offending field back to the form. |
+| GET | `/leave/:id/edit` | Edit one booking; the no-JS destination for an entry. |
+| POST | `/api/leave/:id/edit` | Save an edit, and offer undo. Also the drag-to-move target, which carries `returnTo` and so gets no form prefill. |
+| POST | `/api/leave/:id/cancel` | Soft cancel, idempotent. Offers undo. |
+| POST | `/api/leave/:id/undo` | Undo the last cancel or edit within ten minutes, after re-running the booking rules. |
+| GET | `/me` | Balances, upcoming and past leave, settings, notifications card. Year navigation. |
+| GET | `/u/:email` | One person's leave. Schedule shared; balances to them and admins; notes never. |
+| POST | `/me/name` · `/me/week-start` · `/me/lang` | Display name; Monday or Sunday first; English or Thai. |
+| POST | `/api/push/subscribe` · `/api/push/unsubscribe` | This browser's subscription. Unsubscribe is scoped to its owner. |
+| POST | `/api/push/test` | Push to the caller's own browsers. |
+| GET | `/admin` | Users, quotas, holidays, LINE status, run log, audit trail. Admin only. |
+| POST | `/admin/quotas` · `/admin/quotas/bulk` | One person, or one leave type for every active user. |
+| POST | `/admin/user` | Role and active flag. The last admin cannot demote itself. |
+| POST | `/admin/holiday` · `/admin/holiday/delete` · `/admin/holidays/import` | Add, remove, or paste a year's list — all-or-nothing. |
+| POST | `/admin/notify/preview` · `/admin/notify/send` | Dry-run and manual send, through the real digest job. |
 
-## The 08:00 notification
+## The 09:00 notification
 
-`scheduled()` handler, cron `0 1 * * *`:
+`scheduled()` handler, cron `0 2 * * 1-5` — 02:00 UTC, which is 09:00 in Bangkok on the same calendar day. Cron's day-of-week field is evaluated in UTC, so `1-5` only lines up with the Bangkok week because of that; move the hour past 17:00 UTC and the weekdays silently shift.
 
 1. Compute today in Asia/Bangkok.
-2. If weekend or in `holidays` → write `skipped_empty`, stop.
-3. Query confirmed leave overlapping today.
-4. If nobody on leave → `skipped_empty`, stop. (Also saves LINE quota — see ISSUES.md #2.)
-5. `INSERT OR IGNORE` into `notification_runs` **first**, keyed on (date, kind, channel). If the row already exists, stop. Cron retries and manual re-runs must not double-post, and the daily and week-ahead posts must not suppress each other.
-6. `POST https://api.line.me/v2/bot/message/push` with `to = <group id>`, Bearer channel access token, and an `X-Line-Retry-Key` (LINE's own idempotency header).
-7. Update the log row with the outcome.
+2. Weekend → `skipped_weekend`; a date in `holidays` → `skipped_holiday`. Nothing is written. The cron already excludes weekends; this check stays the authority, since only it knows about holidays.
+3. Query confirmed leave overlapping today, for active users.
+4. Nobody on leave → `skipped_empty`, nothing written. Neither channel ever says "nobody is out today".
+5. Per channel, `INSERT OR IGNORE` into `notification_runs` **first**, keyed on (date, kind, channel). If the row already exists, that channel stops. Cron retries and manual re-runs must not double-post, and the daily and week-ahead posts must not suppress each other.
+6. **Push:** encrypt and send to every subscription; a 404 or 410 deletes it. **LINE:** only when `LINE_ENABLED` is `"1"` — otherwise the channel reports `disabled` before touching any config — then `POST https://api.line.me/v2/bot/message/push` with an `X-Line-Retry-Key`, LINE's own idempotency header.
+7. Update each log row with its outcome.
 
 The claim in step 5 happens **before** the push, so a crash mid-send fails closed with no message rather than open with two. A send that fails stays logged as `failed` and needs an explicit force to retry, so a flapping error cannot spam the group.
 
-Message: **plain text**, one line per person — name, leave type, half-day marker, and the span for multi-day leave. Not a Flex bubble: a Flex payload is a second thing that can be rejected for schema reasons at 08:00 with nobody watching, and it costs the same under LINE's per-member billing.
+Message: **plain text**, one line per person — name, leave type, half-day marker, and the span for multi-day leave. Not a Flex bubble: a Flex payload is a second thing that can be rejected for schema reasons at 09:00 with nobody watching, and it costs the same under LINE's per-member billing.
+
+The browser notification's **title** is the message on its own: `วันนี้ Mai, Nok ลา`, three names and then a count (`และอีก 3 คน`). Thai only, unlike the bilingual body, because a lock screen gives a title one line and pairing each name list with a translation would push the names out of view. The Monday week-ahead push keeps `Away this week · N people` — `วันนี้` means today, and that post is not about today.
 
 ## Secrets / bindings
 
@@ -183,6 +194,11 @@ Message: **plain text**, one line per person — name, leave type, half-day mark
 | `LINE_CHANNEL_ACCESS_TOKEN` | secret | `wrangler secret put` |
 | `LINE_CHANNEL_SECRET` | secret | webhook signature verification |
 | `LINE_GROUP_ID` | var or app_config | normally captured by the webhook |
+| `LINE_ENABLED` | var | `"1"` turns the LINE channel on; anything else, including absent, leaves it off |
+| `VAPID_PUBLIC_KEY` | var | not a secret — every subscribing browser is given it; empty keeps push off |
+| `VAPID_PRIVATE_KEY` | secret | `wrangler secret put`; push stays off without it |
+| `VAPID_SUBJECT` | var | a contact address push services can reach, e.g. `mailto:ops@example.com` |
+| `DEV_AUTH_BYPASS` / `DEV_EMAIL` | var | local development only — `"1"` skips Access verification and signs in as `DEV_EMAIL` |
 
 The Bangkok offset is a constant in `src/domain/dates.ts`, not a binding — Thailand has never observed DST, so there is nothing to configure.
 
@@ -238,7 +254,9 @@ Only one booking form exists per page, inside the create dialog — two would co
 
 ### Layout
 
-One `public/app.css`, mobile-first, single breakpoint at 768px. Below it the calendar renders as a scrollable agenda list (a 7×5 grid with names is unreadable on a phone); above it, a month grid with coloured chips. The booking form is a `<form>` that works without JS; JS only adds the live day-count preview and the half-day field toggling.
+One `public/app.css`, mobile-first, single breakpoint at 768px. The month grid renders at every width: coloured chips with names above it, dots below it with the whole cell as one tap target into the day list underneath (a 7×5 grid of names is unreadable on a phone). The booking form is a `<form>` that works without JS; JS only adds the live day-count preview and the half-day field toggling.
+
+The Upcoming list — 90 days from today, grouped by day under sticky headings, with a caption saying it is anchored to today rather than the month on screen — appears from 768px: in a sidebar once the window is at least 1024×700, stacked under the grid otherwise. Wherever it is visible it replaces the who-summary card, which says the same thing in a worse shape; below 768px there is no list, and the card and the day list answer the question instead. The prev/next month buttons sit ahead of the month name, so their position does not depend on how long the name is.
 
 Navigation changes shape at the same breakpoint, following M3's own guidance rather than shrinking one control:
 
@@ -280,7 +298,7 @@ Two kinds of post, too: the daily "out today" digest, and a week-ahead summary o
 | LINE | one group chat | billed per member, per push | channel token + group id |
 | Browser push | each person who opted in, per browser | free | VAPID keypair |
 
-`notification_runs` is keyed on **(date, channel)**, not date alone. With one row per date, a LINE row would claim the day and silently suppress the push, and one status column could not say "LINE failed but the browsers got it". Each channel claims its own row *before* sending, so a crash fails closed — no message — rather than open, with two.
+`notification_runs` is keyed on **(date, kind, channel)**, not date alone. With one row per date, a LINE row would claim the day and silently suppress the push, and one status column could not say "LINE failed but the browsers got it". Each channel claims its own row *before* sending, so a crash fails closed — no message — rather than open, with two.
 
 ### Web Push
 
@@ -310,6 +328,8 @@ The write is batched with the change itself, inside the repo functions that perf
 
 Snapshots are JSON rather than mirrored columns so the trail keeps its meaning when `leave_requests` changes shape.
 
+**Undo reads the trail back.** `POST /api/leave/:id/undo` acts on the most recent audit row for that booking, within ten minutes. A cancellation is undone by flipping the status back — the row never left, so its note is intact — and recorded as its own `restored` action. An edit is undone from the `before` snapshot, but the note always comes from the row, because the snapshot deliberately records only `has_note`; rebuilding a booking from the trail alone would have wiped every note it touched. Both re-run the booking rules first, since quota and dates can change between a change and its undo. The route re-authorises through `ownedLeave` and finds the audit row itself — the undo offer rides in a client-held cookie and is trusted for nothing.
+
 ## Non-goals (v1)
 
-Approval workflow, carry-over quota, attachments/medical certs, half-hour granularity, per-team filtering, i18n toggle (Thai labels inline), export to payroll.
+Approval workflow, carry-over quota, attachments/medical certs, half-hour granularity, per-team filtering, export to payroll.

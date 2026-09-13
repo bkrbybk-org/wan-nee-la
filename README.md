@@ -5,9 +5,9 @@
 Employee leave tracker on Cloudflare Workers. "wan nee la" is Thai for *on leave today*.
 
 - Global calendar — who is out, which day. A month grid at every width: names on a laptop, dots on a phone. Click a day to book it, click an entry to open it, drag an entry to move it.
-- Self-serve booking with half-day granularity, and a note that is private unless you share it. Edit or remove afterwards; every change is recorded.
+- Self-serve booking with half-day granularity, and a note that is private unless you share it. Edit or remove afterwards, undo a cancel or a move within ten minutes; every change is recorded. A refused booking comes back to the form with what you typed and the offending field marked.
 - Personal dashboard — days remaining per leave type. An upcoming sidebar on the calendar, and a month/year jump for planning further out.
-- A morning post at 08:00 Asia/Bangkok listing who is out, to browser notifications (free) or a LINE group (billed per member), or both. A week-ahead post on Mondays.
+- A 09:00 Asia/Bangkok notification on weekdays, only on days someone is away — "วันนี้ Mai, Nok ลา" — to subscribed browsers (free). A LINE group post is built too but off by default (billed per member). A week-ahead post on Mondays.
 - Behind Cloudflare Access. Material 3 interface in English or Thai, mobile and laptop layouts, System/Light/Dark themes.
 
 Hono + Hono JSX (SSR) + D1. No frontend framework; the client bundle is ~10kb of progressive enhancement and every page works without it.
@@ -60,15 +60,19 @@ The first account to sign in becomes the admin.
 ## Checks
 
 ```bash
-npm run typecheck && npm test
+npm run typecheck && npm run lint && npm test
 ```
 
-`npm test` runs six suites: date arithmetic, booking rules, the LINE digest,
+`npm test` runs six suites — date arithmetic, booking rules, the LINE digest,
 Web Push against RFC 8291's worked example, holiday-list parsing, and the
-string catalogue's own health.
+string catalogue's own health — then checks that `public/openapi.yaml` accounts
+for every route.
+
+`npm run lint` is ESLint, tuned to the existing style rather than reshaping it.
+It is not yet enforced in CI (docs/PLAN.md 4.10), so run it yourself.
 
 `npm run test:smoke` additionally boots a worker against a scratch database and
-exercises the HTTP layer over all 27 routes — CSRF, ownership checks, note
+exercises the HTTP layer over all 29 routes — CSRF, ownership checks, note
 visibility across two identities, booking rules, the audit trail, security
 headers, the digest's decisions and the LINE webhook signature. It needs no
 secrets and makes no outbound calls.
@@ -79,11 +83,14 @@ pair the stylesheet paints against WCAG AA, and fails if the values in
 
 CI runs the same checks on every push and pull request, plus a client and Worker build, and asserts that no local-only file or credential-shaped string has been committed. It needs no secrets, so it also runs on pull requests from forks.
 
-To fire the morning digest by hand, run `wrangler dev --test-scheduled` and:
+To fire the scheduled handler by hand against `npm run dev`:
 
 ```bash
-curl "http://127.0.0.1:8787/__scheduled?cron=0+1+*+*+*"
+curl "http://127.0.0.1:8787/cdn-cgi/local/scheduled"
 ```
+
+It logs one JSON line per job. On a weekend or a public holiday that line says
+so rather than sending — which is the expected result, not a failure.
 
 ## Deploying
 
@@ -100,7 +107,7 @@ Then, in order:
 
 ## Turning on the LINE post
 
-Optional — the app is fully functional without it. LINE Notify was shut down on 2025-03-31, so this uses the Messaging API.
+Optional — the app is fully functional without it, and the channel is **off by default** behind `LINE_ENABLED`: an absent variable never starts it sending. LINE Notify was shut down on 2025-03-31, so this uses the Messaging API.
 
 1. Create a LINE Official Account with a Messaging API channel, invite the bot to the group, and in the OA Manager disable Auto-reply and enable Webhook.
 2. Set the webhook URL to `https://<your-host>/line/webhook`, and add an Access **Bypass** rule for that path — otherwise LINE's requests are sent to the login page and the group id is never captured.
@@ -112,13 +119,14 @@ Optional — the app is fully functional without it. LINE Notify was shut down o
    wrangler secret put LINE_CHANNEL_SECRET
    ```
 4. Post any message in the group. The webhook captures the group id; `/admin` will show it.
-5. Use **Preview** on `/admin`, then **Send now**.
+5. Set `"LINE_ENABLED": "1"` in `wrangler.local.jsonc` and redeploy. Until then `/admin` reports the channel as switched off, whatever the secrets say.
+6. Use **Preview** on `/admin`, then **Send now**.
 
 LINE bills a group push **per member**, so a 20-person group posted to daily is ~600 messages a month. The job skips weekends, public holidays, and days with nobody on leave. See [docs/ISSUES.md](docs/ISSUES.md) #2.
 
 ## Turning on browser notifications
 
-Optional, free, and independent of LINE: subscribers get one notification each working morning at 08:00 listing who is out, from the same job that would post to LINE.
+Optional, free, and independent of LINE: subscribers get a notification at 09:00 on weekdays when someone is away — titled `วันนี้ <names> ลา`, three names then a count — from the same job that would post to LINE. Days nobody is away send nothing.
 
 1. Generate a VAPID keypair. Once, ever — regenerating it silently invalidates every existing subscription, because a browser binds its subscription to the key that created it.
 
@@ -139,7 +147,7 @@ Optional, free, and independent of LINE: subscribers get one notification each w
    npx wrangler secret put VAPID_PRIVATE_KEY --config wrangler.local.jsonc
    ```
 
-4. Deploy, then open `/me` and turn notifications on. **Send a test** proves the whole path without waiting for 08:00.
+4. Deploy, then open `/me` and turn notifications on. **Send a test** proves the whole path without waiting for 09:00.
 
 Leave `VAPID_PUBLIC_KEY` empty to keep the feature off: the card disappears from `/me` and the digest skips the channel.
 
@@ -150,6 +158,6 @@ Leave `VAPID_PUBLIC_KEY` empty to keep the feature off: the card disappears from
 | File | What |
 | --- | --- |
 | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | Stack, auth model, D1 schema, routes, notification flow, bindings |
-| [docs/PLAN.md](docs/PLAN.md) | Phased task list |
+| [docs/PLAN.md](docs/PLAN.md) | Forward backlog, with an owner per item |
 | [docs/PROGRESS.md](docs/PROGRESS.md) | Current state, decisions log, what was verified |
 | [docs/ISSUES.md](docs/ISSUES.md) | Open risks, accepted trade-offs, unresolved questions |
