@@ -57,9 +57,20 @@
 		},
 	],
 
-	// 01:00 UTC = 08:00 Asia/Bangkok. Thailand has no DST, so this offset is fixed.
+	// 02:00 UTC = 09:00 Asia/Bangkok. Thailand has no DST, so the offset is fixed.
+	//
+	// Mon-Fri is expressed here as well as enforced in runDigest(), which skips
+	// weekends and public holidays on its own. The cron restriction is the cheap
+	// half — it stops the Worker waking twice a week to decide it has nothing to
+	// do — and the code remains the authority, since only it knows about
+	// holidays.
+	//
+	// The day-of-week field is evaluated in UTC, so it only lines up with the
+	// Bangkok week because 02:00 UTC is the same calendar day in Bangkok (09:00).
+	// Moving this later than 17:00 UTC would put the fire on the next Bangkok day
+	// and silently shift the weekdays; the hour and the 1-5 belong together.
 	"triggers": {
-		"crons": ["0 1 * * *"],
+		"crons": ["0 2 * * 1-5"],
 	},
 
 	"vars": {
