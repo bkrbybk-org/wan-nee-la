@@ -1,5 +1,5 @@
 /**
- * LINE Messaging API — the 08:00 Asia/Bangkok digest.
+ * LINE Messaging API — the 09:00 Asia/Bangkok digest.
  *
  * LINE Notify was terminated on 2025-03-31, so the Messaging API push endpoint
  * is the only remaining way to post into a group. That has three consequences

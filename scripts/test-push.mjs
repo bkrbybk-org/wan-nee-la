@@ -9,6 +9,7 @@
 //
 // Run: npm run test:push
 import { b64urlToBytes, bytesToB64url, encryptPayload, vapidAuthorization } from '../src/notify/push.ts';
+import { buildPushTitle } from '../src/notify/digest.ts';
 
 let failures = 0;
 const check = (name, cond, detail) => {
@@ -141,6 +142,30 @@ eq('vapid: a tampered token does not verify', tampered, false);
 const other = await vapidAuthorization('https://updates.push.services.mozilla.com/wpush/v2/xyz', keys, NOW);
 const otherClaims = JSON.parse(new TextDecoder().decode(b64urlToBytes(other.match(/t=([^.]+)\.([^.]+)/)[2])));
 eq('vapid: audience follows the endpoint', otherClaims.aud, 'https://updates.push.services.mozilla.com');
+
+// ---------------------------------------------------------------------------------------
+// The notification title — the one line that reaches a lock screen.
+// ---------------------------------------------------------------------------------------
+
+const who = (...names) => names.map((display_name) => ({ display_name }));
+
+eq('title: one person', buildPushTitle(who('Mai')), 'วันนี้ Mai ลา');
+eq('title: two people', buildPushTitle(who('Mai', 'Nok')), 'วันนี้ Mai, Nok ลา');
+eq('title: three still fit', buildPushTitle(who('Mai', 'Nok', 'Anan')), 'วันนี้ Mai, Nok, Anan ลา');
+
+// Past three the rest are counted. A title nobody can see the end of carries
+// less than three names and a number does.
+eq('title: four are trimmed to three and a count', buildPushTitle(who('Mai', 'Nok', 'Anan', 'Pim')), 'วันนี้ Mai, Nok, Anan และอีก 1 คน ลา');
+eq(
+	'title: a big day counts the remainder',
+	buildPushTitle(who('Mai', 'Nok', 'Anan', 'Pim', 'Chai', 'Som')),
+	'วันนี้ Mai, Nok, Anan และอีก 3 คน ลา',
+);
+
+// The digest never calls this with nobody away — it returns skipped_empty
+// first — but a title that reads "วันนี้  ลา" would be the visible symptom if
+// that guard ever moved, so it is worth stating what empty produces.
+check('title: an empty day names nobody', !buildPushTitle([]).includes('และอีก'), buildPushTitle([]));
 
 console.log(failures === 0 ? '\nAll push tests passed.' : `\n${failures} failure(s).`);
 process.exit(failures === 0 ? 0 : 1);

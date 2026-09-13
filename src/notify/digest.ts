@@ -7,7 +7,7 @@
 import { addDays, bangkokToday, dayOfWeek, isWeekend } from '../domain/dates.ts';
 import * as db from '../repo/db.ts';
 import type { NotifyChannel, NotifyKind } from '../repo/db.ts';
-import type { Env } from '../types.ts';
+import type { Env, LeaveEntry } from '../types.ts';
 import { buildDigest, buildWeekAhead, pushText, weekAway } from './line.ts';
 import { sendPush, type VapidKeys } from './push.ts';
 
@@ -109,6 +109,31 @@ function rollUp(channels: ChannelOutcome[]): { status: DigestStatus; error?: str
 	return { status: channels.length > 0 ? 'disabled' : 'not_configured' };
 }
 
+/** How many names the push title lists before it counts the rest. */
+const TITLE_NAMES = 3;
+
+/**
+ * The notification's one line: วันนี้ <names> ลา.
+ *
+ * Thai only, unlike the digest body, which carries both languages. A push title
+ * is a single line on a lock screen and it is competing with every other app
+ * for it; pairing each name list with an English translation would push the
+ * names themselves out of view, and the names are the whole message.
+ *
+ * Long lists are counted rather than spelled out for the same reason — three
+ * names and a remainder fits, eight names is a title nobody sees the end of.
+ * The body below still lists everyone with their leave type.
+ *
+ * Never called with an empty list: runDigest returns `skipped_empty` before
+ * this, because a notification saying nobody is away is one people switch off.
+ */
+export function buildPushTitle(entries: readonly LeaveEntry[]): string {
+	const names = entries.map((e) => e.display_name);
+	const rest = names.length - TITLE_NAMES;
+	const who = rest > 0 ? `${names.slice(0, TITLE_NAMES).join(', ')} และอีก ${rest} คน` : names.join(', ');
+	return `วันนี้ ${who} ลา`;
+}
+
 /**
  * Post to the LINE group.
  *
@@ -163,6 +188,7 @@ async function runPush(
 	date: string,
 	kind: NotifyKind,
 	text: string,
+	title: string,
 	people: number,
 	force: boolean,
 ): Promise<ChannelOutcome> {
@@ -177,10 +203,7 @@ async function runPush(
 	}
 
 	const payload = JSON.stringify({
-		title:
-			kind === 'week'
-				? `Away this week · ${people} ${people === 1 ? 'person' : 'people'}`
-				: `Out today · ${people} ${people === 1 ? 'person' : 'people'}`,
+		title,
 		// The service worker cannot fetch this from behind Access when it wakes,
 		// so the message travels inside the encrypted payload.
 		body: text,
@@ -242,7 +265,7 @@ export async function runDigest(
 	// same page. Neither can throw — each returns its own outcome.
 	const channels: ChannelOutcome[] = [
 		await runLine(env, date, 'daily', text, people, force),
-		await runPush(env, date, 'daily', text, people, force),
+		await runPush(env, date, 'daily', text, buildPushTitle(entries), people, force),
 	];
 
 	return { date, people, text, channels, ...rollUp(channels) };
@@ -299,7 +322,9 @@ export async function runWeekAhead(
 	const force = Boolean(opts.force);
 	const channels: ChannelOutcome[] = [
 		await runLine(env, date, 'week', text, people, force),
-		await runPush(env, date, 'week', text, people, force),
+		// The week-ahead post keeps its own wording: "วันนี้ … ลา" is about today,
+		// and this one is not.
+		await runPush(env, date, 'week', text, `Away this week · ${people} ${people === 1 ? 'person' : 'people'}`, people, force),
 	];
 
 	return { date, people, text, channels, ...rollUp(channels) };
