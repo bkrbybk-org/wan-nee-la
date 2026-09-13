@@ -555,7 +555,15 @@ async function buildBookingContext(
 	for (const t of types) {
 		const allotted = allottedFor(t, quotas);
 		let spent = used.get(t.id) ?? 0;
-		if (replacing && replacing.leave_type_id === t.id) spent = round(spent - replacing.days_total);
+		// Credit the booking's own days back only if they were counted in this
+		// year to begin with. `used` is the total for the year the booking now
+		// starts in; an edit that moves it across New Year was never part of that
+		// total, and subtracting it anyway handed the moved booking a free
+		// allowance exactly its own size — 13 days accepted against a 10-day
+		// quota, before this check existed.
+		if (replacing && replacing.leave_type_id === t.id && Number(replacing.start_date.slice(0, 4)) === year) {
+			spent = round(spent - replacing.days_total);
+		}
 		remaining.set(t.id, round(allotted - spent));
 	}
 

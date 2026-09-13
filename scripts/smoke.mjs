@@ -44,7 +44,7 @@ const OTHER = 'other@example.com';
 const STATE = mkdtempSync(join(tmpdir(), 'wnl-smoke-'));
 
 /** Assertions that must run for the suite to be considered complete. */
-const MIN_ASSERTIONS = 191;
+const MIN_ASSERTIONS = 195;
 
 let pass = 0;
 let fail = 0;
@@ -446,6 +446,29 @@ async function main() {
 
 	await post(`/api/leave/${nextYearId}/cancel`);
 	eq('next-year fixture cleaned up', (await feed(NEXT_MON, addDays(NEXT_MON, 11))).entries.length, 0);
+
+	// A booking moved across New Year is checked against the year it moves into,
+	// and its own days are credited back only if they were already counted
+	// there. They used to be credited unconditionally, so a booking moved into a
+	// full year was measured against a balance inflated by exactly its own size,
+	// and accepted.
+	res = await post('/api/leave', { leaveTypeId: '1', startDate: NEXT_MON, endDate: addDays(NEXT_MON, 11) });
+	eq('cross-year move: next year filled first', flashOf(res)?.kind, 'ok');
+	const fullNextYearId = (await feed(NEXT_MON, addDays(NEXT_MON, 11))).entries[0]?.id;
+
+	const MOVER = addDays(MON, 14);
+	res = await post('/api/leave', { leaveTypeId: '1', startDate: MOVER, endDate: addDays(MOVER, 4) });
+	eq('cross-year move: a booking this year to move', flashOf(res)?.kind, 'ok');
+	const moverId = (await feed(MOVER, addDays(MOVER, 4))).entries[0]?.id;
+
+	res = await post(`/api/leave/${moverId}/edit`, {
+		leaveTypeId: '1', startDate: addDays(NEXT_MON, 21), endDate: addDays(NEXT_MON, 25),
+	});
+	check('moving it into a full next year is refused', /Not enough/.test(flashOf(res)?.message ?? ''), flashOf(res)?.message);
+	eq('and it stays where it was', (await feed(MOVER, addDays(MOVER, 4))).entries.length, 1);
+
+	await post(`/api/leave/${moverId}/cancel`);
+	await post(`/api/leave/${fullNextYearId}/cancel`);
 
 	res = await post('/api/leave', { leaveTypeId: '1', startDate: '2026-02-30' });
 	eq('invalid calendar date rejected', flashOf(res)?.kind, 'err');
