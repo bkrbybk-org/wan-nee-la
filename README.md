@@ -69,13 +69,14 @@ string catalogue's own health — then checks that `public/openapi.yaml` account
 for every route.
 
 `npm run lint` is ESLint, tuned to the existing style rather than reshaping it.
-It is not yet enforced in CI (docs/PLAN.md 4.10), so run it yourself.
+CI runs it.
 
 `npm run test:smoke` additionally boots a worker against a scratch database and
-exercises the HTTP layer over all 29 routes — CSRF, ownership checks, note
+exercises the HTTP layer over all 31 routes — CSRF, ownership checks, note
 visibility across two identities, booking rules, the audit trail, security
 headers, the digest's decisions and the LINE webhook signature. It needs no
-secrets and makes no outbound calls.
+secrets and makes no outbound calls. Every `check(` and `eq(` written in the
+file has to actually run, so a section that dies early fails the suite by name.
 
 `node scripts/palette.mjs` regenerates the Material 3 colour roles, checks every
 pair the stylesheet paints against WCAG AA, and fails if the values in
@@ -98,12 +99,36 @@ so rather than sending — which is the expected result, not a failure.
 npm run db:init:remote && npm run db:seed:remote && npm run deploy
 ```
 
+That is the first deploy. After it, ship with:
+
+```bash
+npm run ship
+```
+
+which runs every local check, deploys only if they all pass, then checks
+production — the new version is the one serving, Access still fronts `/health`
+and `/`, and production D1 answers a read. It stops at the first failure. Run
+from a git worktree, it borrows `wrangler.local.jsonc` from the main checkout
+for the deploy and removes it afterwards. A migration is named, never inferred,
+since D1 here keeps no record of which files have run:
+
+```bash
+npm run ship -- --migrate migrations/0011_leave_type_active.sql
+```
+
+**Every deploy replaces the Worker's vars with the ones in
+`wrangler.local.jsonc`.** A var changed in the dashboard, or by a deploy from
+another copy of the config, is silently overwritten (docs/ISSUES.md #40). Keep
+that file the one source of truth, and read the "differs from the remote
+configuration" warning a deploy prints.
+
 Then, in order:
 
 1. Create a **Cloudflare Access** application on your hostname. Put its team domain and AUD tag into `wrangler.local.jsonc` and redeploy. The app fails closed while they are empty, so nothing is served until this is done.
 2. Leave `workers_dev` at `false`. Access protects the custom hostname only, so a `workers.dev` route would be an unauthenticated bypass to everyone's leave data. Verify after deploying: the `workers.dev` URL must 404.
-3. Check `/health` — `accessConfigured` must be `true` and `devAuthBypass` must be `false`.
+3. Check `/health` — `accessConfigured` must be `true` and `devAuthBypass` must be `false`. It answers 503 if D1 is unreachable.
 4. Sign in. **Whoever signs in first becomes the admin**, so make sure it is the right person.
+5. Optionally, watch it. `.github/workflows/uptime.yml` checks `/health` every 15 minutes once the `HEALTH_URL` secret is set, and a failed run emails you. Access has to let it through: either a **Bypass** rule on `/health`, or an Access service token in the `CF_ACCESS_CLIENT_ID` and `CF_ACCESS_CLIENT_SECRET` secrets.
 
 ## Turning on the LINE post
 

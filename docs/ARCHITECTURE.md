@@ -31,7 +31,7 @@ Admin = `users.is_admin` flag in D1, not an Access group (keeps the app self-con
 
 ## Data model (D1)
 
-Ten migrations, applied in order; `0010` removed the unused unpaid leave type and changed data only. This is the schema they produce — checked against a database with all of them applied, not written from memory.
+Eleven migrations, applied in order; `0010` removed the unused unpaid leave type and changed data only, and `0011` added `leave_types.active`. This is the schema they produce — checked against a database with all of them applied, not written from memory.
 
 ```sql
 CREATE TABLE users (
@@ -52,7 +52,8 @@ CREATE TABLE leave_types (
   color         TEXT NOT NULL,             -- calendar chip colour
   default_days  REAL NOT NULL,             -- seeds new quota rows only
   counts_quota  INTEGER NOT NULL DEFAULT 1,-- planned medical is 0
-  sort_order    INTEGER NOT NULL DEFAULT 0
+  sort_order    INTEGER NOT NULL DEFAULT 0,
+  active        INTEGER NOT NULL DEFAULT 1 -- 0 = retired: not bookable, history kept (0011)
 );
 
 CREATE TABLE quotas (
@@ -141,7 +142,7 @@ Self-serve model (owner's decision): a POST creates a `confirmed` row directly. 
 
 | Method | Path | Purpose |
 | --- | --- | --- |
-| GET | `/health` | Above the app's auth, still behind Access. Version, deploy time, D1 ping, Bangkok date, `accessConfigured`, `devAuthBypass`. |
+| GET | `/health` | Above the app's auth, still behind Access. Version, deploy time, D1 ping, Bangkok date, `accessConfigured`, `devAuthBypass`. 503 when D1 is unreachable. |
 | POST | `/line/webhook` | Above auth. Verifies `X-Line-Signature` (HMAC-SHA256 of the raw body); only writes the group id. |
 | GET | `/` | Calendar. A month grid at every width — names on a laptop, dots on a phone with the day list beneath. Upcoming list, month/year jump. |
 | GET | `/book?date=` | Booking page, prefilled. The no-JS destination for a day cell. |
@@ -158,10 +159,11 @@ Self-serve model (owner's decision): a POST creates a `confirmed` row directly. 
 | POST | `/me/name` · `/me/week-start` · `/me/lang` | Display name; Monday or Sunday first; English or Thai. |
 | POST | `/api/push/subscribe` · `/api/push/unsubscribe` | This browser's subscription. Unsubscribe is scoped to its owner. |
 | POST | `/api/push/test` | Push to the caller's own browsers. |
-| GET | `/admin` | Users, quotas, holidays, LINE status, run log, audit trail. Admin only. |
+| GET | `/admin` | Users, quotas, leave types, holidays, LINE status, run log, audit trail. Admin only. |
 | POST | `/admin/quotas` · `/admin/quotas/bulk` | One person, or one leave type for every active user. |
 | POST | `/admin/user` | Role and active flag. The last admin cannot demote itself. |
 | POST | `/admin/holiday` · `/admin/holiday/delete` · `/admin/holidays/import` | Add, remove, or paste a year's list — all-or-nothing. |
+| POST | `/admin/type` · `/admin/type/delete` | Add or edit a leave type, including retiring it; delete only one nobody has ever booked. The code is fixed once added — it is the feed's `type`. |
 | POST | `/admin/notify/preview` · `/admin/notify/send` | Dry-run and manual send, through the real digest job. |
 
 ## The 09:00 notification
@@ -327,6 +329,18 @@ The audit trail records whether a note existed, never its text. A trail that cop
 The write is batched with the change itself, inside the repo functions that perform it, rather than being left to the routes. Three code paths reach a mutation — the form, the drag-to-move, and an admin editing someone else's booking — and a trail with a hole in it would always be the path someone forgot. `updateLeave` reads the previous row itself rather than trusting a caller to pass it.
 
 Snapshots are JSON rather than mirrored columns so the trail keeps its meaning when `leave_requests` changes shape.
+
+**Retention.** After the digest, the same cron run deletes audit rows older than three years and `notification_runs` rows older than 90 days (`AUDIT_KEEP_YEARS`, `NOTIFICATION_KEEP_DAYS` in `src/repo/db.ts`). In its own `try`, so housekeeping can never delay or block a post. Three years covers the year being worked in, the two before it, and any balance that crossed New Year; everything the app can still change — 90 days of backdating, 10 minutes of undo — sits well inside it.
+
+## Leave types
+
+`active = 0` retires a type (0011). Deleting one that has bookings is not an option: nothing has a foreign key, and `ENTRY_FROM` inner-joins `leave_types`, so its bookings would silently drop out of every query rather than error. A retired type:
+
+- leaves the booking form, the admin quota editor and the bulk-quota picker;
+- is refused for a new booking (`error.retiredType`), but stays bookable for the booking that already has it — `keepTypeId` in the booking context — so its dates can be edited, dragged or undone without changing what kind of leave it was;
+- keeps its balance card only in a year it was actually used, and its legend entry only on a month where it appears.
+
+Delete is offered only for a type with no bookings in any status, and the `DELETE` repeats that guard itself (the same `NOT EXISTS` as 0010), so a booking made between page load and click cannot be orphaned. The last offered type cannot be retired.
 
 **Undo reads the trail back.** `POST /api/leave/:id/undo` acts on the most recent audit row for that booking, within ten minutes. A cancellation is undone by flipping the status back — the row never left, so its note is intact — and recorded as its own `restored` action. An edit is undone from the `before` snapshot, but the note always comes from the row, because the snapshot deliberately records only `has_note`; rebuilding a booking from the trail alone would have wiped every note it touched. Both re-run the booking rules first, since quota and dates can change between a change and its undo. The route re-authorises through `ownedLeave` and finds the audit row itself — the undo offer rides in a client-held cookie and is trusted for nothing.
 

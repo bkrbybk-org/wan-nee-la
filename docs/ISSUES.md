@@ -279,13 +279,15 @@ The original diagnosis was the right one: the problem was never that notes were 
 
 ---
 
-## #18 — `/health` is not reachable for an anonymous uptime check `open`
+## #18 — `/health` is not reachable for an anonymous uptime check `mitigated — owner step left`
 
 Access fronts every path, `/health` included, so a monitor without credentials receives a 302 to the Cloudflare Access login rather than the JSON. Confirmed against production.
 
 Options: add an Access **Bypass** rule for `/health` (it deliberately exposes nothing about who works here or when they are away — only a version string, a D1 ping and two config booleans), or point the monitor at Access with a service token.
 
 Worth doing whichever way, because right now nothing watches this deployment.
+
+**2026-09-18:** the monitor exists — `.github/workflows/uptime.yml` checks `/health` every 15 minutes and fails, which emails, unless it gets a 200 with D1 up, Access configured and the dev bypass off. It supports both options above, and names which one is missing when it gets a 302. `/health` now answers 503 when D1 is down, so a status-code-only monitor would notice too. What is left is the owner's: the `HEALTH_URL` secret, plus either the Bypass rule or the two service-token secrets. Until `HEALTH_URL` exists the workflow passes and says it is not configured.
 
 ---
 
@@ -334,7 +336,7 @@ The encryption is checked against RFC 8291's own worked example byte for byte, a
 
 It cannot be tested from a terminal: it needs a real browser subscription, which needs a real person granting permission. The automation browser used during development has notifications denied at the profile level.
 
-**As of 2026-09-13** it cannot be closed from the app either: `VAPID_PRIVATE_KEY` has never been set in production, so the notifications card is hidden, `push_subscriptions` and `notification_runs` are both empty, and the 09:00 digest has sent nothing. The public key is deployed. A local run with a throwaway keypair confirmed the rest of the path — card offered, subscription stored, run claimed, delivery attempted and recorded — so the remaining unknown is exactly a real push service and a real device.
+**As of 2026-09-13** `VAPID_PRIVATE_KEY` is set in production, together with a matching public key set directly on the Worker rather than in `wrangler.local.jsonc`. **The 2026-09-18 deploy overwrote that public key** with the older one the config file still held, so the pair no longer matches and a push would be refused (#40). No browser had subscribed yet, so nobody lost anything; `push_subscriptions` and `notification_runs` are both still empty. A local run with a throwaway keypair confirmed the rest of the path — card offered, subscription stored, run claimed, delivery attempted and recorded — so the remaining unknown is exactly a real push service and a real device.
 
 Closing this is one click once the secret is set: sign in, turn notifications on from `/me`, press **Send a test**. If a push service rejects the request its status and body are surfaced verbatim in the response and in `/admin`, which is where a wrong `VAPID_SUBJECT` or a malformed key would show up.
 
@@ -360,11 +362,13 @@ The UI is fully translated and follows the reader between devices. Three things 
 
 ---
 
-## #26 — Nothing prunes the audit trail or the notification log `open`
+## #26 — Nothing prunes the audit trail or the notification log `resolved`
 
 `leave_audit` gains a row per booking change and `notification_runs` up to two per day, and nothing ever deletes either. At this scale that is years of headroom — a few thousand rows — so this is a note rather than a problem.
 
 Worth doing together with the `notification_runs` pruning already listed in PLAN.md 4.4, in the same cron pass. The audit trail is the one to think about before deleting: a trail that quietly loses its oldest entries is worse than one that is explicitly kept for a stated period.
+
+**Resolved 2026-09-18** with a stated period: the cron keeps audit rows for three years and notification runs for 90 days, after the digest and in its own `try`. The reasoning is next to the constants in `src/repo/db.ts` and in ARCHITECTURE.md. Covered by smoke, which triggers the real scheduled handler. Change `AUDIT_KEEP_YEARS` if company policy says otherwise.
 
 ---
 
@@ -488,16 +492,30 @@ The harness now asks the seeded holidays for a clear week, searching up to eight
 
 ---
 
-## #38 — The linter is not enforced `open`
+## #38 — The linter is not enforced `resolved`
 
-ESLint arrived on 2026-09-01 (PLAN 4.6), tuned to pass on the existing code. It is not in CI, and lint on `main` has since broken twice without anything noticing: a docs script added after the linter had no globals block, and the fix for that then linted the 1.5MB vendored Swagger bundle once `build:docs` had created it — clean on a fresh checkout, 27,101 errors after the first deploy. Both are fixed. The remaining gap is one CI step (PLAN 4.10).
+ESLint arrived on 2026-09-01 (PLAN 4.6), tuned to pass on the existing code. It is not in CI, and lint on `main` has since broken twice without anything noticing: a docs script added after the linter had no globals block, and the fix for that then linted the 1.5MB vendored Swagger bundle once `build:docs` had created it — clean on a fresh checkout, 27,101 errors after the first deploy. Both are fixed. The remaining gap was one CI step (PLAN 4.10), added 2026-09-18 beside Typecheck.
 
 ---
 
-## #39 — A leave type with history cannot simply be deleted `open — owner's call`
+## #39 — A leave type with history cannot simply be deleted `mechanism shipped — owner's call`
 
 There are no foreign keys, and `ENTRY_FROM` joins `leave_types` with an INNER JOIN. Deleting a type that has bookings raises no error anywhere; its bookings simply stop being returned by every entry query — the calendar, the feed, `/me`, the digest — while the rows sit in the table.
 
 Migration 0010 removed unpaid leave safely because it had never been booked, and it refuses to delete a type that has: the DELETE is guarded by `NOT EXISTS`, and the guard was tested against a database holding an unpaid booking.
 
 Personal leave was asked to go next, and it has one confirmed booking from 2026-08-21. The options are to retire the type — an `active` flag, hidden from the booking form, still rendered in history; recommended, and the mechanism any later removal will also need — to reassign that booking to another type first, which rewrites the record and draws a day from that type's balance, or to cancel it, which erases a day that was actually taken. PLAN 2.4.
+
+**2026-09-18:** retiring now exists (migration 0011, `/admin` → Leave types), along with add, edit, and delete-if-never-booked. Nothing was retired by the migration. Personal leave is still offered: retiring it is one untick and **Save**, and is left to the owner because it changes what everyone can book.
+
+---
+
+## #40 — A deploy overwrites Worker vars set outside the config file `open — owner action`
+
+`wrangler deploy` replaces every var on the Worker with the ones in the config it deploys. On 2026-09-13 a push keypair was set up: the private key as a secret, which a deploy leaves alone, and the public key as a var on the Worker, which it does not. `wrangler.local.jsonc` still held an older public key, so the next deploy — 2026-09-18, version `9dd99b38` — put that one back. Wrangler printed a warning that the local config "differs from the remote configuration", and the deploy went ahead anyway, as it always does. `VAPID_SUBJECT` went back to a different placeholder at the same time.
+
+Effect: the public key browsers subscribe with no longer matches the private key the Worker signs with, so push services would refuse every send. Nobody had subscribed, so nothing that worked stopped working.
+
+Fix, owner-side because it edits the real config: put the public key from version `b24169d9` into `VAPID_PUBLIC_KEY` in the main checkout's `wrangler.local.jsonc`, set a real `VAPID_SUBJECT`, and redeploy. `npx wrangler versions view b24169d9-666d-406d-aa23-f572c6e6ed07` shows the key. If there is any doubt the two halves match, `npm run vapid` for a fresh pair and set both — with no subscriptions there is nothing to invalidate.
+
+The lasting lesson is in the README: `wrangler.local.jsonc` is the only place a var may be changed, and a deploy's "differs from the remote configuration" warning is worth reading rather than scrolling past.

@@ -8,13 +8,13 @@ Updated: 2026-09-13
 
 ## Status
 
-Deployed and serving. Version `b24169d9-666d-406d-aa23-f572c6e6ed07`, deployed 2026-09-13 with no commits on `main` beyond `a58701e`, D1 `<database-id>` in APAC, behind Cloudflare Access on `<hostname>`. `/health` reports `accessConfigured: true`, `devAuthBypass: false`. Four commits on the review branch are not yet merged or deployed: the 09:00 weekday schedule, the `วันนี้ … ลา` push title, the cross-year edit fix (#36) and this documentation pass.
+Deployed and serving. Version `9dd99b38-a39d-45af-a1a0-2a00a0313384`, deployed 2026-09-18 with `npm run ship`, D1 `<database-id>` in APAC, behind Cloudflare Access on `<hostname>`. Production checks passed: the new version serves all traffic, `/health` and `/` both 302 to Access, production D1 answers, and migration 0011 is applied with every type still offered. That deploy also carried the 09:00 weekday schedule — production had still been on the old daily `0 1 * * *` cron until then.
 
-**In real use.** Ten active users, 20 confirmed bookings, 26 holidays, four leave types, 25 rows in the audit trail. That changes what matters here: the shared surfaces now have a real audience, so note visibility, the audit trail and the privacy rules on `/u/:email` are load-bearing rather than theoretical.
+**In real use.** Ten active users, 20 confirmed bookings, 26 holidays, four leave types, 31 rows in the audit trail. That changes what matters here: the shared surfaces now have a real audience, so note visibility, the audit trail and the privacy rules on `/u/:email` are load-bearing rather than theoretical.
 
 Two optional channels are still inert, both needing the owner rather than more code:
 
-1. **Browser notifications.** The code is finished and verified locally end to end, and the public key is already deployed — only `VAPID_PRIVATE_KEY` is missing. Until it is set the card is hidden on `/me`, `push_subscriptions` and `notification_runs` are both empty, and the 09:00 digest has sent nothing. This is also the only way to close ISSUES #23 and #31.
+1. **Browser notifications.** The code is finished and verified locally end to end, and the private key has been set since 2026-09-13 — but the 2026-09-18 deploy replaced the matching public key with an older one from `wrangler.local.jsonc`, so the pair no longer matches (ISSUES #40). Nobody had subscribed. Re-pairing is a config edit and a redeploy; then **Send a test** closes #23 and #31.
 2. **The LINE post.** Off by default behind `LINE_ENABLED`, and not wanted for now. Would need a Messaging API channel, an Access Bypass rule on `/line/webhook`, two secrets and the flag. Billed per group member (#2).
 
 ---
@@ -49,7 +49,7 @@ src/client/    progressive enhancement only (booking preview, dialogs, drag,
                ripple, push subscription)
 ```
 
-Ten migrations, applied in order; `migrations/0010` is the newest — it removed the unpaid leave type, and refuses to delete a type that has bookings (#39). Each is written to survive being replayed, because `db:init` runs the whole directory — the one exception is `0003`, which is why [ISSUES.md](ISSUES.md) #24 is open.
+Eleven migrations, applied in order; `migrations/0011` is the newest — it added `leave_types.active`, so a type with bookings can be retired rather than deleted (#39). Each is written to survive being replayed, because `db:init` runs the whole directory — the one exception is `0003`, which is why [ISSUES.md](ISSUES.md) #24 is open.
 
 The rule that keeps this honest: **the server computes and validates everything.** `days_total` is never read from a request; the booking form's live preview asks the server rather than reimplementing the rules; drag-to-move submits to the same endpoint the edit page uses, so one set of validations covers every path.
 
@@ -66,7 +66,7 @@ Two consequences worth remembering:
 
 | Method | Path | Notes |
 | --- | --- | --- |
-| GET | `/health` | Above the app's auth. Version, D1 ping, config flags. Still behind Access, so an anonymous monitor cannot reach it — see ISSUES.md #18. |
+| GET | `/health` | Above the app's auth. Version, D1 ping, config flags; 503 when D1 is down. Still behind Access — the uptime workflow needs a Bypass rule or a service token (ISSUES.md #18). |
 | POST | `/line/webhook` | Above auth. Signature-verified; only writes the group id. |
 | GET | `/` | Calendar. Month grid at every width — names on a laptop, dots on a phone. Upcoming list from 768px; day list below the grid on a phone. Month/year jump. |
 | GET | `/book?date=` | Booking page — the no-JS destination for calendar day cells. |
@@ -82,12 +82,13 @@ Two consequences worth remembering:
 | POST | `/me/name` · `/me/week-start` · `/me/lang` | Display name; Monday or Sunday first; English or Thai. |
 | POST | `/api/push/subscribe` · `/api/push/unsubscribe` | This browser's push subscription. Unsubscribe is scoped to its owner. |
 | POST | `/api/push/test` | Sends to the caller's own browsers, so a fresh setup can be proved without waiting for 09:00. |
-| GET | `/admin` | Users, quotas, holidays, LINE status and run log. Admin only. |
+| GET | `/admin` | Users, quotas, leave types, holidays, LINE status and run log. Admin only. |
 | POST | `/admin/quotas` · `/admin/quotas/bulk` | One person, or every active user at once. |
 | POST | `/admin/user` | Role and active flag. Last admin cannot demote itself. |
 | POST | `/admin/notify/preview` · `/admin/notify/send` | Dry-run and manual send, through the real digest job. |
 | POST | `/admin/holiday` · `/admin/holiday/delete` | |
 | POST | `/admin/holidays/import` | Paste a year's list. All-or-nothing: one bad line rejects the import. |
+| POST | `/admin/type` · `/admin/type/delete` | Add, edit or retire a leave type; delete only one never booked. |
 
 ---
 
@@ -99,7 +100,7 @@ Two consequences worth remembering:
 
 **Booking** — half-day granularity, live day-count preview from the server, overlap detection, quota enforcement, weekend and holiday rejection, a 90-day backdate window and a far-future guard. Edit and remove on every confirmed booking, past ones included. A refused booking comes back to the form holding what was typed, with the offending field marked; a drag-to-move does not, since it lands on a month view whose form nobody opened. A cancel or an edit can be undone for ten minutes, and the note survives either way — a cancel never deleted the row, and an edit's note is read from the row rather than from the audit snapshot, which records only whether a note existed.
 
-**Leave types** — annual, sick, planned medical, personal. Unpaid leave was seeded in 0002, never booked once, and removed in 0010. Planned medical is deliberately separate from sick leave: sick leave is unplanned and often entered after the fact, while a scheduled appointment or procedure is booked in advance like any other absence, and folding the two together would let planned treatment eat the allowance meant for being unexpectedly ill. It carries no allowance, so it is recorded but never refused — the only honest default without a stated policy.
+**Leave types** — annual, sick, planned medical, personal, all offered. Managed from `/admin` → Leave types: add, rename, recolour, set default days, reorder, retire, and delete one nobody has ever booked. A retired type leaves the booking form but keeps its history, and its existing bookings stay editable. Unpaid leave was seeded in 0002, never booked once, and removed in 0010. Planned medical is deliberately separate from sick leave: sick leave is unplanned and often entered after the fact, while a scheduled appointment or procedure is booked in advance like any other absence, and folding the two together would let planned treatment eat the allowance meant for being unexpectedly ill. It carries no allowance, so it is recorded but never refused — the only honest default without a stated policy.
 
 **Balances** — per leave type, per year. Planned medical draws no quota. Leave is charged to the year it starts in, and a year nobody has been seeded for yet falls back to each type's `default_days`, so next January can be booked in November even when this year's allowance is spent. Editing credits a booking's own days back before checking the balance — only within the same year, so a booking moved across New Year is checked against the year it lands in (#36).
 
@@ -137,22 +138,22 @@ Two consequences worth remembering:
 
 ## Verification
 
-**528 automated assertions**, all green. CI runs them on every push and pull request; lint is run by hand, not yet by CI (#38).
+**594 automated assertions**, all green. CI runs them, and lint, on every push and pull request.
 
 | Suite | Assertions | Covers |
 | --- | --- | --- |
 | `test-dates.mjs` | 114 | Bangkok boundary, half-days, weekends, holidays, month grids |
-| `test-leave.mjs` | 85 | Booking rules, balances and the per-year allowance fallback, calendar placement, note visibility, the rejected-booking draft codec |
+| `test-leave.mjs` | 115 | Booking rules, balances and the per-year allowance fallback, retired types, the admin leave-type form, calendar placement, note visibility, the rejected-booking draft codec |
 | `test-line.mjs` | 42 | Webhook signature, group-id extraction, daily and week-ahead digest text |
 | `test-push.mjs` | 29 | RFC 8291 encryption against the spec's worked example, VAPID token and signature, the `วันนี้ … ลา` title |
 | `test-holidays.mjs` | 30 | Parsing a pasted holiday list, and its bounds |
 | `test-i18n.mjs` | 27 | Lookup, placeholders, plurals, and the catalogue's own health |
-| `smoke.mjs` | 201 | The HTTP layer — see below |
-| `check-openapi.mjs` | — | Each of the 29 routes is either documented in `openapi.yaml` or deliberately listed as not |
+| `smoke.mjs` | 237 | The HTTP layer — see below |
+| `check-openapi.mjs` | — | Each of the 31 routes is either documented in `openapi.yaml` or deliberately listed as not |
 
-The smoke suite boots a real worker against a scratch database and exercises what pure functions cannot reach: the CSRF guard, ownership checks on edit and cancel, booking rules over real requests, the open-redirect guards on `returnTo` **and on the `Referer` header**, note visibility across two identities, the audit trail's contents, the security headers, digest decisions, the webhook signature, push subscription ownership, admin authorisation, undo and its re-validation, next-year and cross-year quota, and a LINE channel switched off by its flag.
+The smoke suite boots a real worker against a scratch database and exercises what pure functions cannot reach: the CSRF guard, ownership checks on edit and cancel, booking rules over real requests, the open-redirect guards on `returnTo` **and on the `Referer` header**, note visibility across two identities, the audit trail's contents, the security headers, digest decisions, the webhook signature, push subscription ownership, admin authorisation, undo and its re-validation, next-year and cross-year quota, a LINE channel switched off by its flag, adding, retiring and deleting leave types, and history pruning through the real scheduled handler.
 
-It is built against its own worst failure mode — passing while testing nothing. The server is health-checked before any assertion; each boot proves it is signed in as the expected identity; a minimum assertion count fails the run if a section throws early. Confirmed by sabotage: removing the ownership check turns 5 assertions red, restoring the leaked email field turns 1 red, and pointing a boot at the wrong identity fails the harness. Its Mon–Fri fixture picks a week with no seeded public holiday, after it drifted onto one and failed for a reason that was the calendar's rather than the code's (#37).
+It is built against its own worst failure mode — passing while testing nothing. The server is health-checked before any assertion; each boot proves it is signed in as the expected identity; and every assertion written in the file must actually run, so a section that throws early fails the run with the missed lines named. Confirmed by sabotage: removing the ownership check turns 5 assertions red, restoring the leaked email field turns 1 red, and pointing a boot at the wrong identity fails the harness. Its Mon–Fri fixture picks a week with no seeded public holiday, after it drifted onto one and failed for a reason that was the calendar's rather than the code's (#37).
 
 **CI** also builds the client bundle and the Worker (`--dry-run`, no credentials), and fails if `.dev.vars`, `wrangler.local.jsonc` or the built bundle are ever tracked, or if a credential-shaped string is committed. It needs no secrets, so it runs on pull requests from forks.
 
@@ -162,14 +163,14 @@ It is built against its own worst failure mode — passing while testing nothing
 
 ## Open items
 
-**No known bugs.** 528 assertions are green and `npm audit` is clean. The 2026-08-25 audit and the 2026-09-13 review both found and fixed what they turned up — the second a quota overdraw when moving a booking across New Year (#36) — and each fix is covered by a test or, where a test could not reach it, recorded in [ISSUES.md](ISSUES.md).
+**One known regression, in configuration rather than code:** the push keypair is mismatched in production (#40). 594 assertions are green and `npm audit` is clean. The 2026-08-25 audit and the 2026-09-13 review both found and fixed what they turned up — the second a quota overdraw when moving a booking across New Year (#36) — and each fix is covered by a test or, where a test could not reach it, recorded in [ISSUES.md](ISSUES.md).
 
 What follows is decisions, unfinished configuration, accepted trade-offs and debt — not defects.
 
 ### Needs a decision
 
-- **Personal leave: retire or delete?** (#39). Asked to be removed, but it has a confirmed booking, and a delete would make that day silently vanish from every entry query. The recommendation is to retire it with an `active` flag.
-- **Nothing monitors the deployment** ([ISSUES.md](ISSUES.md) #18). `/health` is above the app's own auth but still behind Access, so an anonymous check gets a 302 to the login page. Needs an Access Bypass rule on `/health`, which exposes only a version string, a D1 ping and two booleans.
+- **Retire Personal leave?** (#39). Asked to be removed, but it has a confirmed booking. Retiring is now one untick in `/admin` → Leave types; left to the owner because it changes what everyone can book.
+- **How the uptime monitor gets past Access** ([ISSUES.md](ISSUES.md) #18). The workflow is built; it needs `HEALTH_URL`, and either a Bypass rule on `/health` or a service token.
 - **LINE cost is unverified** (#2). Billing is per group member: a 20-person group posted to daily is ~600 messages a month, and the free allowance varies by country. Check the allowance in the OA Manager before switching it on. Browser notifications cost nothing and are already built, which may make this moot.
 - **The zone rewrites security headers** (#13). Confirmed in production on 2026-08-26: the Worker sends `X-Frame-Options: DENY` and the edge delivers `SAMEORIGIN`. Mitigated — the CSP's `frame-ancestors 'none'` arrives intact and browsers prefer it — but it means the zone can override anything the Worker sets. Owner's call whether to change the zone rule.
 - **Carry-over of unused leave** into the next year. An explicit v1 non-goal, worth reconfirming before January, since the rule would affect balances retroactively.
@@ -185,7 +186,7 @@ What follows is decisions, unfinished configuration, accepted trade-offs and deb
 
 ### Configuration outstanding
 
-- **Browser notifications are not switched on.** The public key is deployed; what remains is `wrangler secret put VAPID_PRIVATE_KEY` (with a fresh pair if the private half is not to hand), a real `VAPID_SUBJECT`, and a redeploy. Then `/me` → **Send a test**, which is the only way to close #23 and #31.
+- **Push keys need re-pairing** (#40). Put the public key from version `b24169d9` into `wrangler.local.jsonc` (or generate a fresh pair and set both), set a real `VAPID_SUBJECT`, redeploy. Then `/me` → **Send a test**, which is the only way to close #23 and #31.
 - **LINE is switched off**, deliberately, by `LINE_ENABLED`. Turning it on needs the channel, the Access Bypass rule on `/line/webhook`, the two secrets, and the flag.
 - **Thai lunar holidays need entering each year** (#10). Only fixed-date holidays are seeded; the paste-a-list importer on `/admin` makes it a one-minute job, but nothing *fetches* the announcement. A yearly reminder would close it.
 
@@ -193,15 +194,12 @@ What follows is decisions, unfinished configuration, accepted trade-offs and deb
 
 Nothing here is urgent; all of it is confirmed present. Owners and ordering in [PLAN.md](PLAN.md) section 4.
 
-- Lint is not enforced in CI (#38), and has broken on `main` twice already.
 - `/admin` → Preview shows the digest body, not the push title a phone actually receives (PLAN 4.11).
-- Nothing prunes `leave_audit` or `notification_runs` (#26). Years of headroom at this scale, but the audit trail is the one to think about before deleting.
 - `npm run db:init` cannot be run twice (#24): migration `0003` is a bare `ADD COLUMN`, so a real failure is indistinguishable from a no-op.
-- Leave types can only be added or changed by SQL. There is no admin UI for them, which is why `0009` and `0010` had to be migrations (PLAN 5.9).
-- The smoke assertion floor is still bumped by hand (PLAN 4.9).
+- A deploy overwrites Worker vars without stopping (#40); `ship` could refuse on drift instead (PLAN 4.13).
 - Deploy is manual, by choice. Deploy-on-merge would put a Cloudflare API token and the infrastructure ids into a public repo's settings.
 
-Dependencies are clean: `npm audit` reports zero vulnerabilities. Hono is pinned `^4.6.14` against a current 4.13.2 — hygiene, not risk.
+Dependencies are clean: `npm audit` reports zero vulnerabilities after bumping Hono to `^4.13.8` and Wrangler to `^4.135.0` — the latter clears a HIGH advisory in its bundled `sharp`.
 
 ---
 
@@ -209,14 +207,13 @@ Dependencies are clean: `npm audit` reports zero vulnerabilities. Hono is pinned
 
 [PLAN.md](PLAN.md) is the full backlog, with an owner and a reason per item. The short version:
 
-1. **Owner** — `wrangler secret put VAPID_PRIVATE_KEY`, then **Send a test**. The last step between finished code and anyone's phone, and the only way to close #23 and #31.
-2. **Owner** — decide Personal leave (#39) before anyone books another one.
-3. **Owner** — an Access Bypass rule for `/health` (#18). It carries ten people's leave now.
-4. Lint in CI (#38) — one step.
-5. **Pruning** for `leave_audit` and `notification_runs` (#26), with the audit trail's retention decided deliberately.
-6. LINE (#2), only if browser notifications turn out not to be enough.
+1. **Owner** — re-pair the push keys (#40), then **Send a test**. Closes #23 and #31.
+2. **Owner** — `HEALTH_URL` plus a Bypass rule or service token, so the uptime monitor starts (#18).
+3. **Owner** — retire Personal leave from `/admin`, if still wanted (#39).
+4. Make `ship` refuse on config drift (PLAN 4.13).
+5. LINE (#2), only if browser notifications turn out not to be enough.
 
-Features — iCal, CSV export, team grouping, coverage scoped to a team, an admin UI for leave types — are in PLAN.md section 5. None are needed for the app to do its job.
+Features — iCal, CSV export, team grouping, coverage scoped to a team — are in PLAN.md section 5. None are needed for the app to do its job.
 
 ---
 
@@ -240,10 +237,14 @@ Features — iCal, CSV export, team grouping, coverage scoped to a team, an admi
 - LINE is off unless `LINE_ENABLED` is `"1"`, and an absent variable reads as off: LINE posts into a company group and bills per member, so a missing variable must never be what starts it sending. Kept separate from "configured", because "no token" and "switched off" send an admin looking in different places.
 - Leave is charged to the year it starts in, for the balance check as well as the ledger. A year with no quota rows uses each type's `default_days` at read time rather than seeding rows on the booking path; an explicit row, including a deliberate zero, wins.
 - Undo is a ten-minute offer carried in the flash cookie and trusted for nothing: the route re-authorises and finds the audit row itself. A note is never rebuilt from the audit snapshot, which records only whether one existed.
+- Leave types are retired, not deleted, once anyone has booked them: an inner join would otherwise hide their history. A type's code is fixed once added, because it is the JSON feed's `type`; its labels are free to change.
+- History is kept for a stated period rather than forever or by accident: three years of audit trail, 90 days of notification log.
+- Releases run in one order — local checks, deploy, production checks, then docs, commit and push — and `npm run ship` does the first three. — owner
 - The daily digest runs at 09:00, Mon–Fri, and stays silent on days nobody is away. Its push title is Thai only and names people rather than counting them — a lock screen gives it one line, and the names are the message.
 
 ## Change log
 
+- **2026-09-18** — Leave types managed from `/admin`: add, edit, retire (migration 0011) and delete-if-never-booked. History pruned by the cron. Lint in CI. `npm run ship` for the release order. An uptime workflow for `/health`, which now answers 503 when D1 is down. The smoke suite's hand-kept assertion floor replaced by a check that every assertion line ran. Hono and Wrangler bumped. Stale `08:00` wording in the push card and LINE help corrected to 09:00, Mon–Fri. The deploy put an older push public key back over the one set on 2026-09-13 (#40).
 - **2026-09-13** — Review and documentation cross-check (#36–#39). A second cross-year quota bug found and fixed: an edit credited a booking's own days back without checking they belonged to the year being checked, so moving a booking across New Year overdrew the balance. Docs brought back in line with the code — 29 routes, ten migrations, the 09:00 weekday schedule, the LINE flag, undo — and PLAN's finished debt items closed.
 - **2026-09-13** — The daily digest moves to 09:00 Mon–Fri, and the push title names who is away: `วันนี้ Mai, Nok ลา`.
 - **2026-09-10** — Unpaid leave removed (migration 0010) after confirming it had never been booked. Personal leave, asked for next, turned out to have a booking and is paused pending a decision (#39).
