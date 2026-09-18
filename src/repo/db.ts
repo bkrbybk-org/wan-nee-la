@@ -7,6 +7,7 @@
  */
 
 import { addDays, bangkokNow } from '../domain/dates.ts';
+import type { LeaveTypeInput } from '../domain/leaveTypes.ts';
 import { computeBalances } from '../domain/leave.ts';
 import type { Balance, Holiday, LeaveEntry, LeaveRequest, LeaveType, Quota, User } from '../types.ts';
 
@@ -115,6 +116,65 @@ export async function setActive(db: D1Database, email: string, active: boolean):
 export async function listLeaveTypes(db: D1Database): Promise<LeaveType[]> {
 	const res = await db.prepare('SELECT * FROM leave_types ORDER BY sort_order, id').all<LeaveType>();
 	return res.results ?? [];
+}
+
+/**
+ * Bookings per leave type, in any status. Cancelled ones count: the audit trail
+ * and undo both refer to them, and they are just as invisible as confirmed ones
+ * once their type is gone. This is what decides whether a type may be deleted.
+ */
+export async function leaveTypeUsage(db: D1Database): Promise<Map<number, number>> {
+	const res = await db
+		.prepare('SELECT leave_type_id AS id, COUNT(*) AS n FROM leave_requests GROUP BY leave_type_id')
+		.all<{ id: number; n: number }>();
+	return new Map((res.results ?? []).map((r) => [r.id, r.n]));
+}
+
+/** Add a leave type. Returns false when the code is already taken. */
+export async function createLeaveType(db: D1Database, t: LeaveTypeInput & { code: string }): Promise<boolean> {
+	const res = await db
+		.prepare(
+			`INSERT OR IGNORE INTO leave_types (code, label_th, label_en, color, default_days, counts_quota, sort_order, active)
+			 VALUES (?, ?, ?, ?, ?, ?, ?, 1)`,
+		)
+		.bind(t.code, t.label_th, t.label_en, t.color, t.default_days, t.counts_quota, t.sort_order)
+		.run();
+	return (res.meta.changes ?? 0) > 0;
+}
+
+/** Everything but the code, which is fixed once a type exists — see src/domain/leaveTypes.ts. */
+export async function updateLeaveType(db: D1Database, id: number, t: LeaveTypeInput): Promise<boolean> {
+	const res = await db
+		.prepare(
+			`UPDATE leave_types
+			 SET label_th = ?, label_en = ?, color = ?, default_days = ?, counts_quota = ?, sort_order = ?, active = ?
+			 WHERE id = ?`,
+		)
+		.bind(t.label_th, t.label_en, t.color, t.default_days, t.counts_quota, t.sort_order, t.active, id)
+		.run();
+	return (res.meta.changes ?? 0) > 0;
+}
+
+/**
+ * Delete a leave type that has never been booked, with its quota rows.
+ *
+ * The usage guard is in the statement itself, not only in the route that
+ * checked it a moment earlier: someone could book the type in between, and
+ * then this would hide their booking (the same reasoning as migration 0010).
+ * The quota delete runs in the same batch and is scoped to "no such type", so
+ * when the guard refuses, it matches nothing either.
+ */
+export async function deleteUnusedLeaveType(db: D1Database, id: number): Promise<boolean> {
+	const [del] = await db.batch([
+		db
+			.prepare(
+				`DELETE FROM leave_types
+				 WHERE id = ? AND NOT EXISTS (SELECT 1 FROM leave_requests WHERE leave_type_id = leave_types.id)`,
+			)
+			.bind(id),
+		db.prepare('DELETE FROM quotas WHERE leave_type_id = ? AND leave_type_id NOT IN (SELECT id FROM leave_types)').bind(id),
+	]);
+	return (del.meta.changes ?? 0) > 0;
 }
 
 export async function listHolidays(db: D1Database, from: string, to: string): Promise<Holiday[]> {
@@ -734,6 +794,40 @@ export async function recentNotifications(db: D1Database, limit = 14): Promise<N
 		.bind(limit)
 		.all<NotificationRun>();
 	return res.results ?? [];
+}
+
+/**
+ * How long each kind of history is kept. Both tables were append-only, so they
+ * grew for as long as the app ran (docs/ISSUES.md #26).
+ *
+ * The notification log answers "did this morning's post go out?" and /admin
+ * shows its last 14 rows; three months is far more than that ever needs, and it
+ * is never a claim that matters again once its day is past.
+ *
+ * The audit trail is a record of who changed whose leave, and it is kept much
+ * longer on purpose: three full years covers the year being worked in, the two
+ * before it, and any question about a balance that crossed New Year. Anything
+ * the app can still change is inside that window by a wide margin — backdating
+ * stops at 90 days and undo at 10 minutes.
+ */
+export const NOTIFICATION_KEEP_DAYS = 90;
+export const AUDIT_KEEP_YEARS = 3;
+
+/**
+ * Drop history older than the retention above. Returns how many rows went, for
+ * the cron's log line.
+ *
+ * Cut-offs are Bangkok dates, and both columns start with one, so a plain string
+ * comparison is a date comparison. Rows *on* the cut-off day are kept.
+ */
+export async function pruneHistory(db: D1Database, today: string): Promise<{ notifications: number; audit: number }> {
+	const runsBefore = addDays(today, -NOTIFICATION_KEEP_DAYS);
+	const auditBefore = `${Number(today.slice(0, 4)) - AUDIT_KEEP_YEARS}${today.slice(4)}`;
+	const [runs, audit] = await db.batch([
+		db.prepare('DELETE FROM notification_runs WHERE date < ?').bind(runsBefore),
+		db.prepare('DELETE FROM leave_audit WHERE at < ?').bind(auditBefore),
+	]);
+	return { notifications: runs.meta.changes ?? 0, audit: audit.meta.changes ?? 0 };
 }
 
 // ---------------------------------------------------------------------------

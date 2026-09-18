@@ -82,7 +82,9 @@ export function BookingForm({ types, today, compact, entry, defaultDate, errorFi
 			})}
 		>
 			<SelectField id={`leaveTypeId-${uid}`} name="leaveTypeId" label={t('book.type')} required invalid={bad('leaveTypeId')}>
-				{types.map((type) => (
+				{/* A retired type is offered only to the booking that already has it,
+				    so editing its dates never forces a change of leave type. */}
+				{types.filter((type) => type.active || type.id === entry?.leave_type_id).map((type) => (
 					<option value={String(type.id)} selected={typeId === undefined ? undefined : type.id === typeId}>
 						{lang === 'th' ? type.label_th : type.label_en} · {lang === 'th' ? type.label_en : type.label_th}
 					</option>

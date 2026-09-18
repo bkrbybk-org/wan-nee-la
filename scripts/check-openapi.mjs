@@ -52,6 +52,8 @@ const NOT_JSON = new Set([
 	'POST /admin/holidays/import',
 	'POST /admin/holiday',
 	'POST /admin/holiday/delete',
+	'POST /admin/type',
+	'POST /admin/type/delete',
 ]);
 
 // `app.get('/path'` / `app.post('/path'`, which is how every route is declared.

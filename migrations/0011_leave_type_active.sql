@@ -1,0 +1,17 @@
+-- Retire a leave type instead of deleting it.
+--
+-- 0010 showed the problem: a type can only be deleted while nobody has ever
+-- booked it, because `ENTRY_FROM` in src/repo/db.ts inner-joins leave_types and
+-- a booking whose type is gone silently disappears from every surface. Personal
+-- leave was asked to be removed with one confirmed booking against it, and the
+-- guard in 0010 was the only thing standing between that booking and nowhere.
+--
+-- `active = 0` is the answer to "stop offering this" that keeps history whole:
+-- the type drops out of the booking form and the admin quota table, its past
+-- bookings still render with their name and colour, and anyone who already
+-- holds one can still edit or cancel it. Balances show it only in a year it was
+-- actually used.
+--
+-- Nothing is retired here. Which type to retire is a policy decision, made from
+-- /admin → Leave types.
+ALTER TABLE leave_types ADD COLUMN active INTEGER NOT NULL DEFAULT 1;

@@ -27,6 +27,7 @@ import {
 	type BookingInput,
 } from './domain/leave.ts';
 import { parseHolidayList } from './domain/holidays.ts';
+import { parseLeaveTypeForm } from './domain/leaveTypes.ts';
 import { isLang, t, tm, toLang, type Lang, type Message, type StringKey } from './i18n/strings.ts';
 import * as db from './repo/db.ts';
 import { AdminPage } from './views/admin.tsx';
@@ -145,6 +146,8 @@ app.get('/health', async (c) => {
 		dbOk = false;
 	}
 	const meta = c.env.CF_VERSION_METADATA;
+	// 503 when D1 is unreachable, so an uptime monitor that only looks at the
+	// status code still notices. The body is the same either way.
 	return c.json({
 		ok: dbOk,
 		db: dbOk,
@@ -154,7 +157,7 @@ app.get('/health', async (c) => {
 		accessConfigured: Boolean(c.env.ACCESS_TEAM_DOMAIN && c.env.ACCESS_AUD),
 		// Surfaced so a production check can catch the dev bypass being left on.
 		devAuthBypass: c.env.DEV_AUTH_BYPASS === '1',
-	});
+	}, dbOk ? 200 : 503);
 });
 
 /**
@@ -533,6 +536,9 @@ async function buildBookingContext(
 	parsed: { startDate: string; endDate: string },
 	today: string,
 	replacing?: LeaveRequest,
+	// The type this booking already had, which stays bookable even if retired.
+	// An edit keeps the row's type; an undo keeps the type it is restoring.
+	keepTypeId: number | undefined = replacing?.leave_type_id,
 ) {
 	// The year a booking draws from is the year it *starts* in, not the year it
 	// happens to be booked in. `usedByType` has always attributed it that way and
@@ -573,6 +579,7 @@ async function buildBookingContext(
 		types,
 		remaining,
 		today,
+		keepTypeId,
 	};
 }
 
@@ -822,6 +829,7 @@ app.post('/api/leave/:id/undo', async (c) => {
 		restoring,
 		today,
 		last.action === 'edited' ? row : undefined,
+		restoring.leaveTypeId,
 	);
 	const check = validateBooking(restoring, ctx);
 	if (!check.ok) return redirectWithFlash(back, 'err', sayMessage(c, check.error));
@@ -1019,7 +1027,7 @@ app.post('/me/name', async (c) => {
 // ---------------------------------------------------------------------------
 
 /**
- * Register this browser for the 08:00 digest.
+ * Register this browser for the 09:00 digest.
  *
  * The subscription is owned by whoever is signed in now. That matters on a
  * shared machine: the browser hands back the same endpoint after a different
@@ -1059,7 +1067,7 @@ app.post('/api/push/unsubscribe', async (c) => {
  * Send a test notification to the caller's own browsers.
  *
  * Without this the only way to find out whether push works is to wait until
- * 08:00 the next working day, which is how a broken setup stays broken.
+ * 09:00 the next working day, which is how a broken setup stays broken.
  */
 app.post('/api/push/test', async (c) => {
 	const user = c.get('user');
@@ -1070,7 +1078,7 @@ app.post('/api/push/test', async (c) => {
 
 	const payload = JSON.stringify({
 		title: 'wan-nee-la',
-		body: 'Test notification. The daily digest will look like this, at 08:00.',
+		body: 'Test notification. The daily digest will look like this, at 09:00.',
 		url: '/me',
 		tag: 'wnl-test',
 	});
@@ -1105,9 +1113,10 @@ app.get('/admin', async (c) => {
 	const today = c.get('today');
 	const year = clampInt(c.req.query('y'), Number(today.slice(0, 4)), 2000, 2100);
 
-	const [users, types, holidays, groupId, log, audit] = await Promise.all([
+	const [users, types, usage, holidays, groupId, log, audit] = await Promise.all([
 		db.listUsers(c.env.DB),
 		leaveTypesOf(c),
+		db.leaveTypeUsage(c.env.DB),
 		db.listHolidays(c.env.DB, `${year}-01-01`, `${year + 1}-12-31`),
 		resolveGroupId(c.env),
 		db.recentNotifications(c.env.DB),
@@ -1124,6 +1133,7 @@ app.get('/admin', async (c) => {
 			year={year}
 			users={users}
 			types={types}
+			usage={usage}
 			quotas={quotas}
 			holidays={holidays}
 			audit={audit}
@@ -1173,6 +1183,59 @@ app.post('/admin/quotas/bulk', async (c) => {
 	return redirectWithFlash(`/admin?y=${year}`, 'ok', say(c, 'flash.quotasBulk', { count, n: count }));
 });
 
+/**
+ * Add a leave type, or edit one. One route for both, told apart by `id`: the
+ * form and the rules are the same apart from the code, which only a new type
+ * takes (src/domain/leaveTypes.ts).
+ */
+app.post('/admin/type', async (c) => {
+	const form = (await c.req.parseBody()) as Record<string, unknown>;
+	const rawId = String(form.id ?? '').trim();
+	const creating = rawId === '';
+	const id = Number(rawId);
+	if (!creating && !Number.isInteger(id)) return redirectWithFlash('/admin', 'err', say(c, 'flash.badRequest'));
+
+	const parsed = parseLeaveTypeForm(form, creating);
+	if (!parsed.ok) return redirectWithFlash('/admin#types', 'err', sayMessage(c, parsed.error));
+	const t = parsed.value;
+	const label = t.label_en;
+
+	if (creating) {
+		const code = t.code ?? '';
+		const added = await db.createLeaveType(c.env.DB, { ...t, code });
+		return added
+			? redirectWithFlash('/admin#types', 'ok', say(c, 'flash.typeAdded', { label }))
+			: redirectWithFlash('/admin#types', 'err', say(c, 'flash.typeCodeTaken', { code }));
+	}
+
+	const types = await leaveTypesOf(c);
+	if (!types.some((x) => x.id === id)) return redirectWithFlash('/admin#types', 'err', say(c, 'flash.unknownType'));
+	// Retiring the last offered type would leave a booking form with nothing to pick.
+	if (!t.active && !types.some((x) => x.id !== id && x.active)) {
+		return redirectWithFlash('/admin#types', 'err', say(c, 'flash.typeLastActive'));
+	}
+
+	await db.updateLeaveType(c.env.DB, id, t);
+	return redirectWithFlash('/admin#types', 'ok', say(c, 'flash.typeSaved', { label }));
+});
+
+/** Delete a leave type — only ever one nobody has booked. Anything else is retired instead. */
+app.post('/admin/type/delete', async (c) => {
+	const form = await c.req.parseBody();
+	const id = Number(form.id);
+	const type = (await leaveTypesOf(c)).find((x) => x.id === id);
+	if (!type) return redirectWithFlash('/admin#types', 'err', say(c, 'flash.unknownType'));
+	const label = type.label_en;
+	if (type.active && !(await leaveTypesOf(c)).some((x) => x.id !== id && x.active)) {
+		return redirectWithFlash('/admin#types', 'err', say(c, 'flash.typeLastActive'));
+	}
+
+	const deleted = await db.deleteUnusedLeaveType(c.env.DB, id);
+	return deleted
+		? redirectWithFlash('/admin#types', 'ok', say(c, 'flash.typeDeleted', { label }))
+		: redirectWithFlash('/admin#types', 'err', say(c, 'flash.typeInUse', { label }));
+});
+
 app.post('/admin/user', async (c) => {
 	const actor = c.get('user');
 	const form = await c.req.parseBody();
@@ -1198,7 +1261,7 @@ app.post('/admin/user', async (c) => {
 
 /**
  * Preview the digest without sending. Runs the real job in dry-run mode, so
- * what an admin sees here is produced by the same code that posts at 08:00.
+ * what an admin sees here is produced by the same code that posts at 09:00.
  */
 app.post('/admin/notify/preview', async (c) => {
 	const form = await c.req.parseBody();
@@ -1552,7 +1615,7 @@ export default {
 	fetch: app.fetch,
 
 	/**
-	 * 08:00 Asia/Bangkok (01:00 UTC — Thailand has no DST).
+	 * 09:00 Asia/Bangkok, Monday to Friday (02:00 UTC — Thailand has no DST).
 	 *
 	 * Never throws: a rejected scheduled handler is retried by the platform, and
 	 * a retry that got as far as sending would post a second message to the
@@ -1576,6 +1639,17 @@ export default {
 					status: 'error',
 					error: err instanceof Error ? err.message : String(err),
 				}),
+			);
+		}
+
+		// After the posts and in its own try, so housekeeping can neither delay
+		// nor block the one thing this handler exists to deliver.
+		try {
+			const pruned = await db.pruneHistory(env.DB, bangkokToday());
+			console.log(JSON.stringify({ job: 'prune-history', ...pruned }));
+		} catch (err) {
+			console.log(
+				JSON.stringify({ job: 'prune-history', status: 'error', error: err instanceof Error ? err.message : String(err) }),
 			);
 		}
 	},

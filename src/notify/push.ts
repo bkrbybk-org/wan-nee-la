@@ -80,7 +80,7 @@ function concat(...parts: Uint8Array[]): Uint8Array {
  * matter beyond the obvious: the endpoint must be an https URL, because it is
  * fetched later and a `file:` or `http:` endpoint is either an attack or a
  * mistake; and the keys must be exactly the sizes P-256 and RFC 8291 define,
- * since a wrong-sized key fails deep inside WebCrypto at 08:00 rather than here.
+ * since a wrong-sized key fails deep inside WebCrypto at 09:00 rather than here.
  */
 export function parseSubscription(input: unknown): PushSubscription | null {
 	if (!input || typeof input !== 'object') return null;

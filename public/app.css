@@ -1567,3 +1567,15 @@ form.inline:has(.tf-support) { margin-bottom: 28px; }
 /* Prev/next year links on /me and /u/:email. */
 .year-nav { display: flex; align-items: center; gap: 4px; margin-left: auto; }
 .year-nav-current { font-size: 14px; font-weight: 500; min-width: 4ch; text-align: center; }
+
+/* Admin → Leave types. One row per type, each its own form. */
+.type-list { list-style: none; padding: 0; margin: 0 0 12px; }
+.type-list li { display: flex; gap: 8px; align-items: flex-start; padding: 12px 0; }
+.type-list li + li { border-top: 1px solid var(--md-outline-variant); }
+.type-list li.inactive .type-head { opacity: 0.7; }
+.type-form { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; flex: 1; min-width: 0; }
+.type-form .tf { margin-bottom: 0; flex: 1 1 160px; }
+.type-form .quota-cell { flex: 0 0 124px; }
+.type-head { display: flex; gap: 8px; align-items: center; flex: 1 1 100%; }
+.color-field { display: flex; gap: 8px; align-items: center; }
+.color-field input { width: 44px; height: 36px; padding: 0; border: 1px solid var(--md-outline-variant); border-radius: 8px; background: none; }

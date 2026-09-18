@@ -1,7 +1,7 @@
 /**
- * The daily digest job, shared by the 08:00 cron and the admin test button so
+ * The daily digest job, shared by the 09:00 cron and the admin test button so
  * that what an admin previews is produced by exactly the code that posts at
- * 08:00 — a separate "test" path would drift and stop being a test.
+ * 09:00 — a separate "test" path would drift and stop being a test.
  */
 
 import { addDays, bangkokToday, dayOfWeek, isWeekend } from '../domain/dates.ts';

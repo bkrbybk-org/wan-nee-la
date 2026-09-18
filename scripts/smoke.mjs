@@ -14,9 +14,13 @@
  *  - The server is booted by this script and health-checked before a single
  *    assertion runs. If it does not come up, the run fails loudly with the
  *    server log rather than reporting zero failures.
- *  - A minimum assertion count is enforced at the end. If a section throws
- *    early, the count falls short and the run fails even though nothing
- *    explicitly reported a failure.
+ *  - Every assertion written in this file has to actually run. Each `check`
+ *    records the lines of this file on its call stack, and at the end every
+ *    line that calls `check(` or `eq(` must be among them. If a section throws
+ *    early, the assertions after it never run and are named as missing, even
+ *    though nothing explicitly reported a failure. This replaced a hand-kept
+ *    minimum count, which had to be bumped every time a test was added and only
+ *    ever said how many went missing, never which.
  *  - No secrets and no outbound network. It runs against the committed
  *    template config with vars injected on the command line, so it behaves
  *    identically on a laptop and on a CI runner with no .dev.vars. The digest
@@ -29,7 +33,8 @@
 
 import { spawn, spawnSync } from 'node:child_process';
 import { createHmac } from 'node:crypto';
-import { rmSync, mkdtempSync, readdirSync } from 'node:fs';
+import { rmSync, mkdtempSync, readdirSync, readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -43,14 +48,18 @@ const ADMIN = 'admin@example.com';
 const OTHER = 'other@example.com';
 const STATE = mkdtempSync(join(tmpdir(), 'wnl-smoke-'));
 
-/** Assertions that must run for the suite to be considered complete. */
-const MIN_ASSERTIONS = 195;
-
 let pass = 0;
 let fail = 0;
 const failures = [];
 
+// Assertion sites that have run, as line numbers in this file. Deep enough to
+// reach the call site through a helper or two.
+const SELF = fileURLToPath(import.meta.url);
+const ran = new Set();
+Error.stackTraceLimit = 50;
+
 function check(name, ok, detail = '') {
+	for (const m of new Error().stack.matchAll(/smoke\.mjs:(\d+):\d+/g)) ran.add(Number(m[1]));
 	if (ok) {
 		pass++;
 		console.log(`PASS: ${name}`);
@@ -756,6 +765,10 @@ async function main() {
 	eq('second user cannot reach an admin action', (await post('/admin/quotas/bulk', { year: '2027', leaveTypeId: '1', days: '1' })).status, 403);
 	eq('second user cannot import holidays', (await post('/admin/holidays/import', { list: '2030-01-01 Sneaky' })).status, 403);
 	eq('and nothing was imported', d1Rows("SELECT COUNT(*) AS n FROM holidays WHERE date LIKE '2030-%'")[0]?.n, 0);
+	eq('second user cannot add a leave type', (await post('/admin/type', { code: 'sneaky', label_th: 'x', label_en: 'x', color: '#000000', default_days: '1' })).status, 403);
+	eq('second user cannot retire one', (await post('/admin/type', { id: '1', label_th: 'x', label_en: 'x', color: '#000000', default_days: '1' })).status, 403);
+	eq('second user cannot delete one', (await post('/admin/type/delete', { id: '5' })).status, 403);
+	eq('and every type is untouched', d1Rows("SELECT COUNT(*) AS n FROM leave_types WHERE code = 'sneaky' OR active = 0 OR label_en = 'x'")[0]?.n, 0);
 
 	// --- per-person page: schedule is shared, balances are not ---------------
 	const otherViewsAdmin = await (await fetch(`${BASE}/u/${encodeURIComponent(ADMIN)}`)).text();
@@ -1027,6 +1040,82 @@ async function main() {
 	eq('holiday removed', flashOf(res)?.kind, 'ok');
 	eq('and it is gone', d1Rows("SELECT COUNT(*) AS n FROM holidays WHERE date = '2031-03-04'")[0]?.n, 0);
 
+	// --- leave types: add, retire, delete (0011) -----------------------------
+	//
+	// Retiring is the whole point: a type with bookings cannot be deleted
+	// without hiding them, so it has to be possible to stop offering it while
+	// its history stays intact and editable.
+	const typeFields = (o = {}) => ({ label_th: 'ลาทดสอบ', label_en: 'Smoke type', color: '#0891B2', default_days: '0', sort_order: '9', ...o });
+	res = await post('/admin/type', typeFields({ code: 'smoketype' }));
+	eq('a leave type can be added', flashOf(res)?.kind, 'ok');
+	const smokeType = d1Rows("SELECT id, active, color FROM leave_types WHERE code = 'smoketype'")[0];
+	eq('and it is offered', smokeType?.active, 1);
+	eq('and its colour is stored lowercase', smokeType?.color, '#0891b2');
+	res = await post('/admin/type', typeFields({ code: 'smoketype' }));
+	check('a taken code is refused', /already used/i.test(flashOf(res)?.message ?? ''), flashOf(res)?.message);
+	res = await post('/admin/type', typeFields({ code: 'badcolour', color: 'red' }));
+	eq('a bad colour is refused', flashOf(res)?.kind, 'err');
+	eq('and nothing was added for it', d1Rows("SELECT COUNT(*) AS n FROM leave_types WHERE code = 'badcolour'")[0]?.n, 0);
+	check('the new type is on the booking form', (await (await fetch(`${BASE}/book`)).text()).includes('Smoke type'), 'not offered');
+
+	const TYPE_MON = clearFutureMonday(66);
+	res = await post('/api/leave', { leaveTypeId: String(smokeType.id), startDate: TYPE_MON, endDate: TYPE_MON });
+	eq('the new type can be booked', flashOf(res)?.kind, 'ok');
+	const typedId = d1Rows(`SELECT id FROM leave_requests WHERE leave_type_id = ${smokeType.id} AND status = 'confirmed'`)[0]?.id;
+
+	// No `active` field: an unticked checkbox submits nothing, which is how the
+	// form retires a type.
+	res = await post('/admin/type', typeFields({ id: String(smokeType.id) }));
+	eq('the type can be retired', flashOf(res)?.kind, 'ok');
+	eq('and is stored as retired', d1Rows(`SELECT active FROM leave_types WHERE id = ${smokeType.id}`)[0]?.active, 0);
+	check('a retired type leaves the booking form', !(await (await fetch(`${BASE}/book`)).text()).includes('Smoke type'), 'still offered');
+	check('a retired type leaves the quota editor', !(await (await fetch(`${BASE}/admin`)).text()).includes(`q_${smokeType.id}`), 'still in the quota editor');
+	res = await post('/api/leave', { leaveTypeId: String(smokeType.id), startDate: addDays(TYPE_MON, 1), endDate: addDays(TYPE_MON, 1) });
+	check('a retired type refuses a new booking', /no longer offered/i.test(flashOf(res)?.message ?? ''), flashOf(res)?.message);
+	eq('and the refusal points at the type field', flashOf(res)?.field, 'leaveTypeId');
+
+	eq('its existing booking still shows', (await feed(TYPE_MON, TYPE_MON)).entries.some((e) => e.id === typedId), true);
+	check('its edit page still offers the retired type', (await (await fetch(`${BASE}/leave/${typedId}/edit`)).text()).includes('Smoke type'), 'retired type missing from its own edit page');
+	res = await post(`/api/leave/${typedId}/edit`, { leaveTypeId: String(smokeType.id), startDate: addDays(TYPE_MON, 1), endDate: addDays(TYPE_MON, 1) });
+	eq('its existing booking can still be moved', flashOf(res)?.kind, 'ok');
+	check('the month it sits in still explains its colour', (await (await fetch(`${BASE}/?y=${TYPE_MON.slice(0, 4)}&m=${Number(TYPE_MON.slice(5, 7))}`)).text()).includes('Smoke type'), 'legend dropped it');
+
+	res = await post('/admin/type/delete', { id: String(smokeType.id) });
+	check('a type with bookings cannot be deleted', /retire it instead/i.test(flashOf(res)?.message ?? ''), flashOf(res)?.message);
+	eq('and it is still there', d1Rows(`SELECT COUNT(*) AS n FROM leave_types WHERE id = ${smokeType.id}`)[0]?.n, 1);
+	res = await post(`/api/leave/${typedId}/cancel`);
+	res = await post('/admin/type/delete', { id: String(smokeType.id) });
+	eq('a cancelled booking still counts as use', flashOf(res)?.kind, 'err');
+
+	res = await post('/admin/type', typeFields({ code: 'smokeunused', active: '1' }));
+	const unusedId = d1Rows("SELECT id FROM leave_types WHERE code = 'smokeunused'")[0]?.id;
+	await fetch(`${BASE}/me`); // seeds this year's quota rows, including one for the new type
+	eq('a new type is seeded a quota row', d1Rows(`SELECT COUNT(*) AS n FROM quotas WHERE leave_type_id = ${unusedId}`)[0]?.n > 0, true);
+	res = await post('/admin/type/delete', { id: String(unusedId) });
+	eq('an unused type can be deleted', flashOf(res)?.kind, 'ok');
+	eq('and it is gone', d1Rows(`SELECT COUNT(*) AS n FROM leave_types WHERE id = ${unusedId}`)[0]?.n, 0);
+	eq('with its quota rows', d1Rows(`SELECT COUNT(*) AS n FROM quotas WHERE leave_type_id = ${unusedId}`)[0]?.n, 0);
+
+	// The last offered type cannot be retired: the booking form would be empty.
+	d1(`UPDATE leave_types SET active = 0 WHERE id <> 1`);
+	res = await post('/admin/type', typeFields({ id: '1' }));
+	check('the last offered type cannot be retired', /at least one/i.test(flashOf(res)?.message ?? ''), flashOf(res)?.message);
+	eq('and it stays offered', d1Rows('SELECT active FROM leave_types WHERE id = 1')[0]?.active, 1);
+	d1(`UPDATE leave_types SET active = 1 WHERE id <> ${smokeType.id}`);
+
+	// --- housekeeping: old history is pruned by the cron ----------------------
+	d1(`INSERT INTO notification_runs (date, kind, channel, sent_at, people, status) VALUES
+		('2020-01-06', 'daily', 'push', '2020-01-06T09:00:00+07:00', 1, 'sent'),
+		('${addDays(TODAY, -10)}', 'daily', 'push', '${addDays(TODAY, -10)}T09:00:00+07:00', 1, 'sent')`);
+	d1(`INSERT INTO leave_audit (leave_id, actor_email, subject_email, action, at) VALUES
+		('smoke-old-audit', '${ADMIN}', '${ADMIN}', 'created', '2020-01-06T09:00:00+07:00'),
+		('smoke-new-audit', '${ADMIN}', '${ADMIN}', 'created', '${addDays(TODAY, -400)}T09:00:00+07:00')`);
+	eq('the cron can be triggered', (await fetch(`${BASE}/cdn-cgi/handler/scheduled`)).status, 200);
+	eq('a notification run past 90 days is pruned', d1Rows("SELECT COUNT(*) AS n FROM notification_runs WHERE date = '2020-01-06'")[0]?.n, 0);
+	eq('a recent one is kept', d1Rows(`SELECT COUNT(*) AS n FROM notification_runs WHERE date = '${addDays(TODAY, -10)}'`)[0]?.n, 1);
+	eq('an audit row past three years is pruned', d1Rows("SELECT COUNT(*) AS n FROM leave_audit WHERE leave_id = 'smoke-old-audit'")[0]?.n, 0);
+	eq('a year-old audit row is kept', d1Rows("SELECT COUNT(*) AS n FROM leave_audit WHERE leave_id = 'smoke-new-audit'")[0]?.n, 1);
+
 	// --- jumping to a month -------------------------------------------------
 	//
 	// A plain GET form, so what is checked is that the URL it produces lands on
@@ -1080,9 +1169,21 @@ try {
 	rmSync(STATE, { recursive: true, force: true });
 }
 
-const ran = pass + fail;
-if (ran < MIN_ASSERTIONS) {
-	console.log(`\nFAIL: only ${ran} assertions ran, expected at least ${MIN_ASSERTIONS} — the suite exited early.`);
+// Every line of this file that calls check( or eq( — skipping comments and the
+// two definitions themselves — must have run at least once.
+const sites = readFileSync(SELF, 'utf8')
+	.split('\n')
+	.map((text, i) => ({ text, line: i + 1 }))
+	.filter(({ text }) => /\b(check|eq)\(/.test(text))
+	.filter(({ text }) => !/^\s*(\/\/|\*|\/\*)/.test(text))
+	.filter(({ text }) => !/^(function check\(|const eq = )/.test(text));
+const missed = sites.filter(({ line }) => !ran.has(line));
+if (sites.length === 0) {
+	console.log('\nFAIL: found no assertion sites in this file — the site check itself is broken.');
+	exitCode = 1;
+} else if (missed.length > 0) {
+	console.log(`\nFAIL: ${missed.length} of ${sites.length} assertion sites never ran — the suite exited early or a branch skipped them:`);
+	for (const { line, text } of missed.slice(0, 20)) console.log(`  smoke.mjs:${line}  ${text.trim().slice(0, 100)}`);
 	exitCode = 1;
 }
 if (fail > 0) {
@@ -1090,5 +1191,5 @@ if (fail > 0) {
 	for (const f of failures) console.log(`  - ${f}`);
 	exitCode = 1;
 }
-if (exitCode === 0) console.log(`\nAll ${pass} smoke assertions passed.`);
+if (exitCode === 0) console.log(`\nAll ${pass} smoke assertions passed; all ${sites.length} assertion sites ran.`);
 process.exit(exitCode);

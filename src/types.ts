@@ -56,6 +56,11 @@ export interface LeaveType {
 	default_days: number;
 	counts_quota: number;
 	sort_order: number;
+	/**
+	 * 0 = retired: no longer offered for new bookings, but its existing bookings
+	 * keep rendering. Deleting a used type would hide them instead (migration 0011).
+	 */
+	active: number;
 }
 
 export interface LeaveRequest {

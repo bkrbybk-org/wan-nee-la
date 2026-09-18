@@ -13,6 +13,8 @@ interface AdminProps {
 	year: number;
 	users: User[];
 	types: LeaveType[];
+	/** Bookings per type id, any status. A type with none is the only kind that can be deleted. */
+	usage: Map<number, number>;
 	quotas: Quota[];
 	holidays: Holiday[];
 	today: string;
@@ -33,7 +35,10 @@ export function AdminPage(props: AdminProps) {
 }
 
 function AdminBody(props: AdminProps) {
-	const { year, users, types, quotas, holidays, today, line, log, audit, error, notice } = props;
+	const { year, users, types, usage, quotas, holidays, today, line, log, audit, error, notice } = props;
+	// Quotas are only edited for types that can still be booked. A retired type's
+	// rows stay in the table; they just stop being something to maintain.
+	const offered = types.filter((type) => type.active);
 	const t = useT();
 	const lang = useLang();
 	// Through the same helper the booking check and the balance cards use, so the
@@ -58,7 +63,7 @@ function AdminBody(props: AdminProps) {
 				<form method="post" action="/admin/quotas/bulk" class="quota-form bulk-quota-form">
 					<input type="hidden" name="year" value={String(year)} />
 					<SelectField id="bulk-type" name="leaveTypeId" label={t('book.type')} required>
-						{types.map((type) => (
+						{offered.map((type) => (
 							<option value={String(type.id)}>{typeName(type)}</option>
 						))}
 					</SelectField>
@@ -109,7 +114,7 @@ function AdminBody(props: AdminProps) {
 										<form method="post" action="/admin/quotas" class="quota-form">
 											<input type="hidden" name="email" value={u.email} />
 											<input type="hidden" name="year" value={String(year)} />
-											{types.map((t) => (
+											{offered.map((t) => (
 												<TextField
 													id={`q-${t.id}-${u.email}`}
 													name={`q_${t.id}`}
@@ -130,6 +135,60 @@ function AdminBody(props: AdminProps) {
 						</tbody>
 					</table>
 				</div>
+			</section>
+
+			<section class="card" id="types">
+				<h2>{t('admin.types')}</h2>
+				<p class="muted">{t('admin.typesHelp')}</p>
+				<ul class="type-list">
+					{types.map((type) => {
+						const booked = usage.get(type.id) ?? 0;
+						return (
+							<li class={type.active ? '' : 'inactive'}>
+								<form method="post" action="/admin/type" class="type-form">
+									<input type="hidden" name="id" value={String(type.id)} />
+									<div class="type-head">
+										<span class="dot" style={`--chip: ${type.color}`} />
+										<span class="mono">{type.code}</span>
+										{type.active ? null : <span class="tag">{t('admin.retired')}</span>}
+										<span class="muted">{t('admin.bookings', { n: booked })}</span>
+									</div>
+									<TypeFields type={type} />
+									<label class="checkline">
+										<input type="checkbox" name="active" value="1" checked={!!type.active} /> {t('admin.offered')}
+									</label>
+									<button type="submit" class="btn small tonal">{t('admin.save')}</button>
+								</form>
+								{/* Offered only where it can succeed. The route re-checks, and so
+								    does the DELETE itself, in case someone books it meanwhile. */}
+								{booked === 0 ? (
+									<form method="post" action="/admin/type/delete" class="inline">
+										<input type="hidden" name="id" value={String(type.id)} />
+										<button type="submit" class="icon-btn" aria-label={t('admin.deleteType', { label: typeName(type) })}>
+											<DeleteIcon />
+										</button>
+									</form>
+								) : null}
+							</li>
+						);
+					})}
+				</ul>
+				<details class="import-block">
+					<summary class="btn text">{t('admin.addType')}</summary>
+					<form method="post" action="/admin/type" class="type-form">
+						<TextField
+							id="type-code"
+							name="code"
+							label={t('admin.typeCode')}
+							maxlength={24}
+							required
+							support={t('admin.typeCodeHelp')}
+							class="type-code"
+						/>
+						<TypeFields />
+						<button type="submit" class="btn tonal">{t('admin.add')}</button>
+					</form>
+				</details>
 			</section>
 
 			<section class="card">
@@ -253,6 +312,48 @@ function AdminBody(props: AdminProps) {
 					</ul>
 				)}
 			</section>
+		</>
+	);
+}
+
+/** The editable half of a leave type, shared by the add form and each row's edit form. */
+function TypeFields({ type }: { type?: LeaveType }) {
+	const t = useT();
+	const key = type ? String(type.id) : 'new';
+	return (
+		<>
+			<TextField id={`type-th-${key}`} name="label_th" label={t('admin.labelTh')} value={type?.label_th} maxlength={40} required />
+			<TextField id={`type-en-${key}`} name="label_en" label={t('admin.labelEn')} value={type?.label_en} maxlength={40} required />
+			<label class="color-field">
+				<span class="muted">{t('admin.color')}</span>
+				<input type="color" name="color" value={type?.color ?? '#0891b2'} required />
+			</label>
+			<TextField
+				id={`type-days-${key}`}
+				name="default_days"
+				label={t('admin.defaultDays')}
+				type="number"
+				value={type ? formatDays(type.default_days) : '0'}
+				step="0.5"
+				min="0"
+				max="365"
+				required
+				class="quota-cell"
+			/>
+			<TextField
+				id={`type-order-${key}`}
+				name="sort_order"
+				label={t('admin.order')}
+				type="number"
+				value={String(type?.sort_order ?? 9)}
+				step="1"
+				min="0"
+				max="999"
+				class="quota-cell"
+			/>
+			<label class="checkline">
+				<input type="checkbox" name="counts_quota" value="1" checked={type ? !!type.counts_quota : true} /> {t('admin.countsQuota')}
+			</label>
 		</>
 	);
 }

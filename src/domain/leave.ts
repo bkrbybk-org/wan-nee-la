@@ -54,6 +54,13 @@ export interface BookingContext {
 	remaining: ReadonlyMap<number, number>;
 	/** Bangkok today — bookings are allowed in the past, but only so far. See MAX_BACKDATE_DAYS. */
 	today: string;
+	/**
+	 * A retired type that stays bookable for this one request: the type the
+	 * booking already had. Retiring a type stops new bookings, not the edits and
+	 * undos of bookings that exist — otherwise the only way to move a retired
+	 * booking's dates would be to change what kind of leave it was.
+	 */
+	keepTypeId?: number;
 }
 
 export type Validated = { ok: true; days: number; type: LeaveType } | { ok: false; error: Message };
@@ -178,6 +185,7 @@ export function parseDraft(value: unknown): BookingDraft | null {
 export function validateBooking(input: BookingInput, ctx: BookingContext): Validated {
 	const type = ctx.types.find((t) => t.id === input.leaveTypeId);
 	if (!type) return { ok: false, error: msg('error.unknownType') };
+	if (!type.active && type.id !== ctx.keepTypeId) return { ok: false, error: msg('error.retiredType') };
 
 	const count = countLeaveDays(input.startDate, input.endDate, input.startHalf, input.endHalf, ctx.holidays);
 	if (!count.ok) return { ok: false, error: count.error };
@@ -249,6 +257,9 @@ export function computeBalances(
 ): Balance[] {
 	return [...types]
 		.sort((a, b) => a.sort_order - b.sort_order)
+		// A retired type is shown only in a year somebody actually took it, so
+		// history stays explained without an empty card for a type nobody can book.
+		.filter((type) => type.active || (used.get(type.id) ?? 0) > 0)
 		.map((type) => {
 			const allotted = allottedFor(type, quotas);
 			const spent = used.get(type.id) ?? 0;
@@ -312,6 +323,7 @@ export function halfOn(entry: LeaveEntry, date: string): Half {
 const ERROR_FIELD: Partial<Record<StringKey, string>> = {
 	'error.pickType': 'leaveTypeId',
 	'error.unknownType': 'leaveTypeId',
+	'error.retiredType': 'leaveTypeId',
 	// The quota belongs to the leave type, and switching type is the usual way
 	// out of this one — more usual than shortening the booking.
 	'error.notEnough': 'leaveTypeId',

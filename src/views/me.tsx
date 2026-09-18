@@ -182,7 +182,7 @@ function MeBody(props: MeProps) {
 }
 
 /**
- * Browser notifications for the 08:00 digest.
+ * Browser notifications for the 09:00 digest.
  *
  * Entirely script-driven, and deliberately inert without JS: there is no
  * server-rendered "on" or "off" state to show, because the answer is per

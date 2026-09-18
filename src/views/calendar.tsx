@@ -577,7 +577,8 @@ function CalendarBody(props: CalendarProps) {
 					{/* Both languages, whichever the reader has chosen: the legend is where
 					    someone learns that ลาป่วย and Sick leave are the same chip colour. */}
 					<section class="legend">
-						{types.map((type) => (
+						{/* A retired type still explains its own chips on the months it appears in. */}
+						{types.filter((type) => type.active || entries.some((e) => e.leave_type_id === type.id)).map((type) => (
 							<span class="legend-item">
 								<span class="dot" style={`--chip: ${type.color}`} /> {lang === 'th' ? type.label_th : type.label_en}
 								<span class="muted"> · {lang === 'th' ? type.label_en : type.label_th}</span>

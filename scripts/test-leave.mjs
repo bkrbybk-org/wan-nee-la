@@ -16,6 +16,7 @@ import {
 	validateBooking,
 	visibleNote,
 } from '../src/domain/leave.ts';
+import { parseLeaveTypeForm } from '../src/domain/leaveTypes.ts';
 import { defaultDisplayName } from '../src/repo/db.ts';
 
 let failures = 0;
@@ -32,9 +33,9 @@ const eq = (name, got, want) => check(name, got === want, `got ${JSON.stringify(
 const TODAY = '2026-08-17';
 
 const TYPES = [
-	{ id: 1, code: 'annual', label_th: 'ลาพักร้อน', label_en: 'Annual', color: '#2563eb', default_days: 10, counts_quota: 1, sort_order: 1 },
-	{ id: 2, code: 'sick', label_th: 'ลาป่วย', label_en: 'Sick', color: '#dc2626', default_days: 30, counts_quota: 1, sort_order: 2 },
-	{ id: 5, code: 'medical', label_th: 'ลาพบแพทย์', label_en: 'Planned medical', color: '#059669', default_days: 0, counts_quota: 0, sort_order: 3 },
+	{ id: 1, code: 'annual', label_th: 'ลาพักร้อน', label_en: 'Annual', color: '#2563eb', default_days: 10, counts_quota: 1, sort_order: 1, active: 1 },
+	{ id: 2, code: 'sick', label_th: 'ลาป่วย', label_en: 'Sick', color: '#dc2626', default_days: 30, counts_quota: 1, sort_order: 2, active: 1 },
+	{ id: 5, code: 'medical', label_th: 'ลาพบแพทย์', label_en: 'Planned medical', color: '#059669', default_days: 0, counts_quota: 0, sort_order: 3, active: 1 },
 ];
 
 function ctx(overrides = {}) {
@@ -321,6 +322,71 @@ eq('an over-long note is cut to NOTE_MAX', parseDraft({ ...draftPayload(rejected
 // Same safe direction as an unticked checkbox: only an explicit false shares.
 eq('a missing privacy flag falls back to private', parseDraft({ ...draftPayload(rejected), p: undefined }).notePrivate, true);
 eq('a junk privacy flag falls back to private', parseDraft({ ...draftPayload(rejected), p: 'no' }).notePrivate, true);
+
+// ---------------------------------------------------------------------------------------
+// Retired leave types (migration 0011).
+// ---------------------------------------------------------------------------------------
+
+const RETIRED = { id: 3, code: 'personal', label_th: 'ลากิจ', label_en: 'Personal', color: '#7c3aed', default_days: 3, counts_quota: 1, sort_order: 4, active: 0 };
+const withRetired = ctx({ types: [...TYPES, RETIRED], remaining: new Map([[1, 10], [2, 30], [3, 3]]) });
+{
+	const r = validateBooking(booking({ leaveTypeId: 3 }), withRetired);
+	eq('a retired type refuses a new booking', r.ok ? 'ok' : r.error.key, 'error.retiredType');
+}
+{
+	// Editing a booking that already has the retired type must still work, or
+	// moving its dates would force a change of what kind of leave it was.
+	const r = validateBooking(booking({ leaveTypeId: 3 }), { ...withRetired, keepTypeId: 3 });
+	eq('a retired type stays bookable for the booking that already has it', r.ok, true);
+}
+{
+	const r = validateBooking(booking({ leaveTypeId: 3 }), { ...withRetired, keepTypeId: 1 });
+	eq('keeping one type does not unlock another retired one', r.ok ? 'ok' : r.error.key, 'error.retiredType');
+}
+{
+	const r = validateBooking(booking({ leaveTypeId: 1 }), withRetired);
+	eq('active types are unaffected by a retired one', r.ok, true);
+}
+{
+	const unused = computeBalances([...TYPES, RETIRED], [], new Map());
+	eq('a retired type with no use that year has no balance card', unused.some((b) => b.type.id === 3), false);
+	const used = computeBalances([...TYPES, RETIRED], [], new Map([[3, 1]]));
+	eq('a retired type used that year keeps its balance card', used.some((b) => b.type.id === 3), true);
+}
+
+// ---------------------------------------------------------------------------------------
+// The admin leave-type form.
+// ---------------------------------------------------------------------------------------
+
+const typeForm = (o = {}) => ({ code: 'training', label_th: 'ลาฝึกอบรม', label_en: 'Training', color: '#0891B2', default_days: '5', sort_order: '6', counts_quota: '1', ...o });
+{
+	const r = parseLeaveTypeForm(typeForm(), true);
+	eq('type form: a valid new type parses', r.ok, true);
+	eq('type form: colour is lowercased', r.ok && r.value.color, '#0891b2');
+	eq('type form: a new type is created active', r.ok && r.value.active, 1);
+	eq('type form: code kept on create', r.ok && r.value.code, 'training');
+}
+eq('type form: code ignored on edit', (() => { const r = parseLeaveTypeForm(typeForm(), false); return r.ok && 'code' in r.value; })(), false);
+eq('type form: an unticked "offered" box retires on edit', (() => { const r = parseLeaveTypeForm(typeForm(), false); return r.ok && r.value.active; })(), 0);
+eq('type form: a ticked "offered" box keeps it active', (() => { const r = parseLeaveTypeForm(typeForm({ active: '1' }), false); return r.ok && r.value.active; })(), 1);
+eq('type form: an unticked quota box means no allowance', (() => { const r = parseLeaveTypeForm(typeForm({ counts_quota: undefined }), true); return r.ok && r.value.counts_quota; })(), 0);
+eq('type form: days round to a half', (() => { const r = parseLeaveTypeForm(typeForm({ default_days: '2.3' }), true); return r.ok && r.value.default_days; })(), 2.5);
+eq('type form: a blank order is 0', (() => { const r = parseLeaveTypeForm(typeForm({ sort_order: '' }), true); return r.ok && r.value.sort_order; })(), 0);
+const typeErr = (o, creating = true) => { const r = parseLeaveTypeForm(typeForm(o), creating); return r.ok ? 'ok' : r.error.key; };
+eq('type form: code with capitals and spaces rejected', typeErr({ code: 'Sick Leave' }), 'flash.typeBadCode');
+eq('type form: code starting with a digit rejected', typeErr({ code: '1day' }), 'flash.typeBadCode');
+eq('type form: code too short rejected', typeErr({ code: 'a' }), 'flash.typeBadCode');
+eq('type form: capitals in a code are folded, not rejected', typeErr({ code: 'Training' }), 'ok');
+eq('type form: a bad code does not matter on edit', typeErr({ code: '!!' }, false), 'ok');
+eq('type form: missing Thai name rejected', typeErr({ label_th: '  ' }), 'flash.typeBadLabel');
+eq('type form: over-long English name rejected', typeErr({ label_en: 'x'.repeat(41) }), 'flash.typeBadLabel');
+eq('type form: a colour name rejected', typeErr({ color: 'red' }), 'flash.typeBadColor');
+eq('type form: markup in the colour rejected', typeErr({ color: '#000000;background:url(x)' }), 'flash.typeBadColor');
+eq('type form: blank days rejected', typeErr({ default_days: '' }), 'flash.daysRange');
+eq('type form: negative days rejected', typeErr({ default_days: '-1' }), 'flash.daysRange');
+eq('type form: days over a year rejected', typeErr({ default_days: '366' }), 'flash.daysRange');
+eq('type form: fractional order rejected', typeErr({ sort_order: '1.5' }), 'flash.typeBadOrder');
+eq('type form: order over 999 rejected', typeErr({ sort_order: '1000' }), 'flash.typeBadOrder');
 
 console.log(failures === 0 ? '\nAll leave tests passed.' : `\n${failures} failure(s).`);
 process.exit(failures === 0 ? 0 : 1);

@@ -85,7 +85,7 @@ function halfSuffix(entry: LeaveEntry, date: string): string {
  * The message body.
  *
  * Plain text rather than a Flex bubble on purpose: a Flex payload is a second
- * thing that can be rejected for schema reasons at 08:00 with nobody watching,
+ * thing that can be rejected for schema reasons at 09:00 with nobody watching,
  * and it costs exactly the same as text under LINE's per-member billing. A text
  * message either sends or it does not.
  */
