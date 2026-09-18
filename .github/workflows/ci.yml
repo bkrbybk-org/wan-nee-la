@@ -49,6 +49,12 @@ jobs:
         # Two configs: the Worker and the browser bundle have different libs.
         run: npm run typecheck
 
+      - name: Lint
+        # ESLint with @stylistic, tuned to pass on the code as written. Nothing
+        # enforced it before this step, and main broke twice without anyone
+        # noticing (docs/ISSUES.md #38).
+        run: npm run lint
+
       - name: Colour contrast
         # Regenerates the Material 3 tonal palettes and checks every foreground
         # /background pair the stylesheet paints against WCAG AA. Exits non-zero

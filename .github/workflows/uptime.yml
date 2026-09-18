@@ -1,0 +1,73 @@
+name: Uptime
+
+# Watches production from outside it (docs/ISSUES.md #18). A check that ran
+# inside the Worker would stop running exactly when the Worker did.
+#
+# Every 15 minutes, GET /health and fail the run unless the Worker answers 200
+# with D1 reachable, Access configured, and the dev auth bypass off. A failed
+# scheduled run emails whoever last edited the `cron:` line below, which is the
+# alert. GitHub may start a scheduled run several minutes late under load, and
+# pauses schedules in a public repo after 60 days without a commit.
+#
+# Access fronts every path, /health included, so an anonymous request gets a
+# 302 to the login page. Two ways through, owner's choice:
+#   - an Access Bypass rule on /health, which exposes only a version string, a
+#     D1 ping and three booleans; or
+#   - an Access service token, stored as the CF_ACCESS_CLIENT_ID and
+#     CF_ACCESS_CLIENT_SECRET secrets, which keeps /health behind Access.
+#
+# The URL is a secret rather than a variable: this repo is public, so its
+# Actions logs are too, and GitHub masks secrets in them but not variables.
+# Until HEALTH_URL exists the job passes and says it is not configured.
+on:
+  schedule:
+    - cron: "*/15 * * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  health:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Check /health
+        env:
+          HEALTH_URL: ${{ secrets.HEALTH_URL }}
+          CF_ACCESS_CLIENT_ID: ${{ secrets.CF_ACCESS_CLIENT_ID }}
+          CF_ACCESS_CLIENT_SECRET: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}
+        run: |
+          if [ -z "$HEALTH_URL" ]; then
+            echo "::notice::HEALTH_URL is not set — skipping. Add the secret to enable the check."
+            exit 0
+          fi
+
+          headers=()
+          if [ -n "$CF_ACCESS_CLIENT_ID" ] && [ -n "$CF_ACCESS_CLIENT_SECRET" ]; then
+            headers=(-H "CF-Access-Client-Id: $CF_ACCESS_CLIENT_ID" -H "CF-Access-Client-Secret: $CF_ACCESS_CLIENT_SECRET")
+          fi
+
+          # Three tries, so one dropped connection is not a page.
+          for attempt in 1 2 3; do
+            status=$(curl -sS -o body.json -w '%{http_code}' --max-time 20 "${headers[@]}" "$HEALTH_URL" || echo 000)
+            [ "$status" = "200" ] && break
+            sleep 20
+          done
+
+          if [ "$status" = "302" ] || [ "$status" = "401" ] || [ "$status" = "403" ]; then
+            echo "::error::/health answered $status — Access is in the way. Add a Bypass rule on /health, or set the service-token secrets."
+            exit 1
+          fi
+          if [ "$status" != "200" ]; then
+            echo "::error::/health answered $status after three tries."
+            exit 1
+          fi
+
+          # Body fields, each checked on its own so the failure says which.
+          fail=0
+          jq -e '.db == true' body.json >/dev/null || { echo "::error::D1 is unreachable."; fail=1; }
+          jq -e '.accessConfigured == true' body.json >/dev/null || { echo "::error::Access is not configured on the Worker."; fail=1; }
+          jq -e '.devAuthBypass == false' body.json >/dev/null || { echo "::error::DEV_AUTH_BYPASS is on in production."; fail=1; }
+          jq -r '"version \(.version // "unknown"), deployed \(.deployedAt // "unknown")"' body.json
+          exit $fail
