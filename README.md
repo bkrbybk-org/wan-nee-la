@@ -198,8 +198,21 @@ dashboard.
 The other 24 routes — HTML pages and form posts — are deliberately not in the
 spec. So do **not** deploy API Shield's fallthrough rule ("mitigate requests to
 unidentified endpoints") on this hostname: it would block the whole app.
-Validation itself is safest started on **Log** and switched to **Block** once
-the log is quiet.
+An uploaded schema only *detects*: it sets
+`cf.schema_validation.uploaded.violated` and blocks nothing. Enforcement is a
+WAF custom rule on that field, scoped to this hostname — start it on **Log**,
+switch to **Block** once the log is quiet.
+
+```bash
+npm run shield:probe
+```
+
+sends ~20 anonymous requests to production, a schema-compliant and a
+schema-breaking one per operation, and prints each one's status and Ray ID.
+Nothing it sends can change data. Compliant requests should get Access's 302;
+with a blocking rule in place, breaking ones get a 403 from the edge instead.
+On Log, both look the same from outside — look the Ray IDs up in Security →
+Analytics.
 
 ## Docs
 

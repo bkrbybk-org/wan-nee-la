@@ -28,6 +28,7 @@
     "test:smoke": "node scripts/smoke.mjs",
     "ship": "node scripts/ship.mjs",
     "openapi:shield": "node scripts/openapi-shield.mjs",
+    "shield:probe": "node scripts/shield-probe.mjs",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
     "format": "eslint . --fix",
