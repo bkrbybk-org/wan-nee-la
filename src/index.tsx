@@ -445,6 +445,11 @@ app.get('/api/leave', async (c) => {
  * their quota is actually charged.
  */
 app.get('/api/leave/preview', async (c) => {
+	// The key stays for programs; `message` is the same thing already in the
+	// reader's language, because the page has no catalogue of its own to turn a
+	// key into a sentence — printing the object is how "[object Object]" ended
+	// up under the form on any weekend.
+	const rejected = (m: Message) => c.json({ error: { ...m, message: sayMessage(c, m) } }, 200);
 	const parsed = parseBooking({
 		leaveTypeId: c.req.query('leaveTypeId') ?? '1',
 		startDate: c.req.query('start') ?? '',
@@ -452,11 +457,11 @@ app.get('/api/leave/preview', async (c) => {
 		startHalf: c.req.query('startHalf') ?? 'full',
 		endHalf: c.req.query('endHalf') ?? 'full',
 	});
-	if ('error' in parsed) return c.json({ error: parsed.error }, 200);
+	if ('error' in parsed) return rejected(parsed.error);
 
 	const holidays = await db.holidaySet(c.env.DB, parsed.startDate, parsed.endDate);
 	const count = countLeaveDays(parsed.startDate, parsed.endDate, parsed.startHalf, parsed.endHalf, holidays);
-	if (!count.ok) return c.json({ error: count.error }, 200);
+	if (!count.ok) return rejected(count.error);
 
 	// Who else is already away on these days. Advisory only — nothing here can
 	// refuse a booking, because the app does not know who covers for whom; it

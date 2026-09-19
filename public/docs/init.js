@@ -1,5 +1,6 @@
 /**
- * Boots Swagger UI against /openapi.yaml.
+ * Boots Swagger UI against /openapi.json — the same document as /openapi.yaml,
+ * which a zone rule refuses at the edge along with every other *.yaml path.
  *
  * A separate file rather than an inline <script> because the page is served by
  * the Worker and therefore carries the app's CSP, whose script-src is 'self'
@@ -8,8 +9,23 @@
  * blank page. Same-origin src needs neither.
  */
 window.addEventListener('DOMContentLoaded', function () {
+	// Fetched here rather than handed to Swagger as a URL, so the servers list
+	// can be replaced with this page's own origin. The spec's `{hostname}`
+	// template defaults to example.com — right for a document describing any
+	// deployment, wrong for "Try it out", which would send requests there.
+	fetch('/openapi.json')
+		.then(function (res) {
+			return res.json();
+		})
+		.then(function (spec) {
+			spec.servers = [{ url: location.origin, description: 'This deployment' }];
+			boot(spec);
+		});
+});
+
+function boot(spec) {
 	SwaggerUIBundle({
-		url: '/openapi.yaml',
+		spec: spec,
 		dom_id: '#swagger-ui',
 		// The layout that ships in the bundle. StandaloneLayout lives in a
 		// second file and only adds the topbar's URL box, which would invite
@@ -32,4 +48,4 @@ window.addEventListener('DOMContentLoaded', function () {
 		docExpansion: 'list',
 		defaultModelsExpandDepth: 0,
 	});
-});
+}

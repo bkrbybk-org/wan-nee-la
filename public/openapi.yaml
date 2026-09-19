@@ -71,9 +71,10 @@ paths:
       responses:
         '200':
           description: |
-            Always 200, including when the database is unreachable — `ok` and
-            `db` carry that, so a check can distinguish "the Worker is down"
-            from "the Worker is up and D1 is not".
+            The Worker is up and D1 answered. When D1 does not, the same body
+            comes back with a 503 instead — see below — so "the Worker is down"
+            and "the Worker is up and D1 is not" stay distinguishable either by
+            status or by `ok` and `db`.
           content:
             application/json:
               schema:
@@ -263,6 +264,7 @@ paths:
                   value:
                     error:
                       key: error.noWorkingDays
+                      message: That range has no working days in it.
 
   /api/push/subscribe:
     post:
@@ -557,9 +559,15 @@ components:
             with no idea which language the request arrived in, so they name
             the message and the caller renders it. Note this differs from the
             `error` of `/api/leave`, which is a plain string.
-          required: [key]
+          required: [key, message]
           properties:
             key: { type: string, examples: [error.noWorkingDays, error.tooFarBack] }
+            message:
+              type: string
+              description: |
+                The same message rendered in the caller's language, ready to
+                show. The booking form displays this; a program can use `key`.
+              examples: ['That day is a weekend or a public holiday.']
             vars:
               type: object
               additionalProperties: { type: [string, number] }

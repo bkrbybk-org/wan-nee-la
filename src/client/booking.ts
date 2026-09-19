@@ -115,14 +115,14 @@ function enhance(form: HTMLFormElement) {
 		try {
 			const res = await fetch(`/api/leave/preview?${params}`, { headers: { Accept: 'application/json' } });
 			if (mine !== seq) return;
-			const body = (await res.json()) as { days?: number; error?: string; coverage?: Coverage | null };
+			const body = (await res.json()) as { days?: number; error?: { key: string; message?: string }; coverage?: Coverage | null };
 			if (mine !== seq) return;
 
 			if (typeof body.days === 'number') {
 				preview!.textContent = fill(S.days, { days: body.days }, body.days);
 				preview!.classList.remove('bad');
 			} else {
-				preview!.textContent = body.error ?? '';
+				preview!.textContent = body.error?.message ?? '';
 				preview!.classList.add('bad');
 			}
 			paintCoverage(body.coverage ?? null);

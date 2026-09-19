@@ -102,6 +102,19 @@ for (const route of NOT_JSON) {
 	bad++;
 }
 
+// /docs reads the committed JSON copy, so it has to be this document exactly.
+try {
+	const { specJson } = await import('./spec-json.mjs');
+	const committed = readFileSync(new URL('../public/openapi.json', import.meta.url), 'utf8');
+	if (committed !== specJson(spec)) {
+		console.error('FAIL public/openapi.json is out of date with public/openapi.yaml — run npm run build:spec');
+		bad++;
+	}
+} catch (err) {
+	console.error(`FAIL public/openapi.json cannot be checked: ${err.message}`);
+	bad++;
+}
+
 // The API Shield copy is derived from this file, so a 3.1-only construct added
 // here has to either convert cleanly or fail now — not at upload time, in a
 // dashboard, where it last surfaced as "cannot unmarshal !!seq into string".

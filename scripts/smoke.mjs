@@ -330,9 +330,13 @@ async function main() {
 		(docs.headers.get('Content-Security-Policy') ?? '').includes("script-src 'self'"),
 		`got ${JSON.stringify(docs.headers.get('Content-Security-Policy'))}`,
 	);
-	const spec = await fetch(`${BASE}/openapi.yaml`);
+	// /docs loads the JSON copy: a zone rule refuses *.yaml at the edge.
+	const spec = await fetch(`${BASE}/openapi.json`);
 	eq('docs: the spec it loads is served', spec.status, 200);
-	check('docs: spec is the OpenAPI document', (await spec.text()).includes('openapi: 3.1.0'), 'expected an openapi version line');
+	eq('docs: spec is the OpenAPI document', (await spec.json()).openapi, '3.1.0');
+	const init = await (await fetch(`${BASE}/docs/init.js`)).text();
+	check('docs: and it is the JSON copy /docs asks for', init.includes("fetch('/openapi.json')"), 'init.js points elsewhere');
+	check('docs: "Try it out" targets this origin, not the example host', init.includes('url: location.origin'), 'servers not replaced');
 
 	// --- CSRF guard --------------------------------------------------------
 	let res = await post('/api/leave', { leaveTypeId: '1', startDate: MON }, { origin: 'https://evil.example' });
@@ -658,6 +662,11 @@ async function main() {
 	let preview = await (await fetch(`${BASE}/api/leave/preview?leaveTypeId=1&start=${MON}&end=${MON}`)).json();
 	eq('preview still returns a day count', preview.days, 1);
 	check('and says nothing about coverage when only you are out', preview.coverage === null, JSON.stringify(preview.coverage));
+	// A refused preview carries the sentence the form shows, not just a key —
+	// printing the bare object is how "[object Object]" appeared on weekends.
+	const refused = await (await fetch(`${BASE}/api/leave/preview?leaveTypeId=1&start=${SAT}&end=${SAT}`)).json();
+	eq('a refused preview keeps its key', refused.error?.key, 'error.notAWorkingDay');
+	eq('and carries the message the form shows', refused.error?.message, 'That day is a weekend or a public holiday.');
 
 	// --- holiday import -----------------------------------------------------
 	res = await post('/admin/holidays/import', { list: '2027-01-01 New Year\n2027-04-13 Songkran' });
