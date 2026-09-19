@@ -193,7 +193,7 @@ export const STRINGS = {
 	'admin.countsQuota': { en: 'counts against an allowance', th: 'หักจากสิทธิ์วันลา' },
 	'admin.offered': { en: 'offered', th: 'เปิดให้เลือก' },
 	'admin.retired': { en: 'retired', th: 'เลิกใช้แล้ว' },
-	'admin.bookings': { en: '{n} bookings', th: 'ลา {n} รายการ' },
+	'admin.bookings': { en: '{n} booking|{n} bookings', th: 'ลา {n} รายการ' },
 	'admin.addType': { en: 'Add a leave type', th: 'เพิ่มประเภทการลา' },
 	'admin.deleteType': { en: 'Delete {label}', th: 'ลบ {label}' },
 	'admin.holidays': { en: 'Holidays', th: 'วันหยุด' },

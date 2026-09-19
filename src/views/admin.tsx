@@ -151,7 +151,7 @@ function AdminBody(props: AdminProps) {
 										<span class="dot" style={`--chip: ${type.color}`} />
 										<span class="mono">{type.code}</span>
 										{type.active ? null : <span class="tag">{t('admin.retired')}</span>}
-										<span class="muted">{t('admin.bookings', { n: booked })}</span>
+										<span class="muted">{t('admin.bookings', { n: booked, count: booked })}</span>
 									</div>
 									<TypeFields type={type} />
 									<label class="checkline">

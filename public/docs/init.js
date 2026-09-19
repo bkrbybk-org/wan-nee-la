@@ -20,6 +20,11 @@ window.addEventListener('DOMContentLoaded', function () {
 		.then(function (spec) {
 			spec.servers = [{ url: location.origin, description: 'This deployment' }];
 			boot(spec);
+		})
+		.catch(function () {
+			// Otherwise a spec that fails to load — as it did when the zone began
+			// refusing *.yaml — is a blank page with nothing to say why.
+			document.getElementById('swagger-ui').textContent = 'The API description at /openapi.json could not be loaded.';
 		});
 });
 
