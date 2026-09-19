@@ -529,3 +529,20 @@ Uploading `public/openapi.yaml` to Cloudflare API Shield failed with `failed par
 Resolved 2026-09-19 without downgrading the spec people read: `npm run openapi:shield` derives a 3.0.3 copy with the real hostname, drops response bodies (API Shield validates requests only), and checks its own output. `npm test` builds that copy from the spec on every run, so the next 3.1-only construct fails in CI rather than in the dashboard. Checked against the real client before relying on it: the preview endpoint's strict date pattern is safe to enforce, because the booking form never asks for a preview with an empty or partial date.
 
 **Verified in production 2026-09-19** with `npm run shield:probe`, once a WAF custom rule on `cf.schema_validation.uploaded.violated` was set to Block: all 12 schema-breaking requests were refused with a 403 at the edge, all 7 compliant ones passed through to Access's 302, and a path outside the schema was untouched. The rule runs *before* Access, so validation covers anonymous traffic too. Before the rule existed, the same run got a 302 on every request — an uploaded schema detects, it does not block.
+
+---
+
+## #42 — `/docs` was blank: the zone refuses every `*.yaml` path `resolved`
+
+Found 2026-09-19 while feature-testing production. `/docs` loaded `/openapi.yaml`, and the zone answers any `*.yaml` or `*.yml` path with a 403 at the edge — `/foo.yaml` included, signed in or not, before Access. That is a zone security rule matching the extension, not API Shield, which only checks the seven operations in the uploaded schema. Rather than weaken a sensible rule, the spec is also committed as `public/openapi.json` (`npm run build:spec`), and `npm test` fails if it no longer matches the YAML. `/docs` reads the JSON.
+
+The same page had a second fault that predated this: the spec's `servers` entry is a `{hostname}` template defaulting to example.com, so "Try it out" would have sent requests there. The page now fetches the spec itself and sets the server to its own origin. Verified in production with a real "Try it out" of `/health`.
+
+---
+
+## #43 — The booking preview printed `[object Object]` `resolved`
+
+Validation errors became message keys (`{ key, vars }`) so pure functions need not know the reader's language, and `/api/leave/preview` returned that object as its `error`. The client still assigned `error` straight to `textContent`, so any refused preview — a weekend, a holiday, an end before the start — read `[object Object]`. On `/me` it showed on every weekend, since the form defaults to today. Found 2026-09-19 while feature-testing production.
+
+The preview's `error` now carries `message` beside `key`: the same sentence, already in the reader's language. The key stays for programs. A smoke test pins both.
+

@@ -8,7 +8,7 @@ Updated: 2026-09-13
 
 ## Status
 
-Deployed and serving. Version `71e9b75b-7f57-4618-84ea-9c3af13e8c70`, deployed 2026-09-19 with `npm run ship`, D1 `<database-id>` in APAC, behind Cloudflare Access on `<hostname>`. Production checks passed: the new version serves all traffic, `/health` and `/` both 302 to Access, production D1 answers, and migration 0011 is applied with every type still offered. That deploy also carried the 09:00 weekday schedule — production had still been on the old daily `0 1 * * *` cron until then.
+Deployed and serving. Version `0c263621-6ba6-4fcb-9fb6-d55a238df4e2`, deployed 2026-09-19 with `npm run ship`, D1 `<database-id>` in APAC, behind Cloudflare Access on `<hostname>`. Production checks passed: the new version serves all traffic, `/health` and `/` both 302 to Access, production D1 answers, and migration 0011 is applied with every type still offered. That deploy also carried the 09:00 weekday schedule — production had still been on the old daily `0 1 * * *` cron until then.
 
 **In real use.** Ten active users, 20 confirmed bookings, 26 holidays, four leave types, 31 rows in the audit trail. That changes what matters here: the shared surfaces now have a real audience, so note visibility, the audit trail and the privacy rules on `/u/:email` are load-bearing rather than theoretical.
 
@@ -70,7 +70,7 @@ Two consequences worth remembering:
 | POST | `/line/webhook` | Above auth. Signature-verified; only writes the group id. |
 | GET | `/` | Calendar. Month grid at every width — names on a laptop, dots on a phone. Upcoming list from 768px; day list below the grid on a phone. Month/year jump. |
 | GET | `/book?date=` | Booking page — the no-JS destination for calendar day cells. |
-| GET | `/docs` | API reference over `/openapi.yaml`. A Worker route rather than an asset, so it carries the CSP. |
+| GET | `/docs` | API reference over `/openapi.json` (the zone blocks `*.yaml`). A Worker route rather than an asset, so it carries the CSP. |
 | GET | `/api/leave?from=&to=` | JSON feed. No email addresses. |
 | GET | `/api/leave/preview` | Server-side day count for the form's live preview. |
 | POST | `/api/leave` | Book. Server computes days, checks overlap and the start year's balance. A refusal hands the submission and the offending field back to the form. |
@@ -244,6 +244,7 @@ Features — iCal, CSV export, team grouping, coverage scoped to a team — are 
 
 ## Change log
 
+- **2026-09-19** — Feature-tested production behind the new API Shield rule, signed in: booking, the live preview, edit, undo, cancel, pages, language, push test and unsubscribe — nothing blocked. It found two faults, both fixed (#42, #43): `/docs` was blank because the zone refuses every `*.yaml` path, so it now reads a committed `/openapi.json` and its "Try it out" targets this origin rather than example.com; and a refused preview printed `[object Object]` under the booking form, so the preview now sends the sentence as well as the key.
 - **2026-09-19** — `npm run openapi:shield` derives an OpenAPI 3.0.3 copy for Cloudflare API Shield, which rejected the 3.1 spec (#41). The spec itself now documents `/health`'s 503 and the current route counts.
 - **2026-09-18** — Leave types managed from `/admin`: add, edit, retire (migration 0011) and delete-if-never-booked. History pruned by the cron. Lint in CI. `npm run ship` for the release order. An uptime workflow for `/health`, which now answers 503 when D1 is down. The smoke suite's hand-kept assertion floor replaced by a check that every assertion line ran. Hono and Wrangler bumped. Stale `08:00` wording in the push card and LINE help corrected to 09:00, Mon–Fri. The deploy put an older push public key back over the one set on 2026-09-13 (#40).
 - **2026-09-13** — Review and documentation cross-check (#36–#39). A second cross-year quota bug found and fixed: an edit credited a booking's own days back without checking they belonged to the year being checked, so moving a booking across New Year overdrew the balance. Docs brought back in line with the code — 29 routes, ten migrations, the 09:00 weekday schedule, the LINE flag, undo — and PLAN's finished debt items closed.
