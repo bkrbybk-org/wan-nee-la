@@ -102,6 +102,22 @@ for (const route of NOT_JSON) {
 	bad++;
 }
 
+// The API Shield copy is derived from this file, so a 3.1-only construct added
+// here has to either convert cleanly or fail now — not at upload time, in a
+// dashboard, where it last surfaced as "cannot unmarshal !!seq into string".
+try {
+	const { toShield } = await import('./openapi-shield.mjs');
+	const shield = toShield(spec, 'api.example.com');
+	const ops = Object.values(shield.paths).reduce((n, item) => n + Object.keys(item).length, 0);
+	if (ops !== documented.size) {
+		console.error(`FAIL the API Shield copy has ${ops} operations, the spec ${documented.size}`);
+		bad++;
+	}
+} catch (err) {
+	console.error(`FAIL the API Shield copy cannot be built: ${err.message}`);
+	bad++;
+}
+
 if (bad === 0) {
 	console.error(`ok   ${documented.size} documented, ${NOT_JSON.size} deliberately not, ${routes.size} routes in total`);
 } else {

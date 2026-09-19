@@ -27,6 +27,7 @@
     "icons": "node scripts/icons.mjs",
     "test:smoke": "node scripts/smoke.mjs",
     "ship": "node scripts/ship.mjs",
+    "openapi:shield": "node scripts/openapi-shield.mjs",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
     "format": "eslint . --fix",
@@ -45,7 +46,8 @@
     "swagger-ui-dist": "^5.32.14",
     "typescript": "^5.7.2",
     "typescript-eslint": "^8.68.0",
-    "wrangler": "^4.135.0"
+    "wrangler": "^4.135.0",
+    "yaml": "^2.9.1"
   },
   "allowScripts": {
     "esbuild@0.28.2": true,

@@ -178,6 +178,29 @@ Leave `VAPID_PUBLIC_KEY` empty to keep the feature off: the card disappears from
 
 **On iPhone and iPad** this only works from an installed web app — Share → *Add to Home Screen*, then turn notifications on from there. Safari tabs have no Push API at all (docs/ISSUES.md #21). Android Chrome works in an ordinary tab.
 
+## Cloudflare API Shield
+
+`public/openapi.yaml` is OpenAPI 3.1. API Shield's schema validation accepts
+only 3.0.x — uploading the 3.1 file fails with `cannot unmarshal !!seq into
+string`. Upload the derived copy instead:
+
+```bash
+npm run openapi:shield
+```
+
+That writes `dist/openapi-shield.json`: OpenAPI 3.0.3, the seven JSON
+operations, request schemas only (API Shield does not validate responses), and
+`servers` set to your real hostname from `wrangler.local.jsonc`. It names the
+hostname, so it stays in the gitignored `dist/`. `npm test` builds it from the
+spec on every run, so a 3.1-only construct fails there rather than in the
+dashboard.
+
+The other 24 routes — HTML pages and form posts — are deliberately not in the
+spec. So do **not** deploy API Shield's fallthrough rule ("mitigate requests to
+unidentified endpoints") on this hostname: it would block the whole app.
+Validation itself is safest started on **Log** and switched to **Block** once
+the log is quiet.
+
 ## Docs
 
 | File | What |

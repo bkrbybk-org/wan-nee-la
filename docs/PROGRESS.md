@@ -8,7 +8,7 @@ Updated: 2026-09-13
 
 ## Status
 
-Deployed and serving. Version `9dd99b38-a39d-45af-a1a0-2a00a0313384`, deployed 2026-09-18 with `npm run ship`, D1 `<database-id>` in APAC, behind Cloudflare Access on `<hostname>`. Production checks passed: the new version serves all traffic, `/health` and `/` both 302 to Access, production D1 answers, and migration 0011 is applied with every type still offered. That deploy also carried the 09:00 weekday schedule — production had still been on the old daily `0 1 * * *` cron until then.
+Deployed and serving. Version `71e9b75b-7f57-4618-84ea-9c3af13e8c70`, deployed 2026-09-19 with `npm run ship`, D1 `<database-id>` in APAC, behind Cloudflare Access on `<hostname>`. Production checks passed: the new version serves all traffic, `/health` and `/` both 302 to Access, production D1 answers, and migration 0011 is applied with every type still offered. That deploy also carried the 09:00 weekday schedule — production had still been on the old daily `0 1 * * *` cron until then.
 
 **In real use.** Ten active users, 20 confirmed bookings, 26 holidays, four leave types, 31 rows in the audit trail. That changes what matters here: the shared surfaces now have a real audience, so note visibility, the audit trail and the privacy rules on `/u/:email` are load-bearing rather than theoretical.
 
@@ -149,7 +149,7 @@ Two consequences worth remembering:
 | `test-holidays.mjs` | 30 | Parsing a pasted holiday list, and its bounds |
 | `test-i18n.mjs` | 27 | Lookup, placeholders, plurals, and the catalogue's own health |
 | `smoke.mjs` | 237 | The HTTP layer — see below |
-| `check-openapi.mjs` | — | Each of the 31 routes is either documented in `openapi.yaml` or deliberately listed as not |
+| `check-openapi.mjs` | — | Each of the 31 routes is either documented in `openapi.yaml` or deliberately listed as not, and the API Shield 3.0.3 copy still builds from it |
 
 The smoke suite boots a real worker against a scratch database and exercises what pure functions cannot reach: the CSRF guard, ownership checks on edit and cancel, booking rules over real requests, the open-redirect guards on `returnTo` **and on the `Referer` header**, note visibility across two identities, the audit trail's contents, the security headers, digest decisions, the webhook signature, push subscription ownership, admin authorisation, undo and its re-validation, next-year and cross-year quota, a LINE channel switched off by its flag, adding, retiring and deleting leave types, and history pruning through the real scheduled handler.
 
@@ -244,6 +244,7 @@ Features — iCal, CSV export, team grouping, coverage scoped to a team — are 
 
 ## Change log
 
+- **2026-09-19** — `npm run openapi:shield` derives an OpenAPI 3.0.3 copy for Cloudflare API Shield, which rejected the 3.1 spec (#41). The spec itself now documents `/health`'s 503 and the current route counts.
 - **2026-09-18** — Leave types managed from `/admin`: add, edit, retire (migration 0011) and delete-if-never-booked. History pruned by the cron. Lint in CI. `npm run ship` for the release order. An uptime workflow for `/health`, which now answers 503 when D1 is down. The smoke suite's hand-kept assertion floor replaced by a check that every assertion line ran. Hono and Wrangler bumped. Stale `08:00` wording in the push card and LINE help corrected to 09:00, Mon–Fri. The deploy put an older push public key back over the one set on 2026-09-13 (#40).
 - **2026-09-13** — Review and documentation cross-check (#36–#39). A second cross-year quota bug found and fixed: an edit credited a booking's own days back without checking they belonged to the year being checked, so moving a booking across New Year overdrew the balance. Docs brought back in line with the code — 29 routes, ten migrations, the 09:00 weekday schedule, the LINE flag, undo — and PLAN's finished debt items closed.
 - **2026-09-13** — The daily digest moves to 09:00 Mon–Fri, and the push title names who is away: `วันนี้ Mai, Nok ลา`.

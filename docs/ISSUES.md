@@ -519,3 +519,11 @@ Effect: the public key browsers subscribe with no longer matches the private key
 Fix, owner-side because it edits the real config: put the public key from version `b24169d9` into `VAPID_PUBLIC_KEY` in the main checkout's `wrangler.local.jsonc`, set a real `VAPID_SUBJECT`, and redeploy. `npx wrangler versions view b24169d9-666d-406d-aa23-f572c6e6ed07` shows the key. If there is any doubt the two halves match, `npm run vapid` for a fresh pair and set both — with no subscriptions there is nothing to invalidate.
 
 The lasting lesson is in the README: `wrangler.local.jsonc` is the only place a var may be changed, and a deploy's "differs from the remote configuration" warning is worth reading rather than scrolling past.
+
+---
+
+## #41 — API Shield rejected the OpenAPI spec `resolved`
+
+Uploading `public/openapi.yaml` to Cloudflare API Shield failed with `failed parsing YAML document: line 87: cannot unmarshal !!seq into string`. Line 87 is `type: [string, 'null']` — valid OpenAPI 3.1, which is what the spec is, and API Shield accepts only 3.0.x with no plans for 3.1. The spec also used `examples:` arrays and `const:` in schemas and `info.summary`, all 3.1-only, and its `servers` entry was a `{hostname}` template defaulting to example.com, which API Shield would neither expand nor accept.
+
+Resolved 2026-09-19 without downgrading the spec people read: `npm run openapi:shield` derives a 3.0.3 copy with the real hostname, drops response bodies (API Shield validates requests only), and checks its own output. `npm test` builds that copy from the spec on every run, so the next 3.1-only construct fails in CI rather than in the dashboard. Checked against the real client before relying on it: the preview endpoint's strict date pattern is safe to enforce, because the booking form never asks for a preview with an empty or partial date.

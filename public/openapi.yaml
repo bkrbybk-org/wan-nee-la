@@ -1,7 +1,7 @@
 # wan-nee-la — the JSON surface.
 #
-# Deliberately not the whole app. Of the 28 routes the Worker serves, six
-# render HTML pages and fourteen are form posts that answer with a 303 and a
+# Deliberately not the whole app. Of the 31 routes the Worker serves, seven
+# render HTML pages and seventeen are form posts that answer with a 303 and a
 # flash cookie; those are a browser flow, and describing them here would
 # document the shape of a redirect rather than an interface anyone can call.
 # What follows is the part a program would use.
@@ -11,6 +11,9 @@
 #
 # Hand-written, and therefore able to drift. When a route below changes, this
 # changes in the same commit.
+#
+# OpenAPI 3.1, which Cloudflare API Shield does not accept. For API Shield,
+# upload the 3.0.3 copy `npm run openapi:shield` derives from this file.
 openapi: 3.1.0
 
 info:
@@ -46,7 +49,7 @@ tags:
   - name: Leave
     description: Reading the shared calendar, and costing a booking before making one.
   - name: Push
-    description: Web Push subscriptions for the 08:00 digest.
+    description: Web Push subscriptions for the 09:00 weekday digest.
   - name: LINE
     description: The one route Access cannot protect.
 
@@ -112,6 +115,11 @@ paths:
                 bangkokToday: '2026-08-31'
                 accessConfigured: true
                 devAuthBypass: false
+        '503':
+          description: |
+            D1 did not answer. The body is the same shape, with `ok` and `db`
+            false — a separate status so a monitor that reads only the status
+            code still notices.
 
   /api/leave:
     get:
