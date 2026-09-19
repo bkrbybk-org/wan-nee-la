@@ -3,7 +3,7 @@
 The original build plan (phases 0–5) is delivered and has been removed; what it
 produced is described in [PROGRESS.md](PROGRESS.md). This is the forward plan,
 rewritten 2026-08-16 after a security review and a technical-debt sweep, and
-brought back in line with the code on 2026-09-13 and 2026-09-18.
+brought back in line with the code on 2026-09-13, 2026-09-18 and 2026-09-19.
 
 ## How work is assigned
 
@@ -74,6 +74,7 @@ Nothing here is urgent. Ordered by cost-to-benefit.
 | ~~4.10~~ | ~~Run `npm run lint` in CI~~ | — | **Done** (2026-09-18), beside Typecheck (ISSUES #38). |
 | 4.11 | Show the push title in the admin preview | **Sonnet** | `/admin` → Preview renders the digest body, not the `วันนี้ … ลา` title a phone actually shows. |
 | ~~4.12~~ | ~~One command for the release order~~ | — | **Done** (2026-09-18): `npm run ship` — local checks, then deploy, then production checks, stopping at the first failure. Docs, commit and push stay manual on purpose. |
+| 4.14 | Keep the API Shield schema current automatically | **Owner** then **Sonnet** | Uploaded by hand today, so changing what a JSON operation accepts can silently start 403-ing real requests. `ship` could upload `dist/openapi-shield.json` through the API, or refuse when it differs from the active schema. Needs an API token with API Gateway permission, which is the owner's to create. |
 | 4.13 | Warn on config drift before deploying | **Sonnet** | `wrangler deploy` overwrites Worker vars and only warns (ISSUES #40). `ship` could compare `wrangler.local.jsonc` against the live version's vars first and refuse on a difference. |
 
 ---

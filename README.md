@@ -66,7 +66,9 @@ npm run typecheck && npm run lint && npm test
 `npm test` runs six suites — date arithmetic, booking rules, the LINE digest,
 Web Push against RFC 8291's worked example, holiday-list parsing, and the
 string catalogue's own health — then checks that `public/openapi.yaml` accounts
-for every route.
+for every route, that the committed `public/openapi.json` still matches it
+(`npm run build:spec` regenerates it), and that the API Shield copy still
+builds from it.
 
 `npm run lint` is ESLint, tuned to the existing style rather than reshaping it.
 CI runs it.

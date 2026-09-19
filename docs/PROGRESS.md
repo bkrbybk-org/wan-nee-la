@@ -8,7 +8,7 @@ Updated: 2026-09-13
 
 ## Status
 
-Deployed and serving. Version `0c263621-6ba6-4fcb-9fb6-d55a238df4e2`, deployed 2026-09-19 with `npm run ship`, D1 `<database-id>` in APAC, behind Cloudflare Access on `<hostname>`. Production checks passed: the new version serves all traffic, `/health` and `/` both 302 to Access, production D1 answers, and migration 0011 is applied with every type still offered. That deploy also carried the 09:00 weekday schedule — production had still been on the old daily `0 1 * * *` cron until then.
+Deployed and serving. Version `c53e6228-122c-4811-b985-0bc300f8030e`, deployed 2026-09-19 with `npm run ship`, D1 `<database-id>` in APAC, behind Cloudflare Access on `<hostname>`. Production checks passed: the new version serves all traffic, `/health` and `/` both 302 to Access, production D1 answers, and migration 0011 is applied with every type still offered. That deploy also carried the 09:00 weekday schedule — production had still been on the old daily `0 1 * * *` cron until then.
 
 **In real use.** Ten active users, 20 confirmed bookings, 26 holidays, four leave types, 31 rows in the audit trail. That changes what matters here: the shared surfaces now have a real audience, so note visibility, the audit trail and the privacy rules on `/u/:email` are load-bearing rather than theoretical.
 
@@ -138,7 +138,7 @@ Two consequences worth remembering:
 
 ## Verification
 
-**594 automated assertions**, all green. CI runs them, and lint, on every push and pull request.
+**598 automated assertions**, all green. CI runs them, and lint, on every push and pull request.
 
 | Suite | Assertions | Covers |
 | --- | --- | --- |
@@ -148,12 +148,14 @@ Two consequences worth remembering:
 | `test-push.mjs` | 29 | RFC 8291 encryption against the spec's worked example, VAPID token and signature, the `วันนี้ … ลา` title |
 | `test-holidays.mjs` | 30 | Parsing a pasted holiday list, and its bounds |
 | `test-i18n.mjs` | 27 | Lookup, placeholders, plurals, and the catalogue's own health |
-| `smoke.mjs` | 237 | The HTTP layer — see below |
+| `smoke.mjs` | 241 | The HTTP layer — see below |
 | `check-openapi.mjs` | — | Each of the 31 routes is either documented in `openapi.yaml` or deliberately listed as not, and the API Shield 3.0.3 copy still builds from it |
 
 The smoke suite boots a real worker against a scratch database and exercises what pure functions cannot reach: the CSRF guard, ownership checks on edit and cancel, booking rules over real requests, the open-redirect guards on `returnTo` **and on the `Referer` header**, note visibility across two identities, the audit trail's contents, the security headers, digest decisions, the webhook signature, push subscription ownership, admin authorisation, undo and its re-validation, next-year and cross-year quota, a LINE channel switched off by its flag, adding, retiring and deleting leave types, and history pruning through the real scheduled handler.
 
 It is built against its own worst failure mode — passing while testing nothing. The server is health-checked before any assertion; each boot proves it is signed in as the expected identity; and every assertion written in the file must actually run, so a section that throws early fails the run with the missed lines named. Confirmed by sabotage: removing the ownership check turns 5 assertions red, restoring the leaked email field turns 1 red, and pointing a boot at the wrong identity fails the harness. Its Mon–Fri fixture picks a week with no seeded public holiday, after it drifted onto one and failed for a reason that was the calendar's rather than the code's (#37).
+
+**API Shield** is enforced in front of Access and checked from outside with `npm run shield:probe`: on 2026-09-19 all 12 schema-breaking requests were refused at the edge and all 7 compliant ones passed. The same day the app was feature-tested in production, signed in, behind that rule — booking, the live preview, edit, undo, cancel, every page, language, push test — with nothing blocked (#42, #43 were found and fixed on the way).
 
 **CI** also builds the client bundle and the Worker (`--dry-run`, no credentials), and fails if `.dev.vars`, `wrangler.local.jsonc` or the built bundle are ever tracked, or if a credential-shaped string is committed. It needs no secrets, so it runs on pull requests from forks.
 
@@ -163,7 +165,7 @@ It is built against its own worst failure mode — passing while testing nothing
 
 ## Open items
 
-**One known regression, in configuration rather than code:** the push keypair is mismatched in production (#40). 594 assertions are green and `npm audit` is clean. The 2026-08-25 audit and the 2026-09-13 review both found and fixed what they turned up — the second a quota overdraw when moving a booking across New Year (#36) — and each fix is covered by a test or, where a test could not reach it, recorded in [ISSUES.md](ISSUES.md).
+**One known regression, in configuration rather than code:** the push keypair is mismatched in production (#40). 598 assertions are green and `npm audit` is clean. The 2026-08-25 audit and the 2026-09-13 review both found and fixed what they turned up — the second a quota overdraw when moving a booking across New Year (#36) — and each fix is covered by a test or, where a test could not reach it, recorded in [ISSUES.md](ISSUES.md).
 
 What follows is decisions, unfinished configuration, accepted trade-offs and debt — not defects.
 
@@ -197,6 +199,7 @@ Nothing here is urgent; all of it is confirmed present. Owners and ordering in [
 - `/admin` → Preview shows the digest body, not the push title a phone actually receives (PLAN 4.11).
 - `npm run db:init` cannot be run twice (#24): migration `0003` is a bare `ADD COLUMN`, so a real failure is indistinguishable from a no-op.
 - A deploy overwrites Worker vars without stopping (#40); `ship` could refuse on drift instead (PLAN 4.13).
+- The API Shield schema is uploaded by hand. Changing what one of the seven JSON operations accepts means `npm run openapi:shield` and a re-upload in the same change, or real requests get a 403. Nothing checks that the uploaded copy is current.
 - Deploy is manual, by choice. Deploy-on-merge would put a Cloudflare API token and the infrastructure ids into a public repo's settings.
 
 Dependencies are clean: `npm audit` reports zero vulnerabilities after bumping Hono to `^4.13.8` and Wrangler to `^4.135.0` — the latter clears a HIGH advisory in its bundled `sharp`.
@@ -244,6 +247,7 @@ Features — iCal, CSV export, team grouping, coverage scoped to a team — are 
 
 ## Change log
 
+- **2026-09-19** — Review and documentation cross-check. One small bug fixed: the leave-types card said "1 bookings". `/docs` now says why when the spec fails to load, instead of rendering blank. Docs brought in line: 598 assertions, the two edge layers in front of Access (ARCHITECTURE "In front of Access"), and the hand-uploaded Shield schema recorded as debt (PLAN 4.14).
 - **2026-09-19** — Feature-tested production behind the new API Shield rule, signed in: booking, the live preview, edit, undo, cancel, pages, language, push test and unsubscribe — nothing blocked. It found two faults, both fixed (#42, #43): `/docs` was blank because the zone refuses every `*.yaml` path, so it now reads a committed `/openapi.json` and its "Try it out" targets this origin rather than example.com; and a refused preview printed `[object Object]` under the booking form, so the preview now sends the sentence as well as the key.
 - **2026-09-19** — `npm run openapi:shield` derives an OpenAPI 3.0.3 copy for Cloudflare API Shield, which rejected the 3.1 spec (#41). The spec itself now documents `/health`'s 503 and the current route counts.
 - **2026-09-18** — Leave types managed from `/admin`: add, edit, retire (migration 0011) and delete-if-never-booked. History pruned by the cron. Lint in CI. `npm run ship` for the release order. An uptime workflow for `/health`, which now answers 503 when D1 is down. The smoke suite's hand-kept assertion floor replaced by a check that every assertion line ran. Hono and Wrangler bumped. Stale `08:00` wording in the push card and LINE help corrected to 09:00, Mon–Fri. The deploy put an older push public key back over the one set on 2026-09-13 (#40).
