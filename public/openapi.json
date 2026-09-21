@@ -233,6 +233,169 @@
 				}
 			}
 		},
+		"/api/leave/by-date": {
+			"get": {
+				"operationId": "listLeaveByDate",
+				"tags": [
+					"Leave"
+				],
+				"summary": "Confirmed leave grouped by calendar date",
+				"description": "The same bookings as `/api/leave`, turned inside out: one entry per\n**date**, listing who is away that day. A booking spanning a range\nappears under each date it touches, and `period` says which part of\nthat day it covers — a range's middle days are always `full_day`.\n\nDates with nobody away are left out, so an empty day and a day outside\nthe request cannot be confused.\n\n**This feed carries email addresses**, which `/api/leave` deliberately\ndoes not. A deliberate exception, taken 2026-09-21: an integration needs\na stable identifier for a person, and a display name is neither unique\nnor stable. Notes are never included here at all, private or otherwise.\n\nCancelled bookings and deactivated people are absent, as everywhere else.\n",
+				"parameters": [
+					{
+						"name": "from",
+						"in": "query",
+						"description": "Inclusive. Defaults to the first of the current Bangkok month.",
+						"schema": {
+							"$ref": "#/components/schemas/Date"
+						}
+					},
+					{
+						"name": "to",
+						"in": "query",
+						"description": "Inclusive. Defaults to the last day of the current Bangkok month. At\nmost 366 days after `from` — a day per entry means an unbounded\nrange is an unbounded response.\n",
+						"schema": {
+							"$ref": "#/components/schemas/Date"
+						}
+					}
+				],
+				"responses": {
+					"200": {
+						"description": "The range, echoed back, and one entry per date that has leave on it.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"type": "object",
+									"required": [
+										"from",
+										"to",
+										"data"
+									],
+									"properties": {
+										"from": {
+											"$ref": "#/components/schemas/Date"
+										},
+										"to": {
+											"$ref": "#/components/schemas/Date"
+										},
+										"data": {
+											"type": "array",
+											"description": "Ascending by date. Only dates with somebody away.",
+											"items": {
+												"type": "object",
+												"required": [
+													"date",
+													"employees"
+												],
+												"properties": {
+													"date": {
+														"$ref": "#/components/schemas/Date"
+													},
+													"employees": {
+														"type": "array",
+														"items": {
+															"type": "object",
+															"required": [
+																"email",
+																"name",
+																"leave_type",
+																"period"
+															],
+															"properties": {
+																"email": {
+																	"type": "string",
+																	"format": "email",
+																	"description": "The address Cloudflare Access knows them by."
+																},
+																"name": {
+																	"type": "string",
+																	"description": "Display name."
+																},
+																"leave_type": {
+																	"type": "string",
+																	"description": "The leave type's English label, as an admin set it.",
+																	"examples": [
+																		"Annual",
+																		"Sick",
+																		"Personal",
+																		"Planned medical"
+																	]
+																},
+																"period": {
+																	"type": "string",
+																	"enum": [
+																		"full_day",
+																		"morning",
+																		"afternoon"
+																	],
+																	"description": "Which part of this date the booking covers."
+																}
+															}
+														}
+													}
+												}
+											}
+										}
+									}
+								},
+								"example": {
+									"from": "2026-09-21",
+									"to": "2026-09-22",
+									"data": [
+										{
+											"date": "2026-09-21",
+											"employees": [
+												{
+													"email": "alice@example.com",
+													"name": "Alice Smith",
+													"leave_type": "Annual",
+													"period": "morning"
+												},
+												{
+													"email": "bob@example.com",
+													"name": "Bob Wilson",
+													"leave_type": "Sick",
+													"period": "full_day"
+												}
+											]
+										},
+										{
+											"date": "2026-09-22",
+											"employees": [
+												{
+													"email": "alice@example.com",
+													"name": "Alice Smith",
+													"leave_type": "Annual",
+													"period": "full_day"
+												}
+											]
+										}
+									]
+								}
+							}
+						}
+					},
+					"400": {
+						"description": "`from` is later than `to`, or the range is longer than 366 days.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"type": "object",
+									"required": [
+										"error"
+									],
+									"properties": {
+										"error": {
+											"type": "string"
+										}
+									}
+								}
+							}
+						}
+					}
+				}
+			}
+		},
 		"/api/leave/preview": {
 			"get": {
 				"operationId": "previewLeave",

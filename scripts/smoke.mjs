@@ -658,6 +658,42 @@ async function main() {
 		0,
 	);
 
+	// --- the feed, grouped by date ------------------------------------------
+	//
+	// The admin is booked MON..MON+2 at this point, full days.
+	const byDateRes = await fetch(`${BASE}/api/leave/by-date?from=${MON}&to=${FRI}`);
+	eq('by-date: answers', byDateRes.status, 200);
+	const byDateBody = await byDateRes.json();
+	eq('by-date: echoes the range', `${byDateBody.from}..${byDateBody.to}`, `${MON}..${FRI}`);
+	eq('by-date: one entry per date the booking touches', byDateBody.data.length, 3);
+	eq('by-date: starting on the first of them', byDateBody.data[0]?.date, MON);
+	eq('by-date: in ascending order', byDateBody.data[2]?.date, addDays(MON, 2));
+	check('by-date: dates with nobody away are absent', !byDateBody.data.some((d) => d.employees.length === 0), JSON.stringify(byDateBody.data));
+	const someone = byDateBody.data[0]?.employees[0];
+	eq('by-date: carries the email', someone?.email, ADMIN);
+	eq('by-date: and the display name', someone?.name, 'Admin');
+	eq('by-date: and the leave type label', someone?.leave_type, 'Annual');
+	eq('by-date: a full day says so', someone?.period, 'full_day');
+	check('by-date: notes are never included', !JSON.stringify(byDateBody).includes('smoke-private-note'), 'note leaked');
+
+	// Half days at the ends of a range, full in the middle — the expansion the
+	// callers would otherwise each reimplement.
+	await post(`/api/leave/${bookingId}/edit`, {
+		leaveTypeId: '1', startDate: MON, endDate: addDays(MON, 2), startHalf: 'pm', endHalf: 'am',
+	});
+	const halves = await (await fetch(`${BASE}/api/leave/by-date?from=${MON}&to=${FRI}`)).json();
+	eq('by-date: a range starting after lunch', halves.data[0]?.employees[0]?.period, 'afternoon');
+	eq('by-date: its middle day is whole', halves.data[1]?.employees[0]?.period, 'full_day');
+	eq('by-date: and it ends at lunch', halves.data[2]?.employees[0]?.period, 'morning');
+	await post(`/api/leave/${bookingId}/edit`, {
+		leaveTypeId: '1', startDate: MON, endDate: addDays(MON, 2), note: 'smoke-private-note',
+	});
+
+	const emptyRange = await (await fetch(`${BASE}/api/leave/by-date?from=2030-06-01&to=2030-06-30`)).json();
+	eq('by-date: a range with no leave is an empty list', emptyRange.data.length, 0);
+	eq('by-date: backwards range refused', (await fetch(`${BASE}/api/leave/by-date?from=${FRI}&to=${MON}`)).status, 400);
+	eq('by-date: a range over a year refused', (await fetch(`${BASE}/api/leave/by-date?from=2030-01-01&to=2031-06-01`)).status, 400);
+
 	// --- coverage warning ---------------------------------------------------
 	let preview = await (await fetch(`${BASE}/api/leave/preview?leaveTypeId=1&start=${MON}&end=${MON}`)).json();
 	eq('preview still returns a day count', preview.days, 1);

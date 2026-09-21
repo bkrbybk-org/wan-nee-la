@@ -6,19 +6,24 @@ import {
 	bangkokNow,
 	bangkokToday,
 	countLeaveDays,
+	daysBetween,
 	firstOfMonth,
 	isValidDate,
 	lastOfMonth,
+	MAX_RANGE_DAYS,
 	monthGrid,
 	parseWeekStart,
 	shortDate,
+	type Half,
 } from './domain/dates.ts';
 import {
 	allottedFor,
+	byDate,
 	draftPayload,
 	fieldForError,
 	parseBooking,
 	parseDraft,
+	halfOn,
 	parseHalf,
 	round,
 	validateBooking,
@@ -450,6 +455,53 @@ app.get('/api/leave', async (c) => {
 			note: visibleNote(e, viewer),
 		})),
 	});
+});
+
+/**
+ * The same leave, grouped by calendar date rather than by booking.
+ *
+ * A booking is one row spanning a range; a rota, a dashboard or a chat bot
+ * wants "who is away on this day", and would otherwise expand the range —
+ * including the half-day rules at each end — itself, differently each time.
+ * Each date a booking touches appears once, with `period` saying which part of
+ * *that* day it covers: a range's middle days are always `full_day`.
+ *
+ * Dates with nobody away are absent, so there is no way to confuse "nobody is
+ * out" with "not covered by the request".
+ *
+ * **This one carries email addresses**, which the calendar feed deliberately
+ * does not (see `/api/leave`). That is the owner's decision, taken 2026-09-21:
+ * an integration needs a stable identifier for a person, and a display name is
+ * neither unique nor stable. Notes are still never included.
+ */
+app.get('/api/leave/by-date', async (c) => {
+	const today = c.get('today');
+	const from = validDateOr(c.req.query('from'), firstOfMonth(Number(today.slice(0, 4)), Number(today.slice(5, 7))));
+	const to = validDateOr(c.req.query('to'), lastOfMonth(Number(today.slice(0, 4)), Number(today.slice(5, 7))));
+	if (from > to) return c.json({ error: 'from is after to' }, 400);
+	// A day per entry, so an unbounded range is an unbounded response. The same
+	// ceiling a single booking has.
+	if (daysBetween(from, to) > MAX_RANGE_DAYS) return c.json({ error: `range is longer than ${MAX_RANGE_DAYS} days` }, 400);
+
+	const entries = await db.listLeaveInRange(c.env.DB, from, to);
+	const byDay = byDate(entries);
+
+	const data = [];
+	for (let date = from; date <= to; date = addDays(date, 1)) {
+		const onThatDay = byDay.get(date);
+		if (!onThatDay) continue;
+		data.push({
+			date,
+			employees: onThatDay.map((e) => ({
+				email: e.user_email,
+				name: e.display_name,
+				leave_type: e.type_label_en,
+				period: PERIOD[halfOn(e, date)],
+			})),
+		});
+	}
+
+	return c.json({ from, to, data });
 });
 
 /**
@@ -1417,6 +1469,9 @@ function clampInt(raw: string | undefined, fallback: number, min: number, max: n
 function yearNavBounds(nowYear: number): { minYear: number; maxYear: number } {
 	return { minYear: nowYear - 5, maxYear: nowYear + 5 };
 }
+
+/** Our half-day vocabulary, in the words this feed speaks. */
+const PERIOD: Record<Half, string> = { full: 'full_day', am: 'morning', pm: 'afternoon' };
 
 function validDateOr(raw: string | undefined, fallback: string): string {
 	return raw && isValidDate(raw) ? raw : fallback;
