@@ -38,15 +38,6 @@ An Access service token carries `common_name`, not `email`, so it is nobody's em
 - No employee row is created, and no note is ever returned — not even a shared one, because "shared with the team" means shared with colleagues, and a credential is not one.
 - Exercised locally by `DEV_SERVICE_TOKEN` under `DEV_AUTH_BYPASS`, so the machine path is covered by the smoke suite rather than only in production.
 
-### Machine callers
-
-An Access service token carries `common_name`, not `email`, so it is nobody's employee. Since 2026-09-21 a named one may read `/api/v1/leave` and `/api/v1/leave/by-date` — and only those:
-
-- Two gates. Access must admit the token (a Service Auth include on the policy), **and** `SERVICE_TOKENS` must name it. They are edited in different places by different people, and either alone is not enough. An absent var means no machine may call at all, which is how the app behaved before and what it falls back to.
-- Read-only, and narrow: no pages, no admin, no writes, and not the booking preview, which costs a real person's quota to compute. Anything else answers 403 naming the token.
-- No employee row is created, and no note is ever returned — not even a shared one, because "shared with the team" means shared with colleagues, and a credential is not one.
-- Exercised locally by `DEV_SERVICE_TOKEN` under `DEV_AUTH_BYPASS`, so the machine path is covered by the smoke suite rather than only in production.
-
 ### In front of Access
 
 Two zone-level layers run at the edge **before** Access, so they see anonymous traffic too (both verified 2026-09-19):
@@ -219,7 +210,6 @@ The browser notification's **title** is the message on its own: `วันนี
 | `CF_VERSION_METADATA` | version metadata | footer + `/health`, same as a sibling Workers project |
 | `ACCESS_TEAM_DOMAIN` | var | e.g. `acme.cloudflareaccess.com` |
 | `ACCESS_AUD` | var | Access application AUD tag |
-| `SERVICE_TOKENS` | var | Access service tokens allowed to read the two feeds, comma-separated by name. Empty = no machine callers |
 | `SERVICE_TOKENS` | var | Access service tokens allowed to read the two feeds, comma-separated by name. Empty = no machine callers |
 | `LINE_CHANNEL_ACCESS_TOKEN` | secret | `wrangler secret put` |
 | `LINE_CHANNEL_SECRET` | secret | webhook signature verification |
