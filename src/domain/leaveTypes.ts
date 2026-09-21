@@ -3,7 +3,7 @@
  * door, and tested by `scripts/test-leave.mjs`.
  *
  * `code` is set once and never edited: it is the `type` field of the
- * `/api/leave` feed, so renaming it would quietly break anything reading that.
+ * `/api/v1/leave` feed, so renaming it would quietly break anything reading that.
  * The labels are what people see, and those can change freely.
  */
 

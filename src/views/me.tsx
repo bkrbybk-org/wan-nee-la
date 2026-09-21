@@ -258,7 +258,7 @@ function LeaveRow({ entry }: { entry: LeaveEntry }) {
 					<a class="icon-btn" href={`/leave/${entry.id}/edit`} aria-label={t('me.editOn', { when })}>
 						<EditIcon />
 					</a>
-					<form method="post" action={`/api/leave/${entry.id}/cancel`} class="inline">
+					<form method="post" action={`/api/v1/leave/${entry.id}/cancel`} class="inline">
 						<button type="submit" class="icon-btn" aria-label={t('me.removeOn', { when })}>
 							<DeleteIcon />
 						</button>

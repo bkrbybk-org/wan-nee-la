@@ -123,7 +123,13 @@ if (card) {
 			// to be a same-origin credentialed request.
 			credentials: 'same-origin',
 		});
-		return res.json().catch(() => ({ ok: false, error: `HTTP ${res.status}` }));
+		// Success and failure are told apart by the status, not by a field in the
+		// body: every JSON failure in this app is `{ error: { message } }`, and a
+		// response that is not JSON at all — Access's login page, say — must not
+		// read as success either.
+		const parsed = (await res.json().catch(() => null)) as { error?: { message?: string }; delivered?: number } | null;
+		if (!res.ok) return { ok: false, error: parsed?.error?.message ?? `HTTP ${res.status}` };
+		return { ok: true, delivered: parsed?.delivered };
 	}
 
 	enableBtn.addEventListener('click', async () => {
@@ -148,7 +154,7 @@ if (card) {
 					applicationServerKey: keyBytes(vapidKey) as BufferSource,
 				}));
 
-			const saved = await post('/api/push/subscribe', sub.toJSON());
+			const saved = await post('/api/v1/push/subscribe', sub.toJSON());
 			if (!saved.ok) {
 				// Do not leave a live subscription the server has no record of —
 				// it would be a notification nobody can ever turn off.
@@ -176,7 +182,7 @@ if (card) {
 				// the endpoint answers 410.
 				const endpoint = sub.endpoint;
 				await sub.unsubscribe();
-				await post('/api/push/unsubscribe', { endpoint });
+				await post('/api/v1/push/unsubscribe', { endpoint });
 			}
 			await paint();
 		} finally {
@@ -187,7 +193,7 @@ if (card) {
 	testBtn.addEventListener('click', async () => {
 		testBtn.disabled = true;
 		show(S.sending);
-		const res = await post('/api/push/test');
+		const res = await post('/api/v1/push/test');
 		show(res.ok ? S.sent : (res.error ?? S.failed));
 		testBtn.disabled = false;
 	});

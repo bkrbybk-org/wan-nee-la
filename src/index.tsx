@@ -422,17 +422,18 @@ app.get('/book', async (c) => {
  * An email nobody has is an empty list, not a 404, which is also what a range
  * with no leave in it returns.
  */
-app.get('/api/leave', async (c) => {
+app.get('/api/v1/leave', async (c) => {
 	const today = c.get('today');
 	const viewer = c.get('user');
 	const from = validDateOr(c.req.query('from'), firstOfMonth(Number(today.slice(0, 4)), Number(today.slice(5, 7))));
 	const to = validDateOr(c.req.query('to'), lastOfMonth(Number(today.slice(0, 4)), Number(today.slice(5, 7))));
-	if (from > to) return c.json({ error: 'from is after to' }, 400);
+	if (from > to) return jsonError(c, 'from is after to', 400);
+	if (daysBetween(from, to) > MAX_RANGE_DAYS) return jsonError(c, `range is longer than ${MAX_RANGE_DAYS} days`, 400);
 
 	// Lowercased to match how `ensureUser` stores it, so a capitalised address
 	// finds the same person rather than silently nobody.
 	const raw = c.req.query('user')?.trim().toLowerCase();
-	if (raw !== undefined && !isEmail(raw)) return c.json({ error: 'user is not an email address' }, 400);
+	if (raw !== undefined && !isEmail(raw)) return jsonError(c, 'user is not an email address', 400);
 
 	const entries = await db.listLeaveInRange(c.env.DB, from, to, raw);
 	return c.json({
@@ -470,18 +471,18 @@ app.get('/api/leave', async (c) => {
  * out" with "not covered by the request".
  *
  * **This one carries email addresses**, which the calendar feed deliberately
- * does not (see `/api/leave`). That is the owner's decision, taken 2026-09-21:
+ * does not (see `/api/v1/leave`). That is the owner's decision, taken 2026-09-21:
  * an integration needs a stable identifier for a person, and a display name is
  * neither unique nor stable. Notes are still never included.
  */
-app.get('/api/leave/by-date', async (c) => {
+app.get('/api/v1/leave/by-date', async (c) => {
 	const today = c.get('today');
 	const from = validDateOr(c.req.query('from'), firstOfMonth(Number(today.slice(0, 4)), Number(today.slice(5, 7))));
 	const to = validDateOr(c.req.query('to'), lastOfMonth(Number(today.slice(0, 4)), Number(today.slice(5, 7))));
-	if (from > to) return c.json({ error: 'from is after to' }, 400);
+	if (from > to) return jsonError(c, 'from is after to', 400);
 	// A day per entry, so an unbounded range is an unbounded response. The same
-	// ceiling a single booking has.
-	if (daysBetween(from, to) > MAX_RANGE_DAYS) return c.json({ error: `range is longer than ${MAX_RANGE_DAYS} days` }, 400);
+	// ceiling a single booking has, and the same one the feed applies.
+	if (daysBetween(from, to) > MAX_RANGE_DAYS) return jsonError(c, `range is longer than ${MAX_RANGE_DAYS} days`, 400);
 
 	const entries = await db.listLeaveInRange(c.env.DB, from, to);
 	const byDay = byDate(entries);
@@ -512,12 +513,12 @@ app.get('/api/leave/by-date', async (c) => {
  * and the number the user sees before submitting would stop matching the number
  * their quota is actually charged.
  */
-app.get('/api/leave/preview', async (c) => {
+app.get('/api/v1/leave/preview', async (c) => {
 	// The key stays for programs; `message` is the same thing already in the
 	// reader's language, because the page has no catalogue of its own to turn a
 	// key into a sentence — printing the object is how "[object Object]" ended
 	// up under the form on any weekend.
-	const rejected = (m: Message) => c.json({ error: { ...m, message: sayMessage(c, m) } }, 200);
+	const rejected = (m: Message) => c.json({ error: { key: m.key, vars: m.vars, message: sayMessage(c, m) } }, 200);
 	const parsed = parseBooking({
 		leaveTypeId: c.req.query('leaveTypeId') ?? '1',
 		startDate: c.req.query('start') ?? '',
@@ -656,7 +657,7 @@ async function buildBookingContext(
 	};
 }
 
-app.post('/api/leave', async (c) => {
+app.post('/api/v1/leave', async (c) => {
 	const user = c.get('user');
 	const today = c.get('today');
 	const back = referrerPath(c.req.header('Referer'), c.req.url) ?? '/me';
@@ -755,7 +756,7 @@ app.get('/leave/:id/edit', async (c) => {
 	);
 });
 
-app.post('/api/leave/:id/edit', async (c) => {
+app.post('/api/v1/leave/:id/edit', async (c) => {
 	const today = c.get('today');
 	const id = c.req.param('id');
 
@@ -821,7 +822,7 @@ app.post('/api/leave/:id/edit', async (c) => {
 	);
 });
 
-app.post('/api/leave/:id/cancel', async (c) => {
+app.post('/api/v1/leave/:id/cancel', async (c) => {
 	const back = referrerPath(c.req.header('Referer'), c.req.url) ?? '/me';
 	const id = c.req.param('id');
 
@@ -862,7 +863,7 @@ const UNDO_WINDOW_MS = 10 * 60 * 1000;
  * skipped validation would be the one way into the app to overdraw a balance
  * or double-book a day.
  */
-app.post('/api/leave/:id/undo', async (c) => {
+app.post('/api/v1/leave/:id/undo', async (c) => {
 	const back = referrerPath(c.req.header('Referer'), c.req.url) ?? '/me';
 	const today = c.get('today');
 	const id = c.req.param('id');
@@ -1107,10 +1108,10 @@ app.post('/me/name', async (c) => {
  * person signs in, and `saveSubscription` reassigns it rather than leaving
  * someone else's name on it.
  */
-app.post('/api/push/subscribe', async (c) => {
+app.post('/api/v1/push/subscribe', async (c) => {
 	const user = c.get('user');
 	const sub = parseSubscription(await c.req.json().catch(() => null));
-	if (!sub) return c.json({ ok: false, error: 'Not a usable push subscription.' }, 400);
+	if (!sub) return jsonError(c, 'Not a usable push subscription.', 400);
 
 	await db.saveSubscription(c.env.DB, sub, user.email);
 	return c.json({ ok: true });
@@ -1123,11 +1124,11 @@ app.post('/api/push/subscribe', async (c) => {
  * secret; it travels to the push service on every send — does not let you
  * silence their notifications.
  */
-app.post('/api/push/unsubscribe', async (c) => {
+app.post('/api/v1/push/unsubscribe', async (c) => {
 	const user = c.get('user');
 	const body = (await c.req.json().catch(() => null)) as { endpoint?: unknown } | null;
 	const endpoint = typeof body?.endpoint === 'string' ? body.endpoint : '';
-	if (!endpoint) return c.json({ ok: false, error: 'No endpoint.' }, 400);
+	if (!endpoint) return jsonError(c, 'No endpoint.', 400);
 
 	await db.deleteSubscription(c.env.DB, endpoint, user.email);
 	// Deliberately 200 whether or not a row was deleted. The browser has already
@@ -1142,12 +1143,12 @@ app.post('/api/push/unsubscribe', async (c) => {
  * Without this the only way to find out whether push works is to wait until
  * 09:00 the next working day, which is how a broken setup stays broken.
  */
-app.post('/api/push/test', async (c) => {
+app.post('/api/v1/push/test', async (c) => {
 	const user = c.get('user');
-	if (!pushConfigured(c.env)) return c.json({ ok: false, error: 'Push is not configured on the server.' }, 503);
+	if (!pushConfigured(c.env)) return jsonError(c, 'Push is not configured on the server.', 503);
 
 	const subs = await db.subscriptionsFor(c.env.DB, user.email);
-	if (subs.length === 0) return c.json({ ok: false, error: 'This browser is not subscribed yet.' }, 409);
+	if (subs.length === 0) return jsonError(c, 'This browser is not subscribed yet.', 409);
 
 	const payload = JSON.stringify({
 		title: 'wan-nee-la',
@@ -1162,7 +1163,7 @@ app.post('/api/push/test', async (c) => {
 
 	const delivered = results.filter((r) => r.ok).length;
 	if (delivered === 0) {
-		return c.json({ ok: false, error: results.find((r) => r.error)?.error ?? 'No browser accepted the push.' }, 502);
+		return jsonError(c, results.find((r) => r.error)?.error ?? 'No browser accepted the push.', 502);
 	}
 	return c.json({ ok: true, delivered });
 });
@@ -1468,6 +1469,19 @@ function clampInt(raw: string | undefined, fallback: number, min: number, max: n
  */
 function yearNavBounds(nowYear: number): { minYear: number; maxYear: number } {
 	return { minYear: nowYear - 5, maxYear: nowYear + 5 };
+}
+
+/**
+ * Every JSON failure, in one shape: `{ error: { message, key? } }`.
+ *
+ * There were three — a bare string here, `{ ok: false, error }` on the push
+ * routes, and `{ error: { key } }` from the preview — so a caller handling
+ * failures had to know which endpoint it was talking to. `message` is always a
+ * sentence in the reader's language; `key` is there when the booking rules
+ * named one, for a program that would rather match than parse prose.
+ */
+function jsonError(c: Ctx, message: string, status: 400 | 409 | 500 | 502 | 503, key?: StringKey) {
+	return c.json({ error: key === undefined ? { message } : { key, message } }, status);
 }
 
 /** Our half-day vocabulary, in the words this feed speaks. */

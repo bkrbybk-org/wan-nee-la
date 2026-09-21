@@ -113,7 +113,7 @@ function enhance(form: HTMLFormElement) {
 		// Responses can land out of order; only the newest one may paint.
 		const mine = ++seq;
 		try {
-			const res = await fetch(`/api/leave/preview?${params}`, { headers: { Accept: 'application/json' } });
+			const res = await fetch(`/api/v1/leave/preview?${params}`, { headers: { Accept: 'application/json' } });
 			if (mine !== seq) return;
 			const body = (await res.json()) as { days?: number; error?: { key: string; message?: string }; coverage?: Coverage | null };
 			if (mine !== seq) return;

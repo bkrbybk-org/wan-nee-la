@@ -9,7 +9,7 @@
  * breakpoint without an `if` threaded through the other file.
  *
  * On drop this builds a hidden `<form>` and POSTs it to the existing
- * `/api/leave/:id/edit` — the same endpoint the edit page uses — so overlap
+ * `/api/v1/leave/:id/edit` — the same endpoint the edit page uses — so overlap
  * detection, quota limits, weekend/holiday rejection and the backdate window
  * are enforced in exactly one place. A rejected drop reloads to the normal
  * error banner.
@@ -81,7 +81,7 @@ if (grid) {
 	function submitMove(id: string, newStart: string, newEnd: string, chip: HTMLElement) {
 		const form = document.createElement('form');
 		form.method = 'post';
-		form.action = `/api/leave/${id}/edit`;
+		form.action = `/api/v1/leave/${id}/edit`;
 		form.style.display = 'none';
 
 		const field = (name: string, value: string) => {

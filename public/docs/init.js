@@ -45,7 +45,7 @@ function boot(spec) {
 		// Access, the reader is already signed in, and the browser sends the
 		// Access cookie and an Origin header of its own accord — so a request
 		// from this page is exactly the request the app expects. Note the push
-		// endpoints act on the reader's own browsers, and /api/push/test really
+		// endpoints act on the reader's own browsers, and /api/v1/push/test really
 		// does send a notification.
 		tryItOutEnabled: true,
 		// Nothing is expanded on load. The point of the page is to see what

@@ -58,31 +58,31 @@ const json = (body) => ({ method: 'POST', headers: { 'Content-Type': 'applicatio
 const CASES = [
 	['health', '/health', {}, true],
 
-	['feed: valid range', '/api/leave?from=2026-09-01&to=2026-09-30', {}, true],
-	['feed: from is not a date', '/api/leave?from=yesterday&to=2026-09-30', {}, false],
-	['feed: to has a time in it', '/api/leave?from=2026-09-01&to=2026-09-30T00:00', {}, false],
+	['feed: valid range', '/api/v1/leave?from=2026-09-01&to=2026-09-30', {}, true],
+	['feed: from is not a date', '/api/v1/leave?from=yesterday&to=2026-09-30', {}, false],
+	['feed: to has a time in it', '/api/v1/leave?from=2026-09-01&to=2026-09-30T00:00', {}, false],
 
-	['preview: valid', '/api/leave/preview?leaveTypeId=1&start=2026-09-22&end=2026-09-23&startHalf=full&endHalf=full', {}, true],
-	['preview: required start missing', '/api/leave/preview?leaveTypeId=1&end=2026-09-23', {}, false],
-	['preview: half not in enum', '/api/leave/preview?start=2026-09-22&startHalf=evening', {}, false],
-	['preview: type id not an integer', '/api/leave/preview?leaveTypeId=annual&start=2026-09-22', {}, false],
-	['preview: exclude not a uuid', '/api/leave/preview?start=2026-09-22&exclude=42', {}, false],
+	['preview: valid', '/api/v1/leave/preview?leaveTypeId=1&start=2026-09-22&end=2026-09-23&startHalf=full&endHalf=full', {}, true],
+	['preview: required start missing', '/api/v1/leave/preview?leaveTypeId=1&end=2026-09-23', {}, false],
+	['preview: half not in enum', '/api/v1/leave/preview?start=2026-09-22&startHalf=evening', {}, false],
+	['preview: type id not an integer', '/api/v1/leave/preview?leaveTypeId=annual&start=2026-09-22', {}, false],
+	['preview: exclude not a uuid', '/api/v1/leave/preview?start=2026-09-22&exclude=42', {}, false],
 
-	['subscribe: valid', '/api/push/subscribe', json(SUB), true],
-	['subscribe: keys missing', '/api/push/subscribe', json({ endpoint: SUB.endpoint }), false],
-	['subscribe: endpoint is a number', '/api/push/subscribe', json({ ...SUB, endpoint: 42 }), false],
-	['subscribe: body not JSON-typed', '/api/push/subscribe', { method: 'POST', headers: { 'Content-Type': 'text/plain' }, body: JSON.stringify(SUB) }, false],
+	['subscribe: valid', '/api/v1/push/subscribe', json(SUB), true],
+	['subscribe: keys missing', '/api/v1/push/subscribe', json({ endpoint: SUB.endpoint }), false],
+	['subscribe: endpoint is a number', '/api/v1/push/subscribe', json({ ...SUB, endpoint: 42 }), false],
+	['subscribe: body not JSON-typed', '/api/v1/push/subscribe', { method: 'POST', headers: { 'Content-Type': 'text/plain' }, body: JSON.stringify(SUB) }, false],
 
-	['unsubscribe: valid', '/api/push/unsubscribe', json({ endpoint: SUB.endpoint }), true],
-	['unsubscribe: endpoint missing', '/api/push/unsubscribe', json({}), false],
+	['unsubscribe: valid', '/api/v1/push/unsubscribe', json({ endpoint: SUB.endpoint }), true],
+	['unsubscribe: endpoint missing', '/api/v1/push/unsubscribe', json({}), false],
 
-	['test push: valid', '/api/push/test', { method: 'POST' }, true],
+	['test push: valid', '/api/v1/push/test', { method: 'POST' }, true],
 
 	['webhook: valid shape', '/line/webhook', json({ destination: 'Uprobe', events: [] }), true],
 	['webhook: body is an array', '/line/webhook', json([]), false],
 	['webhook: events not an array', '/line/webhook', json({ destination: 'Uprobe', events: 'none' }), false],
 
-	['unlisted path (fallthrough)', '/api/not-in-the-schema', {}, null],
+	['unlisted path (fallthrough)', '/api/v1/not-in-the-schema', {}, null],
 ];
 
 function verdict(res) {

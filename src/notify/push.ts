@@ -73,7 +73,7 @@ function concat(...parts: Uint8Array[]): Uint8Array {
 }
 
 /**
- * Validate what a browser posted to /api/push/subscribe.
+ * Validate what a browser posted to /api/v1/push/subscribe.
  *
  * The shape comes from `PushSubscription.toJSON()`, but it arrives over the
  * network and lands in a table the cron later reads and sends to. Two rules

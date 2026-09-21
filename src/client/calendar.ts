@@ -129,7 +129,7 @@ document.addEventListener('click', (e) => {
 	if (p.actions) p.actions.hidden = !canEdit;
 	if (p.readonly) p.readonly.hidden = canEdit;
 	if (p.edit) p.edit.href = `/leave/${id}/edit`;
-	if (p.cancel) p.cancel.action = `/api/leave/${id}/cancel`;
+	if (p.cancel) p.cancel.action = `/api/v1/leave/${id}/cancel`;
 
 	open(entryDialog);
 });

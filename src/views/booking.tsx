@@ -37,7 +37,7 @@ interface BookingFormProps {
  */
 export function BookingForm({ types, today, compact, entry, defaultDate, errorField, draft }: BookingFormProps) {
 	const editing = Boolean(entry);
-	const action = entry ? `/api/leave/${entry.id}/edit` : '/api/leave';
+	const action = entry ? `/api/v1/leave/${entry.id}/edit` : '/api/v1/leave';
 
 	const startValue = draft?.startDate ?? (entry ? entry.start_date : (defaultDate ?? today));
 	// On a single-day booking the end date is left blank, which is what the

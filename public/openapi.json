@@ -2,7 +2,11 @@
 	"openapi": "3.1.0",
 	"info": {
 		"title": "wan-nee-la",
-		"version": "0.1.0",
+		"version": "1.0.0",
+		"contact": {
+			"name": "The deployment's admins",
+			"url": "https://github.com/bkrbybk-org/wan-nee-la"
+		},
 		"summary": "Employee leave tracker — the endpoints that answer in JSON.",
 		"description": "Two things are worth knowing before calling anything here.\n\n**Every route except `/line/webhook` sits behind Cloudflare Access**, which\nauthenticates at the edge, before the Worker runs. There is no API key and\nno signup: an Access identity the app has not seen becomes a user on its\nfirst request, with the current year's quotas seeded. Access *service\ntokens* deliberately cannot use the app — a token has no email, and every\nrow here is keyed by one.\n\n**Four of the seven operations are not enabled yet** — the three under\nPush and the LINE webhook. They answer, and their requests are validated at\nthe edge like the rest, but nothing is delivered: the deployment's push keys\ndo not match each other, and the LINE channel is switched off. Each one says\nso, and the tag descriptions say what is missing.\n\n**Mutations require an `Origin` header matching `Host`.** Access is an\nauthentication gate, not a CSRF defence: its cookie rides along on a form\npost from any origin. A missing `Origin` is refused rather than waved\nthrough, so a non-browser client must send one explicitly. `/line/webhook`\nis the exception and proves itself with an HMAC signature instead.\n"
 	},
@@ -28,7 +32,7 @@
 		},
 		{
 			"name": "Push",
-			"description": "**Not enabled yet.** Web Push subscriptions for the 09:00 weekday digest.\nThe code is finished and these endpoints answer, but no notification can\nbe delivered until the deployment's VAPID keypair is put right: the public\nkey browsers subscribe with no longer matches the private key the Worker\nsigns with. Until then `/api/push/subscribe` stores a subscription that\ncannot be pushed to, and the digest sends nothing.\n"
+			"description": "**Not enabled yet.** Web Push subscriptions for the 09:00 weekday digest.\nThe code is finished and these endpoints answer, but no notification can\nbe delivered until the deployment's VAPID keypair is put right: the public\nkey browsers subscribe with no longer matches the private key the Worker\nsigns with. Until then `/api/v1/push/subscribe` stores a subscription that\ncannot be pushed to, and the digest sends nothing.\n"
 		},
 		{
 			"name": "LINE",
@@ -51,61 +55,7 @@
 						"content": {
 							"application/json": {
 								"schema": {
-									"type": "object",
-									"required": [
-										"ok",
-										"db",
-										"version",
-										"deployedAt",
-										"bangkokToday",
-										"accessConfigured",
-										"devAuthBypass"
-									],
-									"properties": {
-										"ok": {
-											"type": "boolean",
-											"description": "Currently synonymous with `db`."
-										},
-										"db": {
-											"type": "boolean",
-											"description": "A `SELECT 1` against D1 returned."
-										},
-										"version": {
-											"type": [
-												"string",
-												"null"
-											],
-											"description": "Worker version id, from Cloudflare's version metadata binding."
-										},
-										"deployedAt": {
-											"type": [
-												"string",
-												"null"
-											],
-											"format": "date-time"
-										},
-										"bangkokToday": {
-											"$ref": "#/components/schemas/Date",
-											"description": "Today in Asia/Bangkok, which is the only \"today\" this app\nrecognises. Workers run in UTC, and between 17:00 and\n23:59 UTC that is yesterday in Bangkok.\n"
-										},
-										"accessConfigured": {
-											"type": "boolean",
-											"description": "Both ACCESS_TEAM_DOMAIN and ACCESS_AUD are set."
-										},
-										"devAuthBypass": {
-											"type": "boolean",
-											"description": "True means identity verification is switched off and every\nvisitor is signed in as DEV_EMAIL. Must never be true in\nproduction; this field exists so a check can assert that.\n"
-										}
-									}
-								},
-								"example": {
-									"ok": true,
-									"db": true,
-									"version": "66d73c7e-0c3f-4d1e-9c2a-7f3b1e0a5d21",
-									"deployedAt": "2026-08-31T03:12:44.000Z",
-									"bangkokToday": "2026-08-31",
-									"accessConfigured": true,
-									"devAuthBypass": false
+									"$ref": "#/components/schemas/Health"
 								}
 							}
 						}
@@ -116,7 +66,7 @@
 				}
 			}
 		},
-		"/api/leave": {
+		"/api/v1/leave": {
 			"get": {
 				"operationId": "listLeave",
 				"tags": [
@@ -161,71 +111,22 @@
 						"content": {
 							"application/json": {
 								"schema": {
-									"type": "object",
-									"required": [
-										"from",
-										"to",
-										"entries"
-									],
-									"properties": {
-										"from": {
-											"$ref": "#/components/schemas/Date"
-										},
-										"to": {
-											"$ref": "#/components/schemas/Date"
-										},
-										"user": {
-											"type": "string",
-											"format": "email",
-											"description": "Present only when the request named one, echoed back lowercased.",
-											"examples": [
-												"somchai@example.com"
-											]
-										},
-										"entries": {
-											"type": "array",
-											"items": {
-												"$ref": "#/components/schemas/LeaveEntry"
-											}
-										}
-									}
-								},
-								"example": {
-									"from": "2026-08-01",
-									"to": "2026-08-31",
-									"entries": [
-										{
-											"id": "a8ebb987-ca40-4f19-b13e-417e91870c6d",
-											"name": "Chatchai W",
-											"type": "annual",
-											"label": "Annual",
-											"color": "#2563eb",
-											"start": "2026-08-17",
-											"end": "2026-08-20",
-											"startHalf": "full",
-											"endHalf": "full",
-											"days": 4,
-											"note": "Trip"
-										}
-									]
+									"$ref": "#/components/schemas/LeaveFeed"
 								}
 							}
 						}
 					},
 					"400": {
-						"description": "`from` is later than `to`, or `user` is not an email address.",
+						"description": "`from` is later than `to`, the range is longer than 366 days, or\n`user` is not an email address.\n",
 						"content": {
 							"application/json": {
 								"schema": {
-									"type": "object",
-									"properties": {
-										"error": {
-											"type": "string"
-										}
-									}
+									"$ref": "#/components/schemas/Error"
 								},
 								"example": {
-									"error": "from is after to"
+									"error": {
+										"message": "range is longer than 366 days"
+									}
 								}
 							}
 						}
@@ -233,14 +134,14 @@
 				}
 			}
 		},
-		"/api/leave/by-date": {
+		"/api/v1/leave/by-date": {
 			"get": {
 				"operationId": "listLeaveByDate",
 				"tags": [
 					"Leave"
 				],
 				"summary": "Confirmed leave grouped by calendar date",
-				"description": "The same bookings as `/api/leave`, turned inside out: one entry per\n**date**, listing who is away that day. A booking spanning a range\nappears under each date it touches, and `period` says which part of\nthat day it covers — a range's middle days are always `full_day`.\n\nDates with nobody away are left out, so an empty day and a day outside\nthe request cannot be confused.\n\n**This feed carries email addresses**, which `/api/leave` deliberately\ndoes not. A deliberate exception, taken 2026-09-21: an integration needs\na stable identifier for a person, and a display name is neither unique\nnor stable. Notes are never included here at all, private or otherwise.\n\nCancelled bookings and deactivated people are absent, as everywhere else.\n",
+				"description": "The same bookings as `/api/v1/leave`, turned inside out: one entry per\n**date**, listing who is away that day. A booking spanning a range\nappears under each date it touches, and `period` says which part of\nthat day it covers — a range's middle days are always `full_day`.\n\nDates with nobody away are left out, so an empty day and a day outside\nthe request cannot be confused.\n\n**This feed carries email addresses**, which `/api/v1/leave` deliberately\ndoes not. A deliberate exception, taken 2026-09-21: an integration needs\na stable identifier for a person, and a display name is neither unique\nnor stable. Notes are never included here at all, private or otherwise.\n\nCancelled bookings and deactivated people are absent, as everywhere else.\n",
 				"parameters": [
 					{
 						"name": "from",
@@ -265,78 +166,7 @@
 						"content": {
 							"application/json": {
 								"schema": {
-									"type": "object",
-									"required": [
-										"from",
-										"to",
-										"data"
-									],
-									"properties": {
-										"from": {
-											"$ref": "#/components/schemas/Date"
-										},
-										"to": {
-											"$ref": "#/components/schemas/Date"
-										},
-										"data": {
-											"type": "array",
-											"description": "Ascending by date. Only dates with somebody away.",
-											"items": {
-												"type": "object",
-												"required": [
-													"date",
-													"employees"
-												],
-												"properties": {
-													"date": {
-														"$ref": "#/components/schemas/Date"
-													},
-													"employees": {
-														"type": "array",
-														"items": {
-															"type": "object",
-															"required": [
-																"email",
-																"name",
-																"leave_type",
-																"period"
-															],
-															"properties": {
-																"email": {
-																	"type": "string",
-																	"format": "email",
-																	"description": "The address Cloudflare Access knows them by."
-																},
-																"name": {
-																	"type": "string",
-																	"description": "Display name."
-																},
-																"leave_type": {
-																	"type": "string",
-																	"description": "The leave type's English label, as an admin set it.",
-																	"examples": [
-																		"Annual",
-																		"Sick",
-																		"Personal",
-																		"Planned medical"
-																	]
-																},
-																"period": {
-																	"type": "string",
-																	"enum": [
-																		"full_day",
-																		"morning",
-																		"afternoon"
-																	],
-																	"description": "Which part of this date the booking covers."
-																}
-															}
-														}
-													}
-												}
-											}
-										}
-									}
+									"$ref": "#/components/schemas/LeaveByDate"
 								},
 								"example": {
 									"from": "2026-09-21",
@@ -380,14 +210,11 @@
 						"content": {
 							"application/json": {
 								"schema": {
-									"type": "object",
-									"required": [
-										"error"
-									],
-									"properties": {
-										"error": {
-											"type": "string"
-										}
+									"$ref": "#/components/schemas/Error"
+								},
+								"example": {
+									"error": {
+										"message": "from is after to"
 									}
 								}
 							}
@@ -396,7 +223,7 @@
 				}
 			}
 		},
-		"/api/leave/preview": {
+		"/api/v1/leave/preview": {
 			"get": {
 				"operationId": "previewLeave",
 				"tags": [
@@ -464,7 +291,7 @@
 											"$ref": "#/components/schemas/Preview"
 										},
 										{
-											"$ref": "#/components/schemas/PreviewRejected"
+											"$ref": "#/components/schemas/Error"
 										}
 									]
 								},
@@ -509,7 +336,7 @@
 				}
 			}
 		},
-		"/api/push/subscribe": {
+		"/api/v1/push/subscribe": {
 			"post": {
 				"operationId": "pushSubscribe",
 				"tags": [
@@ -543,7 +370,12 @@
 						"content": {
 							"application/json": {
 								"schema": {
-									"$ref": "#/components/schemas/Failed"
+									"$ref": "#/components/schemas/Error"
+								},
+								"example": {
+									"error": {
+										"message": "Not a usable push subscription."
+									}
 								}
 							}
 						}
@@ -554,7 +386,7 @@
 				}
 			}
 		},
-		"/api/push/unsubscribe": {
+		"/api/v1/push/unsubscribe": {
 			"post": {
 				"operationId": "pushUnsubscribe",
 				"tags": [
@@ -597,7 +429,12 @@
 						"content": {
 							"application/json": {
 								"schema": {
-									"$ref": "#/components/schemas/Failed"
+									"$ref": "#/components/schemas/Error"
+								},
+								"example": {
+									"error": {
+										"message": "No endpoint."
+									}
 								}
 							}
 						}
@@ -608,7 +445,7 @@
 				}
 			}
 		},
-		"/api/push/test": {
+		"/api/v1/push/test": {
 			"post": {
 				"operationId": "pushTest",
 				"tags": [
@@ -648,7 +485,7 @@
 						"content": {
 							"application/json": {
 								"schema": {
-									"$ref": "#/components/schemas/Failed"
+									"$ref": "#/components/schemas/Error"
 								}
 							}
 						}
@@ -658,7 +495,7 @@
 						"content": {
 							"application/json": {
 								"schema": {
-									"$ref": "#/components/schemas/Failed"
+									"$ref": "#/components/schemas/Error"
 								}
 							}
 						}
@@ -668,7 +505,7 @@
 						"content": {
 							"application/json": {
 								"schema": {
-									"$ref": "#/components/schemas/Failed"
+									"$ref": "#/components/schemas/Error"
 								}
 							}
 						}
@@ -908,6 +745,176 @@
 					}
 				}
 			},
+			"Health": {
+				"type": "object",
+				"required": [
+					"ok",
+					"db",
+					"version",
+					"deployedAt",
+					"bangkokToday",
+					"accessConfigured",
+					"devAuthBypass"
+				],
+				"properties": {
+					"ok": {
+						"type": "boolean",
+						"description": "Currently synonymous with `db`."
+					},
+					"db": {
+						"type": "boolean",
+						"description": "A `SELECT 1` against D1 returned."
+					},
+					"version": {
+						"type": [
+							"string",
+							"null"
+						],
+						"description": "Worker version id, from Cloudflare's version metadata binding."
+					},
+					"deployedAt": {
+						"type": [
+							"string",
+							"null"
+						],
+						"format": "date-time"
+					},
+					"bangkokToday": {
+						"$ref": "#/components/schemas/Date",
+						"description": "Today in Asia/Bangkok, which is the only \"today\" this app\nrecognises. Workers run in UTC, and between 17:00 and 23:59 UTC\nthat is yesterday in Bangkok.\n"
+					},
+					"accessConfigured": {
+						"type": "boolean",
+						"description": "Both ACCESS_TEAM_DOMAIN and ACCESS_AUD are set."
+					},
+					"devAuthBypass": {
+						"type": "boolean",
+						"description": "True means identity verification is switched off and every visitor\nis signed in as DEV_EMAIL. Must never be true in production; this\nfield exists so a check can assert that.\n"
+					}
+				},
+				"examples": [
+					{
+						"ok": true,
+						"db": true,
+						"version": "66d73c7e-0c3f-4d1e-9c2a-7f3b1e0a5d21",
+						"deployedAt": "2026-08-31T03:12:44.000Z",
+						"bangkokToday": "2026-08-31",
+						"accessConfigured": true,
+						"devAuthBypass": false
+					}
+				]
+			},
+			"LeaveFeed": {
+				"type": "object",
+				"required": [
+					"from",
+					"to",
+					"entries"
+				],
+				"properties": {
+					"from": {
+						"$ref": "#/components/schemas/Date"
+					},
+					"to": {
+						"$ref": "#/components/schemas/Date"
+					},
+					"user": {
+						"type": "string",
+						"format": "email",
+						"description": "Present only when the request named one, echoed back lowercased.",
+						"examples": [
+							"somchai@example.com"
+						]
+					},
+					"entries": {
+						"type": "array",
+						"items": {
+							"$ref": "#/components/schemas/LeaveEntry"
+						}
+					}
+				}
+			},
+			"LeaveByDate": {
+				"type": "object",
+				"required": [
+					"from",
+					"to",
+					"data"
+				],
+				"properties": {
+					"from": {
+						"$ref": "#/components/schemas/Date"
+					},
+					"to": {
+						"$ref": "#/components/schemas/Date"
+					},
+					"data": {
+						"type": "array",
+						"description": "Ascending by date. Only dates with somebody away.",
+						"items": {
+							"$ref": "#/components/schemas/LeaveDay"
+						}
+					}
+				}
+			},
+			"LeaveDay": {
+				"type": "object",
+				"required": [
+					"date",
+					"employees"
+				],
+				"properties": {
+					"date": {
+						"$ref": "#/components/schemas/Date"
+					},
+					"employees": {
+						"type": "array",
+						"items": {
+							"$ref": "#/components/schemas/LeaveDayPerson"
+						}
+					}
+				}
+			},
+			"LeaveDayPerson": {
+				"type": "object",
+				"description": "One person's absence on one date. The field names are snake_case here\nand camelCase elsewhere in this API, which is a wart: this shape was\nspecified by its first consumer.\n",
+				"required": [
+					"email",
+					"name",
+					"leave_type",
+					"period"
+				],
+				"properties": {
+					"email": {
+						"type": "string",
+						"format": "email",
+						"description": "The address Cloudflare Access knows them by. The one place this API\nreturns an address — an integration needs a stable identifier for a\nperson, and a display name is neither unique nor stable.\n"
+					},
+					"name": {
+						"type": "string",
+						"description": "Display name."
+					},
+					"leave_type": {
+						"type": "string",
+						"description": "The leave type's English label, as an admin set it.",
+						"examples": [
+							"Annual",
+							"Sick",
+							"Personal",
+							"Planned medical"
+						]
+					},
+					"period": {
+						"type": "string",
+						"enum": [
+							"full_day",
+							"morning",
+							"afternoon"
+						],
+						"description": "Which part of this date the booking covers."
+					}
+				}
+			},
 			"Preview": {
 				"type": "object",
 				"required": [
@@ -971,32 +978,32 @@
 					}
 				}
 			},
-			"PreviewRejected": {
+			"Error": {
 				"type": "object",
+				"description": "Every failure in this API, and a refused preview, come back in this one\nshape. There used to be three — a bare string on the feeds,\n`{ ok: false, error }` on the push routes, and a bare key from the\npreview — so a caller had to know which endpoint it was talking to\nbefore it could read the failure.\n",
 				"required": [
 					"error"
 				],
 				"properties": {
 					"error": {
 						"type": "object",
-						"description": "A message *key*, not a sentence. Booking rules are pure functions\nwith no idea which language the request arrived in, so they name\nthe message and the caller renders it. Note this differs from the\n`error` of `/api/leave`, which is a plain string.\n",
 						"required": [
-							"key",
 							"message"
 						],
 						"properties": {
+							"message": {
+								"type": "string",
+								"description": "A sentence in the caller's language, ready to show.\n",
+								"examples": [
+									"That day is a weekend or a public holiday."
+								]
+							},
 							"key": {
 								"type": "string",
+								"description": "Present when the booking rules named the message. They are pure\nfunctions with no idea which language the request arrived in, so\nthey name the message and the route renders it — a program that\nwould rather match than parse prose can use this.\n",
 								"examples": [
 									"error.noWorkingDays",
 									"error.tooFarBack"
-								]
-							},
-							"message": {
-								"type": "string",
-								"description": "The same message rendered in the caller's language, ready to\nshow. The booking form displays this; a program can use `key`.\n",
-								"examples": [
-									"That day is a weekend or a public holiday."
 								]
 							},
 							"vars": {
@@ -1007,7 +1014,7 @@
 										"number"
 									]
 								},
-								"description": "Values to substitute into the message's placeholders."
+								"description": "Values substituted into the message's placeholders."
 							}
 						}
 					}
@@ -1059,24 +1066,6 @@
 					"ok": {
 						"type": "boolean",
 						"const": true
-					}
-				}
-			},
-			"Failed": {
-				"type": "object",
-				"required": [
-					"ok",
-					"error"
-				],
-				"properties": {
-					"ok": {
-						"type": "boolean",
-						"const": false
-					},
-					"error": {
-						"type": "string",
-						"description": "English",
-						"and meant for a developer rather than a reader.": null
 					}
 				}
 			}

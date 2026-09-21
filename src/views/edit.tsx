@@ -83,7 +83,7 @@ function EditBody({
 			<section class="card">
 				<h2>{t('edit.remove')}</h2>
 				<p class="muted">{t('edit.removeHelp', { count: entry.days_total, days: formatDays(entry.days_total) })}</p>
-				<form method="post" action={`/api/leave/${entry.id}/cancel`}>
+				<form method="post" action={`/api/v1/leave/${entry.id}/cancel`}>
 					<button type="submit" class="btn danger">
 						<DeleteIcon class="sm" />
 						{t('edit.removeButton')}

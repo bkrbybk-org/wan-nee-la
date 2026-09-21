@@ -218,7 +218,7 @@ export function FlashBanner({ error, notice, undo }: { error?: string; notice?: 
 				<div class="banner ok">
 					<span>{notice}</span>
 					{undo ? (
-						<form method="post" action={`/api/leave/${undo}/undo`} class="banner-action">
+						<form method="post" action={`/api/v1/leave/${undo}/undo`} class="banner-action">
 							<button type="submit" class="btn text">{t('flash.undo')}</button>
 						</form>
 					) : null}

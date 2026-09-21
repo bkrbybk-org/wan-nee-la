@@ -253,7 +253,7 @@ function flashOf(res) {
 	}
 }
 
-const feed = async (from, to) => (await fetch(`${BASE}/api/leave?from=${from}&to=${to}`)).json();
+const feed = async (from, to) => (await fetch(`${BASE}/api/v1/leave?from=${from}&to=${to}`)).json();
 
 /**
  * A Monday about a month out whose whole working week is clear of holidays.
@@ -339,19 +339,19 @@ async function main() {
 	check('docs: "Try it out" targets this origin, not the example host', init.includes('url: location.origin'), 'servers not replaced');
 
 	// --- CSRF guard --------------------------------------------------------
-	let res = await post('/api/leave', { leaveTypeId: '1', startDate: MON }, { origin: 'https://evil.example' });
+	let res = await post('/api/v1/leave', { leaveTypeId: '1', startDate: MON }, { origin: 'https://evil.example' });
 	eq('CSRF: cross-origin POST rejected', res.status, 403);
 
-	res = await post('/api/leave', { leaveTypeId: '1', startDate: MON }, { origin: 'null' });
+	res = await post('/api/v1/leave', { leaveTypeId: '1', startDate: MON }, { origin: 'null' });
 	eq('CSRF: opaque (null) origin rejected', res.status, 403);
 
 	// Absence is not permission: every browser sends Origin on a POST, so a
 	// request without one is not coming from one of our pages.
-	res = await post('/api/leave', { leaveTypeId: '1', startDate: MON }, { origin: null });
+	res = await post('/api/v1/leave', { leaveTypeId: '1', startDate: MON }, { origin: null });
 	eq('CSRF: a missing origin is rejected', res.status, 403);
 
 	// --- booking rules over HTTP -------------------------------------------
-	res = await post('/api/leave', { leaveTypeId: '1', startDate: MON, endDate: FRI, note: 'smoke-private-note' });
+	res = await post('/api/v1/leave', { leaveTypeId: '1', startDate: MON, endDate: FRI, note: 'smoke-private-note' });
 	eq('book Mon-Fri: accepted', res.status, 303);
 	eq('book Mon-Fri: charged 5 days', flashOf(res)?.message, 'Booked 5 days of annual leave.');
 
@@ -361,21 +361,21 @@ async function main() {
 	check('feed: no email leaked', !('email' in (entries[0] ?? {})), `keys: ${Object.keys(entries[0] ?? {})}`);
 	const bookingId = entries[0]?.id;
 
-	res = await post('/api/leave', { leaveTypeId: '1', startDate: addDays(MON, 2) });
+	res = await post('/api/v1/leave', { leaveTypeId: '1', startDate: addDays(MON, 2) });
 	eq('overlap rejected', flashOf(res)?.kind, 'err');
 	check('overlap message names the clash', /already have leave/.test(flashOf(res)?.message ?? ''), flashOf(res)?.message);
 
-	res = await post('/api/leave', { leaveTypeId: '1', startDate: SAT });
+	res = await post('/api/v1/leave', { leaveTypeId: '1', startDate: SAT });
 	check('weekend rejected', /weekend|holiday/.test(flashOf(res)?.message ?? ''), flashOf(res)?.message);
 
-	res = await post('/api/leave', { leaveTypeId: '1', startDate: addDays(MON, 7), endDate: addDays(MON, 25) });
+	res = await post('/api/v1/leave', { leaveTypeId: '1', startDate: addDays(MON, 7), endDate: addDays(MON, 25) });
 	check('over-quota rejected', /Not enough/.test(flashOf(res)?.message ?? ''), flashOf(res)?.message);
 
 	// --- a rejected booking comes back to the form ---------------------------
 	// A weekend, so this is refused whatever the quota looks like, and the leave
 	// type is the one the suite never books — proof the draft is the submission
 	// rather than the form's defaults.
-	res = await post('/api/leave', {
+	res = await post('/api/v1/leave', {
 		leaveTypeId: '2', startDate: SAT, endDate: addDays(SAT, 1), startHalf: 'pm', endHalf: 'am',
 		note: 'smoke-draft-note', noteVisibility: 'shared',
 	});
@@ -393,31 +393,31 @@ async function main() {
 
 	// A booking that never parsed has no draft to give back, but the key still
 	// names the field — half an answer beats none.
-	res = await post('/api/leave', { leaveTypeId: '', startDate: MON });
+	res = await post('/api/v1/leave', { leaveTypeId: '', startDate: MON });
 	eq('an unparseable booking still marks its field', flashOf(res)?.field, 'leaveTypeId');
 	eq('and carries no draft', flashOf(res)?.draft, null);
 
 	// The realistic worst case for cookie room: a full-length note in Thai, where
 	// every character costs three bytes before base64 adds a third on top.
 	const thaiNote = '\u0e25\u0e32'.repeat(250);
-	res = await post('/api/leave', { leaveTypeId: '1', startDate: SAT, note: thaiNote });
+	res = await post('/api/v1/leave', { leaveTypeId: '1', startDate: SAT, note: thaiNote });
 	eq('a full-length Thai note still fits in the cookie', flashOf(res)?.draft?.n, thaiNote);
 
 	// A note that does not fit is dropped whole rather than truncated, and the
 	// rest of the draft still arrives. Control characters are what it takes:
 	// JSON spends six bytes on each one.
-	res = await post('/api/leave', { leaveTypeId: '1', startDate: SAT, note: `x${'\u0001'.repeat(499)}` });
+	res = await post('/api/v1/leave', { leaveTypeId: '1', startDate: SAT, note: `x${'\u0001'.repeat(499)}` });
 	draft = flashOf(res)?.draft;
 	eq('an oversized note is dropped', draft?.n, undefined);
 	eq('but the rest of the draft still comes back', draft?.s, SAT);
-	for (const cookie of [res, await post('/api/leave', { leaveTypeId: '1', startDate: SAT, note: thaiNote })]) {
+	for (const cookie of [res, await post('/api/v1/leave', { leaveTypeId: '1', startDate: SAT, note: thaiNote })]) {
 		const header = cookie.headers.get('set-cookie') ?? '';
 		const flashPart = header.split(/,(?=\s*wnl_)/)[0];
 		check('the flash cookie stays inside the 4096-byte limit', flashPart.length < 4096, `${flashPart.length} bytes`);
 	}
 
 	// A booking that never parsed has nothing coherent to prefill with.
-	res = await post('/api/leave', { leaveTypeId: '1', startDate: 'not-a-date' });
+	res = await post('/api/v1/leave', { leaveTypeId: '1', startDate: 'not-a-date' });
 	eq('an unparseable booking carries no draft', flashOf(res)?.draft, null);
 
 	// --- next year draws on next year's allowance ----------------------------
@@ -441,7 +441,7 @@ async function main() {
 
 	// Ten working days next year — more than this year has left, which is what
 	// the old code measured it against and refused.
-	res = await post('/api/leave', { leaveTypeId: '1', startDate: NEXT_MON, endDate: addDays(NEXT_MON, 11) });
+	res = await post('/api/v1/leave', { leaveTypeId: '1', startDate: NEXT_MON, endDate: addDays(NEXT_MON, 11) });
 	eq('next year is booked against its own allowance', flashOf(res)?.kind, 'ok');
 	const nextYearId = (await feed(NEXT_MON, addDays(NEXT_MON, 11))).entries[0]?.id;
 
@@ -454,10 +454,10 @@ async function main() {
 
 	// The allowance still binds — against the right year now. Nobody has been
 	// seeded for next year, so the type default is what stands in.
-	res = await post('/api/leave', { leaveTypeId: '1', startDate: addDays(NEXT_MON, 21), endDate: addDays(NEXT_MON, 32) });
+	res = await post('/api/v1/leave', { leaveTypeId: '1', startDate: addDays(NEXT_MON, 21), endDate: addDays(NEXT_MON, 32) });
 	check('and next year runs out on its own quota', /Not enough/.test(flashOf(res)?.message ?? ''), flashOf(res)?.message);
 
-	await post(`/api/leave/${nextYearId}/cancel`);
+	await post(`/api/v1/leave/${nextYearId}/cancel`);
 	eq('next-year fixture cleaned up', (await feed(NEXT_MON, addDays(NEXT_MON, 11))).entries.length, 0);
 
 	// A booking moved across New Year is checked against the year it moves into,
@@ -465,34 +465,34 @@ async function main() {
 	// there. They used to be credited unconditionally, so a booking moved into a
 	// full year was measured against a balance inflated by exactly its own size,
 	// and accepted.
-	res = await post('/api/leave', { leaveTypeId: '1', startDate: NEXT_MON, endDate: addDays(NEXT_MON, 11) });
+	res = await post('/api/v1/leave', { leaveTypeId: '1', startDate: NEXT_MON, endDate: addDays(NEXT_MON, 11) });
 	eq('cross-year move: next year filled first', flashOf(res)?.kind, 'ok');
 	const fullNextYearId = (await feed(NEXT_MON, addDays(NEXT_MON, 11))).entries[0]?.id;
 
 	const MOVER = addDays(MON, 14);
-	res = await post('/api/leave', { leaveTypeId: '1', startDate: MOVER, endDate: addDays(MOVER, 4) });
+	res = await post('/api/v1/leave', { leaveTypeId: '1', startDate: MOVER, endDate: addDays(MOVER, 4) });
 	eq('cross-year move: a booking this year to move', flashOf(res)?.kind, 'ok');
 	const moverId = (await feed(MOVER, addDays(MOVER, 4))).entries[0]?.id;
 
-	res = await post(`/api/leave/${moverId}/edit`, {
+	res = await post(`/api/v1/leave/${moverId}/edit`, {
 		leaveTypeId: '1', startDate: addDays(NEXT_MON, 21), endDate: addDays(NEXT_MON, 25),
 	});
 	check('moving it into a full next year is refused', /Not enough/.test(flashOf(res)?.message ?? ''), flashOf(res)?.message);
 	eq('and it stays where it was', (await feed(MOVER, addDays(MOVER, 4))).entries.length, 1);
 
-	await post(`/api/leave/${moverId}/cancel`);
-	await post(`/api/leave/${fullNextYearId}/cancel`);
+	await post(`/api/v1/leave/${moverId}/cancel`);
+	await post(`/api/v1/leave/${fullNextYearId}/cancel`);
 
-	res = await post('/api/leave', { leaveTypeId: '1', startDate: '2026-02-30' });
+	res = await post('/api/v1/leave', { leaveTypeId: '1', startDate: '2026-02-30' });
 	eq('invalid calendar date rejected', flashOf(res)?.kind, 'err');
 
 	// --- editing own booking ------------------------------------------------
-	res = await post(`/api/leave/${bookingId}/edit`, {
+	res = await post(`/api/v1/leave/${bookingId}/edit`, {
 		leaveTypeId: '1', startDate: MON, endDate: FRI, startHalf: 'full', endHalf: 'full', note: 'smoke-private-note',
 	});
 	check('edit with unchanged dates does not self-overlap', flashOf(res)?.kind === 'ok', flashOf(res)?.message);
 
-	res = await post(`/api/leave/${bookingId}/edit`, {
+	res = await post(`/api/v1/leave/${bookingId}/edit`, {
 		leaveTypeId: '1', startDate: MON, endDate: addDays(MON, 2), note: 'smoke-private-note',
 	});
 	eq('shortening credits its own days back', flashOf(res)?.message, 'Updated to 3 days of annual leave.');
@@ -516,33 +516,33 @@ async function main() {
 	// A page elsewhere can set its own Referrer-Policy and send us anything.
 	// `//evil.example` is a valid URL *pathname*, and would be a
 	// protocol-relative redirect off the site if it were used as given.
-	res = await post('/api/leave/1/cancel', {}, { referer: 'https://evil.example//evil.example' });
+	res = await post('/api/v1/leave/1/cancel', {}, { referer: 'https://evil.example//evil.example' });
 	eq('a cross-origin referrer is ignored', res.headers.get('location'), '/me');
-	res = await post('/api/leave/1/cancel', {}, { referer: `${BASE}//evil.example` });
+	res = await post('/api/v1/leave/1/cancel', {}, { referer: `${BASE}//evil.example` });
 	check(
 		'a same-origin referrer with a protocol-relative path is refused',
 		!(res.headers.get('location') ?? '').startsWith('//'),
 		res.headers.get('location'),
 	);
-	res = await post('/api/leave/1/cancel', {}, { referer: `${BASE}/?y=2026&m=9` });
+	res = await post('/api/v1/leave/1/cancel', {}, { referer: `${BASE}/?y=2026&m=9` });
 	eq('an ordinary same-origin referrer is honoured', res.headers.get('location'), '/?y=2026&m=9');
 
 	// --- open redirect ------------------------------------------------------
 	for (const evil of ['//evil.example', 'https://evil.example', '/\\evil.example']) {
-		res = await post(`/api/leave/${bookingId}/edit`, {
+		res = await post(`/api/v1/leave/${bookingId}/edit`, {
 			leaveTypeId: '1', startDate: MON, endDate: addDays(MON, 2), note: 'Trip', returnTo: evil,
 		});
 		const loc = res.headers.get('location') ?? '';
 		check(`returnTo rejects ${evil}`, loc === '/me' || loc.startsWith('/me'), `Location: ${loc}`);
 	}
-	res = await post(`/api/leave/${bookingId}/edit`, {
+	res = await post(`/api/v1/leave/${bookingId}/edit`, {
 		leaveTypeId: '1', startDate: MON, endDate: addDays(MON, 2), note: 'Trip', returnTo: '/?y=2026&m=9',
 	});
 	eq('returnTo accepts a same-origin path with its query', res.headers.get('location'), '/?y=2026&m=9');
 
 	// --- a rejected edit comes back to the edit form -------------------------
 	// SAT is a weekend, so this is refused whatever the quota looks like by now.
-	res = await post(`/api/leave/${bookingId}/edit`, { leaveTypeId: '2', startDate: SAT });
+	res = await post(`/api/v1/leave/${bookingId}/edit`, { leaveTypeId: '2', startDate: SAT });
 	eq('a rejected edit lands back on the edit page', res.headers.get('location'), `/leave/${bookingId}/edit`);
 	eq('and carries the rejected leave type', flashOf(res)?.draft?.t, 2);
 	eq('and the rejected date', flashOf(res)?.draft?.s, SAT);
@@ -550,7 +550,7 @@ async function main() {
 	// A drag on the calendar posts the same endpoint with returnTo, and lands on
 	// a month view whose booking form is a blank create form. Prefilling that
 	// would drop the dragged booking into a form nobody opened.
-	res = await post(`/api/leave/${bookingId}/edit`, { leaveTypeId: '2', startDate: SAT, returnTo: '/?y=2026&m=9' });
+	res = await post(`/api/v1/leave/${bookingId}/edit`, { leaveTypeId: '2', startDate: SAT, returnTo: '/?y=2026&m=9' });
 	eq('a rejected drag still reports the error', flashOf(res)?.kind, 'err');
 	eq('but carries no draft back to the calendar', flashOf(res)?.draft, null);
 
@@ -615,7 +615,7 @@ async function main() {
 	// Set the note here rather than relying on one written earlier — the
 	// open-redirect tests above edit this same booking, and a test that depends
 	// on another test's leftovers breaks the day that one changes.
-	res = await post(`/api/leave/${bookingId}/edit`, {
+	res = await post(`/api/v1/leave/${bookingId}/edit`, {
 		leaveTypeId: '1', startDate: MON, endDate: addDays(MON, 2), note: 'smoke-private-note',
 	});
 	eq('note set for the privacy checks', flashOf(res)?.kind, 'ok');
@@ -629,7 +629,7 @@ async function main() {
 
 	// Sharing it puts the same note in front of everyone; the flag is what
 	// changes, not the text.
-	res = await post(`/api/leave/${bookingId}/edit`, {
+	res = await post(`/api/v1/leave/${bookingId}/edit`, {
 		leaveTypeId: '1', startDate: MON, endDate: addDays(MON, 2), note: 'smoke-shared-note', noteVisibility: 'shared',
 	});
 	eq('note can be shared', flashOf(res)?.kind, 'ok');
@@ -639,7 +639,7 @@ async function main() {
 		0,
 	);
 
-	res = await post(`/api/leave/${bookingId}/edit`, {
+	res = await post(`/api/v1/leave/${bookingId}/edit`, {
 		leaveTypeId: '1', startDate: MON, endDate: addDays(MON, 2), note: 'smoke-private-note',
 	});
 	eq('and made private again by omitting the box', d1Rows(`SELECT note_private FROM leave_requests WHERE id = '${bookingId}'`)[0]?.note_private, 1);
@@ -661,7 +661,7 @@ async function main() {
 	// --- the feed, grouped by date ------------------------------------------
 	//
 	// The admin is booked MON..MON+2 at this point, full days.
-	const byDateRes = await fetch(`${BASE}/api/leave/by-date?from=${MON}&to=${FRI}`);
+	const byDateRes = await fetch(`${BASE}/api/v1/leave/by-date?from=${MON}&to=${FRI}`);
 	eq('by-date: answers', byDateRes.status, 200);
 	const byDateBody = await byDateRes.json();
 	eq('by-date: echoes the range', `${byDateBody.from}..${byDateBody.to}`, `${MON}..${FRI}`);
@@ -678,29 +678,34 @@ async function main() {
 
 	// Half days at the ends of a range, full in the middle — the expansion the
 	// callers would otherwise each reimplement.
-	await post(`/api/leave/${bookingId}/edit`, {
+	await post(`/api/v1/leave/${bookingId}/edit`, {
 		leaveTypeId: '1', startDate: MON, endDate: addDays(MON, 2), startHalf: 'pm', endHalf: 'am',
 	});
-	const halves = await (await fetch(`${BASE}/api/leave/by-date?from=${MON}&to=${FRI}`)).json();
+	const halves = await (await fetch(`${BASE}/api/v1/leave/by-date?from=${MON}&to=${FRI}`)).json();
 	eq('by-date: a range starting after lunch', halves.data[0]?.employees[0]?.period, 'afternoon');
 	eq('by-date: its middle day is whole', halves.data[1]?.employees[0]?.period, 'full_day');
 	eq('by-date: and it ends at lunch', halves.data[2]?.employees[0]?.period, 'morning');
-	await post(`/api/leave/${bookingId}/edit`, {
+	await post(`/api/v1/leave/${bookingId}/edit`, {
 		leaveTypeId: '1', startDate: MON, endDate: addDays(MON, 2), note: 'smoke-private-note',
 	});
 
-	const emptyRange = await (await fetch(`${BASE}/api/leave/by-date?from=2030-06-01&to=2030-06-30`)).json();
+	const emptyRange = await (await fetch(`${BASE}/api/v1/leave/by-date?from=2030-06-01&to=2030-06-30`)).json();
 	eq('by-date: a range with no leave is an empty list', emptyRange.data.length, 0);
-	eq('by-date: backwards range refused', (await fetch(`${BASE}/api/leave/by-date?from=${FRI}&to=${MON}`)).status, 400);
-	eq('by-date: a range over a year refused', (await fetch(`${BASE}/api/leave/by-date?from=2030-01-01&to=2031-06-01`)).status, 400);
+	const backwards = await fetch(`${BASE}/api/v1/leave/by-date?from=${FRI}&to=${MON}`);
+	eq('by-date: backwards range refused', backwards.status, 400);
+	eq('by-date: in the shared error shape', (await backwards.json()).error?.message, 'from is after to');
+	const tooLong = await fetch(`${BASE}/api/v1/leave?from=2030-01-01&to=2031-06-01`);
+	eq('feed: a range over a year is refused too', tooLong.status, 400);
+	check('feed: and says how long is allowed', /366/.test((await tooLong.json()).error?.message ?? ''), 'no limit in the message');
+	eq('by-date: a range over a year refused', (await fetch(`${BASE}/api/v1/leave/by-date?from=2030-01-01&to=2031-06-01`)).status, 400);
 
 	// --- coverage warning ---------------------------------------------------
-	let preview = await (await fetch(`${BASE}/api/leave/preview?leaveTypeId=1&start=${MON}&end=${MON}`)).json();
+	let preview = await (await fetch(`${BASE}/api/v1/leave/preview?leaveTypeId=1&start=${MON}&end=${MON}`)).json();
 	eq('preview still returns a day count', preview.days, 1);
 	check('and says nothing about coverage when only you are out', preview.coverage === null, JSON.stringify(preview.coverage));
 	// A refused preview carries the sentence the form shows, not just a key —
 	// printing the bare object is how "[object Object]" appeared on weekends.
-	const refused = await (await fetch(`${BASE}/api/leave/preview?leaveTypeId=1&start=${SAT}&end=${SAT}`)).json();
+	const refused = await (await fetch(`${BASE}/api/v1/leave/preview?leaveTypeId=1&start=${SAT}&end=${SAT}`)).json();
 	eq('a refused preview keeps its key', refused.error?.key, 'error.notAWorkingDay');
 	eq('and carries the message the form shows', refused.error?.message, 'That day is a weekend or a public holiday.');
 
@@ -744,7 +749,7 @@ async function main() {
 	const endpointOf = (id) => `https://push.example.net/wpush/v2/${id}`;
 	const sub = (id) => ({ endpoint: endpointOf(id), keys: { p256dh: P256DH, auth: AUTH } });
 
-	eq('push: subscribe accepted', (await postJson('/api/push/subscribe', sub('admin-laptop'))).status, 200);
+	eq('push: subscribe accepted', (await postJson('/api/v1/push/subscribe', sub('admin-laptop'))).status, 200);
 	eq(
 		'push: subscription stored against the caller',
 		d1Rows(`SELECT user_email FROM push_subscriptions WHERE endpoint = '${endpointOf('admin-laptop')}'`)[0]?.user_email,
@@ -753,28 +758,30 @@ async function main() {
 
 	// Re-subscribing the same browser must not create a second row — the
 	// endpoint is the identity, and duplicates would push twice to one device.
-	await postJson('/api/push/subscribe', sub('admin-laptop'));
+	await postJson('/api/v1/push/subscribe', sub('admin-laptop'));
 	eq('push: re-subscribing updates rather than duplicates', d1Rows('SELECT COUNT(*) AS n FROM push_subscriptions')[0]?.n, 1);
 
 	eq(
 		'push: rejects a non-https endpoint',
-		(await postJson('/api/push/subscribe', { endpoint: 'http://push.example.net/x', keys: { p256dh: P256DH, auth: AUTH } })).status,
+		(await postJson('/api/v1/push/subscribe', { endpoint: 'http://push.example.net/x', keys: { p256dh: P256DH, auth: AUTH } })).status,
 		400,
 	);
 	eq(
 		'push: rejects a wrong-sized key',
-		(await postJson('/api/push/subscribe', { endpoint: endpointOf('bad'), keys: { p256dh: 'AAAA', auth: AUTH } })).status,
+		(await postJson('/api/v1/push/subscribe', { endpoint: endpointOf('bad'), keys: { p256dh: 'AAAA', auth: AUTH } })).status,
 		400,
 	);
-	eq('push: rejects an empty body', (await postJson('/api/push/subscribe', {})).status, 400);
+	eq('push: rejects an empty body', (await postJson('/api/v1/push/subscribe', {})).status, 400);
 	eq(
 		'push: cross-origin subscribe rejected',
-		(await postJson('/api/push/subscribe', sub('evil'), { origin: 'https://evil.example' })).status,
+		(await postJson('/api/v1/push/subscribe', sub('evil'), { origin: 'https://evil.example' })).status,
 		403,
 	);
 	eq('push: nothing stored by the rejected calls', d1Rows('SELECT COUNT(*) AS n FROM push_subscriptions')[0]?.n, 1);
 
-	eq('push: test send refused with no VAPID pair', (await postJson('/api/push/test', {})).status, 503);
+	const noVapid = await postJson('/api/v1/push/test', {});
+	eq('push: test send refused with no VAPID pair', noVapid.status, 503);
+	eq('push: and refused in the shared error shape', (await noVapid.json()).error?.message, 'Push is not configured on the server.');
 
 	// A subscription exists, but the server cannot sign a push without a VAPID
 	// pair, so the digest must report that rather than claiming the date.
@@ -832,16 +839,16 @@ async function main() {
 	// *last* thing that happened to a row, so a test that inherited one would
 	// depend on whatever the previous section did to it last.
 	const undoStart = addDays(MON, 28);
-	res = await post('/api/leave', { leaveTypeId: '1', startDate: undoStart, note: 'smoke-undo-note' });
+	res = await post('/api/v1/leave', { leaveTypeId: '1', startDate: undoStart, note: 'smoke-undo-note' });
 	eq('a booking to undo was made', flashOf(res)?.kind, 'ok');
 	const undoId = (await feed(undoStart, undoStart)).entries[0]?.id;
 
 	// A cancel offers an undo; the id it offers is the booking's own.
-	res = await post(`/api/leave/${undoId}/cancel`);
+	res = await post(`/api/v1/leave/${undoId}/cancel`);
 	eq('cancelling offers an undo', flashOf(res)?.undo, undoId);
 	eq('and the booking is gone from the feed', (await feed(undoStart, undoStart)).entries.length, 0);
 
-	res = await post(`/api/leave/${undoId}/undo`);
+	res = await post(`/api/v1/leave/${undoId}/undo`);
 	eq('undo restores the booking', flashOf(res)?.kind, 'ok');
 	eq('and it is back in the feed', (await feed(undoStart, undoStart)).entries.length, 1);
 	// Cancelling never deleted the row, so the note was never rebuilt from the
@@ -850,32 +857,32 @@ async function main() {
 	eq('and recorded as restored', d1Rows(`SELECT action FROM leave_audit WHERE leave_id = '${undoId}' ORDER BY id DESC LIMIT 1`)[0]?.action, 'restored');
 
 	// Nothing left to undo: the last action is now the restore itself.
-	res = await post(`/api/leave/${undoId}/undo`);
+	res = await post(`/api/v1/leave/${undoId}/undo`);
 	eq('a restore is not itself undoable', flashOf(res)?.kind, 'err');
 
 	// An edit offers an undo, and undoing it puts the old dates back.
-	res = await post(`/api/leave/${undoId}/edit`, { leaveTypeId: '1', startDate: undoStart, endDate: addDays(undoStart, 1), note: 'smoke-undo-note' });
+	res = await post(`/api/v1/leave/${undoId}/edit`, { leaveTypeId: '1', startDate: undoStart, endDate: addDays(undoStart, 1), note: 'smoke-undo-note' });
 	eq('editing offers an undo', flashOf(res)?.undo, undoId);
 	eq('and the edit took', (await feed(undoStart, addDays(undoStart, 1))).entries[0]?.end, addDays(undoStart, 1));
 
-	res = await post(`/api/leave/${undoId}/undo`);
+	res = await post(`/api/v1/leave/${undoId}/undo`);
 	eq('undo reverts the edit', flashOf(res)?.kind, 'ok');
 	eq('and the end date is back', (await feed(undoStart, addDays(undoStart, 1))).entries[0]?.end, undoStart);
 	eq('the note survived the revert', (await feed(undoStart, undoStart)).entries[0]?.note, 'smoke-undo-note');
 
 	// Undo re-runs the booking rules. Cancel, book the freed day with something
 	// else, then try to undo: the restore would now overlap and must be refused.
-	await post(`/api/leave/${undoId}/cancel`);
-	const blockerRes = await post('/api/leave', { leaveTypeId: '2', startDate: undoStart });
+	await post(`/api/v1/leave/${undoId}/cancel`);
+	const blockerRes = await post('/api/v1/leave', { leaveTypeId: '2', startDate: undoStart });
 	eq('the freed day was taken by another booking', flashOf(blockerRes)?.kind, 'ok');
-	res = await post(`/api/leave/${undoId}/undo`);
+	res = await post(`/api/v1/leave/${undoId}/undo`);
 	eq('undo is refused when the dates are no longer free', flashOf(res)?.kind, 'err');
 	check('and says why', /already have leave/.test(flashOf(res)?.message ?? ''), flashOf(res)?.message);
 	eq('the booking stays cancelled', d1Rows(`SELECT status FROM leave_requests WHERE id = '${undoId}'`)[0]?.status, 'cancelled');
 
 	// Tidy up so the sections after this one see the roster they expect.
 	const blockerId = (await feed(undoStart, undoStart)).entries[0]?.id;
-	await post(`/api/leave/${blockerId}/cancel`);
+	await post(`/api/v1/leave/${blockerId}/cancel`);
 
 	// --- a colleague cannot read a private note -----------------------------
 	const colleagueView = await (await fetch(`${BASE}/?y=${MON.slice(0, 4)}&m=${Number(MON.slice(5, 7))}`)).text();
@@ -889,39 +896,41 @@ async function main() {
 	//
 	// Both identities have leave in this window, so a filter that silently
 	// ignored its argument would still look right on one person's own range.
-	const byAdmin = await (await fetch(`${BASE}/api/leave?from=${MON}&to=${FRI}&user=${encodeURIComponent(ADMIN)}`)).json();
+	const byAdmin = await (await fetch(`${BASE}/api/v1/leave?from=${MON}&to=${FRI}&user=${encodeURIComponent(ADMIN)}`)).json();
 	eq('feed by user: echoes who was asked for', byAdmin.user, ADMIN);
 	check('feed by user: returns their leave', byAdmin.entries.length > 0, 'no entries');
 	check('feed by user: and nobody else\'s', byAdmin.entries.every((e) => e.name === 'Admin'), JSON.stringify(byAdmin.entries.map((e) => e.name)));
 	check('feed by user: still no email in the response', !JSON.stringify(byAdmin.entries).includes(ADMIN), 'email leaked');
 	// The same window, asked about the other identity: the filter has to
 	// discriminate, not just echo whatever the range happens to hold.
-	const byOther = await (await fetch(`${BASE}/api/leave?from=${MON}&to=${FRI}&user=${encodeURIComponent(OTHER)}`)).json();
+	const byOther = await (await fetch(`${BASE}/api/v1/leave?from=${MON}&to=${FRI}&user=${encodeURIComponent(OTHER)}`)).json();
 	eq('feed by user: another person in the same range is separate', byOther.entries.length, 0);
 	const unnarrowed = (await feed(MON, FRI)).entries;
 	eq('feed by user: and the unfiltered feed still answers', unnarrowed.length, byAdmin.entries.length);
-	const upper = await (await fetch(`${BASE}/api/leave?from=${MON}&to=${FRI}&user=${encodeURIComponent(ADMIN.toUpperCase())}`)).json();
+	const upper = await (await fetch(`${BASE}/api/v1/leave?from=${MON}&to=${FRI}&user=${encodeURIComponent(ADMIN.toUpperCase())}`)).json();
 	eq('feed by user: an address is matched case-insensitively', upper.entries.length, byAdmin.entries.length);
 	eq('feed by user: and echoed back lowercased', upper.user, ADMIN);
-	const nobody = await (await fetch(`${BASE}/api/leave?from=${MON}&to=${FRI}&user=nobody@example.com`)).json();
+	const nobody = await (await fetch(`${BASE}/api/v1/leave?from=${MON}&to=${FRI}&user=nobody@example.com`)).json();
 	eq('feed by user: an address nobody has is an empty list, not an error', nobody.entries.length, 0);
-	const notAnEmail = await fetch(`${BASE}/api/leave?from=${MON}&to=${FRI}&user=not-an-email`);
+	const notAnEmail = await fetch(`${BASE}/api/v1/leave?from=${MON}&to=${FRI}&user=not-an-email`);
 	eq('feed by user: rubbish is refused', notAnEmail.status, 400);
-	const unfiltered = await (await fetch(`${BASE}/api/leave?from=${MON}&to=${FRI}`)).json();
+	// One failure shape across the whole API: { error: { message, key? } }.
+	eq('feed by user: and refused in the shared error shape', (await notAnEmail.json()).error?.message, 'user is not an email address');
+	const unfiltered = await (await fetch(`${BASE}/api/v1/leave?from=${MON}&to=${FRI}`)).json();
 	check('feed by user: an unfiltered request says nothing about a user', !('user' in unfiltered), JSON.stringify(Object.keys(unfiltered)));
 
 	// --- coverage warning, seen from the other side -------------------------
 	//
 	// The admin is booked off MON..MON+2, so a colleague previewing the same
 	// days must be told — by name, since the calendar shows those anyway.
-	const withCoverage = await (await fetch(`${BASE}/api/leave/preview?leaveTypeId=1&start=${MON}&end=${MON}`)).json();
+	const withCoverage = await (await fetch(`${BASE}/api/v1/leave/preview?leaveTypeId=1&start=${MON}&end=${MON}`)).json();
 	check('coverage reports the colleague already away', withCoverage.coverage?.out === 2, JSON.stringify(withCoverage.coverage));
 	check('and names them', (withCoverage.coverage?.names ?? []).includes('Admin'), JSON.stringify(withCoverage.coverage));
 	check('two of two people out is flagged as busy', withCoverage.coverage?.busy === true, JSON.stringify(withCoverage.coverage));
 
 	// --- push subscriptions belong to someone -------------------------------
 	const adminEndpoint = 'https://push.example.net/wpush/v2/admin-laptop';
-	await postJson('/api/push/unsubscribe', { endpoint: adminEndpoint });
+	await postJson('/api/v1/push/unsubscribe', { endpoint: adminEndpoint });
 	eq(
 		"cannot unsubscribe another user's browser",
 		d1Rows(`SELECT COUNT(*) AS n FROM push_subscriptions WHERE endpoint = '${adminEndpoint}'`)[0]?.n,
@@ -936,7 +945,7 @@ async function main() {
 	// Re-subscribing the same browser as a different person reassigns it. That
 	// is deliberate — a shared machine where the previous person signed out must
 	// not keep sending their colleague's digest to them.
-	await postJson('/api/push/subscribe', {
+	await postJson('/api/v1/push/subscribe', {
 		endpoint: adminEndpoint,
 		keys: {
 			p256dh: 'BCVxsr7N_eNgVRqvHtD0zTZsEc6-VV-JvLexhqUzORcxaOzi6-AYWXvTBHm4bjyPjs7Vd8pZGH6SRpkNtoIAiw4',
@@ -950,10 +959,10 @@ async function main() {
 	);
 	eq('and is still one row', d1Rows('SELECT COUNT(*) AS n FROM push_subscriptions')[0]?.n, 1);
 
-	res = await post(`/api/leave/${bookingId}/cancel`);
+	res = await post(`/api/v1/leave/${bookingId}/cancel`);
 	eq("cannot cancel another user's booking", flashOf(res)?.message, 'That is not your booking.');
 
-	res = await post(`/api/leave/${bookingId}/edit`, { leaveTypeId: '1', startDate: MON, endDate: FRI });
+	res = await post(`/api/v1/leave/${bookingId}/edit`, { leaveTypeId: '1', startDate: MON, endDate: FRI });
 	eq("cannot edit another user's booking", flashOf(res)?.message, 'That is not your booking.');
 
 	entries = (await feed(MON, FRI)).entries;
@@ -967,15 +976,15 @@ async function main() {
 	await stopServer();
 	await startServer(ADMIN);
 
-	res = await post(`/api/leave/${bookingId}/cancel`);
+	res = await post(`/api/v1/leave/${bookingId}/cancel`);
 	eq('owner can cancel', flashOf(res)?.kind, 'ok');
-	res = await post(`/api/leave/${bookingId}/cancel`);
+	res = await post(`/api/v1/leave/${bookingId}/cancel`);
 	check('second cancel is a no-op, not a second write', /already cancelled/i.test(flashOf(res)?.message ?? ''), flashOf(res)?.message);
 
 	entries = (await feed(MON, FRI)).entries;
 	eq('cancelled leave leaves the calendar', entries.length, 0);
 
-	res = await post(`/api/leave/${bookingId}/edit`, { leaveTypeId: '1', startDate: MON, endDate: FRI });
+	res = await post(`/api/v1/leave/${bookingId}/edit`, { leaveTypeId: '1', startDate: MON, endDate: FRI });
 	check('a cancelled booking cannot be edited back', /cancelled/i.test(flashOf(res)?.message ?? ''), flashOf(res)?.message);
 
 	eq('unknown booking id is not an error page', (await fetch(`${BASE}/leave/does-not-exist/edit`, { redirect: 'manual' })).status, 303);
@@ -1129,7 +1138,7 @@ async function main() {
 	check('the new type is on the booking form', (await (await fetch(`${BASE}/book`)).text()).includes('Smoke type'), 'not offered');
 
 	const TYPE_MON = clearFutureMonday(66);
-	res = await post('/api/leave', { leaveTypeId: String(smokeType.id), startDate: TYPE_MON, endDate: TYPE_MON });
+	res = await post('/api/v1/leave', { leaveTypeId: String(smokeType.id), startDate: TYPE_MON, endDate: TYPE_MON });
 	eq('the new type can be booked', flashOf(res)?.kind, 'ok');
 	const typedId = d1Rows(`SELECT id FROM leave_requests WHERE leave_type_id = ${smokeType.id} AND status = 'confirmed'`)[0]?.id;
 
@@ -1140,20 +1149,20 @@ async function main() {
 	eq('and is stored as retired', d1Rows(`SELECT active FROM leave_types WHERE id = ${smokeType.id}`)[0]?.active, 0);
 	check('a retired type leaves the booking form', !(await (await fetch(`${BASE}/book`)).text()).includes('Smoke type'), 'still offered');
 	check('a retired type leaves the quota editor', !(await (await fetch(`${BASE}/admin`)).text()).includes(`q_${smokeType.id}`), 'still in the quota editor');
-	res = await post('/api/leave', { leaveTypeId: String(smokeType.id), startDate: addDays(TYPE_MON, 1), endDate: addDays(TYPE_MON, 1) });
+	res = await post('/api/v1/leave', { leaveTypeId: String(smokeType.id), startDate: addDays(TYPE_MON, 1), endDate: addDays(TYPE_MON, 1) });
 	check('a retired type refuses a new booking', /no longer offered/i.test(flashOf(res)?.message ?? ''), flashOf(res)?.message);
 	eq('and the refusal points at the type field', flashOf(res)?.field, 'leaveTypeId');
 
 	eq('its existing booking still shows', (await feed(TYPE_MON, TYPE_MON)).entries.some((e) => e.id === typedId), true);
 	check('its edit page still offers the retired type', (await (await fetch(`${BASE}/leave/${typedId}/edit`)).text()).includes('Smoke type'), 'retired type missing from its own edit page');
-	res = await post(`/api/leave/${typedId}/edit`, { leaveTypeId: String(smokeType.id), startDate: addDays(TYPE_MON, 1), endDate: addDays(TYPE_MON, 1) });
+	res = await post(`/api/v1/leave/${typedId}/edit`, { leaveTypeId: String(smokeType.id), startDate: addDays(TYPE_MON, 1), endDate: addDays(TYPE_MON, 1) });
 	eq('its existing booking can still be moved', flashOf(res)?.kind, 'ok');
 	check('the month it sits in still explains its colour', (await (await fetch(`${BASE}/?y=${TYPE_MON.slice(0, 4)}&m=${Number(TYPE_MON.slice(5, 7))}`)).text()).includes('Smoke type'), 'legend dropped it');
 
 	res = await post('/admin/type/delete', { id: String(smokeType.id) });
 	check('a type with bookings cannot be deleted', /retire it instead/i.test(flashOf(res)?.message ?? ''), flashOf(res)?.message);
 	eq('and it is still there', d1Rows(`SELECT COUNT(*) AS n FROM leave_types WHERE id = ${smokeType.id}`)[0]?.n, 1);
-	res = await post(`/api/leave/${typedId}/cancel`);
+	res = await post(`/api/v1/leave/${typedId}/cancel`);
 	res = await post('/admin/type/delete', { id: String(smokeType.id) });
 	eq('a cancelled booking still counts as use', flashOf(res)?.kind, 'err');
 
