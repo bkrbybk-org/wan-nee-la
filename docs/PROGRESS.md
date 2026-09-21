@@ -8,7 +8,7 @@ Updated: 2026-09-13
 
 ## Status
 
-Deployed and serving. Version `3506503d-e438-4060-908e-dee907536807`, deployed 2026-09-21 with `npm run ship`, D1 `<database-id>` in APAC, behind Cloudflare Access on `<hostname>`. Production checks passed: the new version serves all traffic, `/health` and `/` both 302 to Access, production D1 answers, and migration 0011 is applied with every type still offered. That deploy also carried the 09:00 weekday schedule — production had still been on the old daily `0 1 * * *` cron until then.
+Deployed and serving. Version `8b0c8857-194d-4589-b529-cecd4a3164ce`, deployed 2026-09-21 with `npm run ship`, D1 `<database-id>` in APAC, behind Cloudflare Access on `<hostname>`. Production checks passed: the new version serves all traffic, `/health` and `/` both 302 to Access, production D1 answers, and migration 0011 is applied with every type still offered. That deploy also carried the 09:00 weekday schedule — production had still been on the old daily `0 1 * * *` cron until then.
 
 **In real use.** Ten active users, 20 confirmed bookings, 26 holidays, four leave types, 31 rows in the audit trail. That changes what matters here: the shared surfaces now have a real audience, so note visibility, the audit trail and the privacy rules on `/u/:email` are load-bearing rather than theoretical.
 
@@ -71,7 +71,7 @@ Two consequences worth remembering:
 | GET | `/` | Calendar. Month grid at every width — names on a laptop, dots on a phone. Upcoming list from 768px; day list below the grid on a phone. Month/year jump. |
 | GET | `/book?date=` | Booking page — the no-JS destination for calendar day cells. |
 | GET | `/docs` | API reference over `/openapi.json` (the zone blocks `*.yaml`). A Worker route rather than an asset, so it carries the CSP. |
-| GET | `/api/leave?from=&to=` | JSON feed. No email addresses. |
+| GET | `/api/leave?from=&to=&user=` | JSON feed. No email addresses in the response; `user` narrows it to one person. |
 | GET | `/api/leave/preview` | Server-side day count for the form's live preview. |
 | POST | `/api/leave` | Book. Server computes days, checks overlap and the start year's balance. A refusal hands the submission and the offending field back to the form. |
 | GET · POST | `/leave/:id/edit` · `/api/leave/:id/edit` | Edit, and offer undo. Also the drag-to-move target. |
@@ -138,7 +138,7 @@ Two consequences worth remembering:
 
 ## Verification
 
-**598 automated assertions**, all green. CI runs them, and lint, on every push and pull request.
+**609 automated assertions**, all green. CI runs them, and lint, on every push and pull request.
 
 | Suite | Assertions | Covers |
 | --- | --- | --- |
@@ -148,7 +148,7 @@ Two consequences worth remembering:
 | `test-push.mjs` | 29 | RFC 8291 encryption against the spec's worked example, VAPID token and signature, the `วันนี้ … ลา` title |
 | `test-holidays.mjs` | 30 | Parsing a pasted holiday list, and its bounds |
 | `test-i18n.mjs` | 27 | Lookup, placeholders, plurals, and the catalogue's own health |
-| `smoke.mjs` | 241 | The HTTP layer — see below |
+| `smoke.mjs` | 252 | The HTTP layer — see below |
 | `check-openapi.mjs` | — | Each of the 31 routes is either documented in `openapi.yaml` or deliberately listed as not, and the API Shield 3.0.3 copy still builds from it |
 
 The smoke suite boots a real worker against a scratch database and exercises what pure functions cannot reach: the CSRF guard, ownership checks on edit and cancel, booking rules over real requests, the open-redirect guards on `returnTo` **and on the `Referer` header**, note visibility across two identities, the audit trail's contents, the security headers, digest decisions, the webhook signature, push subscription ownership, admin authorisation, undo and its re-validation, next-year and cross-year quota, a LINE channel switched off by its flag, adding, retiring and deleting leave types, and history pruning through the real scheduled handler.
@@ -165,7 +165,7 @@ It is built against its own worst failure mode — passing while testing nothing
 
 ## Open items
 
-**One known regression, in configuration rather than code:** the push keypair is mismatched in production (#40). 598 assertions are green and `npm audit` is clean. The 2026-08-25 audit and the 2026-09-13 review both found and fixed what they turned up — the second a quota overdraw when moving a booking across New Year (#36) — and each fix is covered by a test or, where a test could not reach it, recorded in [ISSUES.md](ISSUES.md).
+**One known regression, in configuration rather than code:** the push keypair is mismatched in production (#40). 609 assertions are green and `npm audit` is clean. The 2026-08-25 audit and the 2026-09-13 review both found and fixed what they turned up — the second a quota overdraw when moving a booking across New Year (#36) — and each fix is covered by a test or, where a test could not reach it, recorded in [ISSUES.md](ISSUES.md).
 
 What follows is decisions, unfinished configuration, accepted trade-offs and debt — not defects.
 
@@ -247,6 +247,7 @@ Features — iCal, CSV export, team grouping, coverage scoped to a team — are 
 
 ## Change log
 
+- **2026-09-21** — The feed takes `?user=`, narrowing it to one person by the email Access knows them by. No new permission: a colleague's schedule is already the shared calendar, and `/u/:email` has always rendered the same rows as a page. Emails stay out of the *response*, private notes stay absent, deactivated people stay out, an unknown address is an empty list and rubbish is a 400. API Shield does not treat an unknown query parameter as a violation — verified against production — so the new parameter worked before the schema was re-uploaded; re-uploading is what makes it validated.
 - **2026-09-21** — `/docs` now says which endpoints are not switched on: the three Push operations and the LINE webhook carry "Not enabled yet" in their summaries, and their tags say what is missing — the mismatched push keypair (#40) and `LINE_ENABLED`. They stay listed, callable and validated at the edge; `deprecated` was deliberately not used, since nothing here is being retired. README's enabling steps end by removing the markers. `npm run ship` now refuses to run on a Node older than `.nvmrc`.
 - **2026-09-19** — Review and documentation cross-check. One small bug fixed: the leave-types card said "1 bookings". `/docs` now says why when the spec fails to load, instead of rendering blank. Docs brought in line: 598 assertions, the two edge layers in front of Access (ARCHITECTURE "In front of Access"), and the hand-uploaded Shield schema recorded as debt (PLAN 4.14).
 - **2026-09-19** — Feature-tested production behind the new API Shield rule, signed in: booking, the live preview, edit, undo, cancel, pages, language, push test and unsubscribe — nothing blocked. It found two faults, both fixed (#42, #43): `/docs` was blank because the zone refuses every `*.yaml` path, so it now reads a committed `/openapi.json` and its "Try it out" targets this origin rather than example.com; and a refused preview printed `[object Object]` under the booking form, so the preview now sends the sentence as well as the key.

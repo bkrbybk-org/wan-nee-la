@@ -154,7 +154,7 @@ Self-serve model (owner's decision): a POST creates a `confirmed` row directly. 
 | GET | `/` | Calendar. A month grid at every width — names on a laptop, dots on a phone with the day list beneath. Upcoming list, month/year jump. |
 | GET | `/book?date=` | Booking page, prefilled. The no-JS destination for a day cell. |
 | GET | `/docs` | API reference, Swagger UI over `/openapi.json` — the committed JSON copy of `public/openapi.yaml`, because the zone refuses `*.yaml` at the edge. "Try it out" targets the page's own origin. A Worker route rather than an asset, so it carries the CSP. |
-| GET | `/api/leave?from=&to=` | JSON feed, active users only. No email addresses; notes filtered per viewer. |
+| GET | `/api/leave?from=&to=&user=` | JSON feed, active users only. No email addresses in the response; notes filtered per viewer. `user` takes an address as *input* to narrow the feed to one person — the rows `/u/:email` renders as a page. |
 | GET | `/api/leave/preview` | Server-side day count and coverage for the form's live preview. |
 | POST | `/api/leave` | Book. Server computes days, checks overlap and the start year's balance. A refusal carries the submission and the offending field back to the form. |
 | GET | `/leave/:id/edit` | Edit one booking; the no-JS destination for an entry. |

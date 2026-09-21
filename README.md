@@ -183,6 +183,12 @@ Once notifications actually reach a phone, drop the "Not enabled yet" wording fr
 
 **On iPhone and iPad** this only works from an installed web app — Share → *Add to Home Screen*, then turn notifications on from there. Safari tabs have no Push API at all (docs/ISSUES.md #21). Android Chrome works in an ordinary tab.
 
+## The JSON feed
+
+`GET /api/leave?from=2026-01-01&to=2026-12-31` returns confirmed leave over a
+range, and `&user=someone@example.com` narrows it to one person. Emails never
+appear in the response; this one is input only. Full reference at `/docs`.
+
 ## Cloudflare API Shield
 
 `public/openapi.yaml` is OpenAPI 3.1. API Shield's schema validation accepts
