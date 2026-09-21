@@ -142,7 +142,7 @@ paths:
     get:
       operationId: listLeave
       tags: [Leave]
-      summary: Everyone's confirmed leave over a date range
+      summary: Confirmed leave over a date range, for everyone or one person
       description: |
         The shared calendar as data. Cancelled bookings are absent, and so are
         deactivated people — those surfaces answer "who of us is out", and a
@@ -150,7 +150,11 @@ paths:
 
         Emails are not in the feed. A name and a leave type are what the
         calendar shows; an address is what turns a leave tracker into a
-        directory.
+        directory. `user` is the exception and only as *input*: it narrows the
+        feed to one person, the way `/u/:email` does as a page. That needs no
+        extra permission — a colleague's schedule is already the shared
+        calendar — and grants none: private notes stay absent, and an address
+        nobody has simply returns no entries.
       parameters:
         - name: from
           in: query
@@ -164,6 +168,18 @@ paths:
           description: Inclusive. Defaults to the last day of the current Bangkok month.
           schema:
             $ref: '#/components/schemas/Date'
+        - name: user
+          in: query
+          description: |
+            Narrow the feed to one person, by the email Cloudflare Access knows
+            them by. Case-insensitive. Omit it for everyone. A deactivated
+            person returns nothing here whether or not they are named, the same
+            as on every other shared surface.
+          schema:
+            type: string
+            format: email
+            maxLength: 254
+            examples: ['somchai@example.com']
       responses:
         '200':
           description: The range, echoed back, and the entries inside it.
@@ -175,6 +191,11 @@ paths:
                 properties:
                   from: { $ref: '#/components/schemas/Date' }
                   to: { $ref: '#/components/schemas/Date' }
+                  user:
+                    type: string
+                    format: email
+                    description: Present only when the request named one, echoed back lowercased.
+                    examples: ['somchai@example.com']
                   entries:
                     type: array
                     items: { $ref: '#/components/schemas/LeaveEntry' }
@@ -194,7 +215,7 @@ paths:
                     days: 4
                     note: Trip
         '400':
-          description: '`from` is later than `to`.'
+          description: '`from` is later than `to`, or `user` is not an email address.'
           content:
             application/json:
               schema:

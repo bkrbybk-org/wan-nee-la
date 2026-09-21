@@ -849,6 +849,31 @@ async function main() {
 	eq('and absent from their JSON feed', theirs?.note ?? null, null);
 	check('though the booking itself is still visible', Boolean(theirs), 'booking hidden entirely');
 
+	// --- the feed, narrowed to one person -----------------------------------
+	//
+	// Both identities have leave in this window, so a filter that silently
+	// ignored its argument would still look right on one person's own range.
+	const byAdmin = await (await fetch(`${BASE}/api/leave?from=${MON}&to=${FRI}&user=${encodeURIComponent(ADMIN)}`)).json();
+	eq('feed by user: echoes who was asked for', byAdmin.user, ADMIN);
+	check('feed by user: returns their leave', byAdmin.entries.length > 0, 'no entries');
+	check('feed by user: and nobody else\'s', byAdmin.entries.every((e) => e.name === 'Admin'), JSON.stringify(byAdmin.entries.map((e) => e.name)));
+	check('feed by user: still no email in the response', !JSON.stringify(byAdmin.entries).includes(ADMIN), 'email leaked');
+	// The same window, asked about the other identity: the filter has to
+	// discriminate, not just echo whatever the range happens to hold.
+	const byOther = await (await fetch(`${BASE}/api/leave?from=${MON}&to=${FRI}&user=${encodeURIComponent(OTHER)}`)).json();
+	eq('feed by user: another person in the same range is separate', byOther.entries.length, 0);
+	const unnarrowed = (await feed(MON, FRI)).entries;
+	eq('feed by user: and the unfiltered feed still answers', unnarrowed.length, byAdmin.entries.length);
+	const upper = await (await fetch(`${BASE}/api/leave?from=${MON}&to=${FRI}&user=${encodeURIComponent(ADMIN.toUpperCase())}`)).json();
+	eq('feed by user: an address is matched case-insensitively', upper.entries.length, byAdmin.entries.length);
+	eq('feed by user: and echoed back lowercased', upper.user, ADMIN);
+	const nobody = await (await fetch(`${BASE}/api/leave?from=${MON}&to=${FRI}&user=nobody@example.com`)).json();
+	eq('feed by user: an address nobody has is an empty list, not an error', nobody.entries.length, 0);
+	const notAnEmail = await fetch(`${BASE}/api/leave?from=${MON}&to=${FRI}&user=not-an-email`);
+	eq('feed by user: rubbish is refused', notAnEmail.status, 400);
+	const unfiltered = await (await fetch(`${BASE}/api/leave?from=${MON}&to=${FRI}`)).json();
+	check('feed by user: an unfiltered request says nothing about a user', !('user' in unfiltered), JSON.stringify(Object.keys(unfiltered)));
+
 	// --- coverage warning, seen from the other side -------------------------
 	//
 	// The admin is booked off MON..MON+2, so a colleague previewing the same

@@ -122,8 +122,8 @@
 				"tags": [
 					"Leave"
 				],
-				"summary": "Everyone's confirmed leave over a date range",
-				"description": "The shared calendar as data. Cancelled bookings are absent, and so are\ndeactivated people — those surfaces answer \"who of us is out\", and a\nformer employee is not one of us.\n\nEmails are not in the feed. A name and a leave type are what the\ncalendar shows; an address is what turns a leave tracker into a\ndirectory.\n",
+				"summary": "Confirmed leave over a date range, for everyone or one person",
+				"description": "The shared calendar as data. Cancelled bookings are absent, and so are\ndeactivated people — those surfaces answer \"who of us is out\", and a\nformer employee is not one of us.\n\nEmails are not in the feed. A name and a leave type are what the\ncalendar shows; an address is what turns a leave tracker into a\ndirectory. `user` is the exception and only as *input*: it narrows the\nfeed to one person, the way `/u/:email` does as a page. That needs no\nextra permission — a colleague's schedule is already the shared\ncalendar — and grants none: private notes stay absent, and an address\nnobody has simply returns no entries.\n",
 				"parameters": [
 					{
 						"name": "from",
@@ -139,6 +139,19 @@
 						"description": "Inclusive. Defaults to the last day of the current Bangkok month.",
 						"schema": {
 							"$ref": "#/components/schemas/Date"
+						}
+					},
+					{
+						"name": "user",
+						"in": "query",
+						"description": "Narrow the feed to one person, by the email Cloudflare Access knows\nthem by. Case-insensitive. Omit it for everyone. A deactivated\nperson returns nothing here whether or not they are named, the same\nas on every other shared surface.\n",
+						"schema": {
+							"type": "string",
+							"format": "email",
+							"maxLength": 254,
+							"examples": [
+								"somchai@example.com"
+							]
 						}
 					}
 				],
@@ -160,6 +173,14 @@
 										},
 										"to": {
 											"$ref": "#/components/schemas/Date"
+										},
+										"user": {
+											"type": "string",
+											"format": "email",
+											"description": "Present only when the request named one, echoed back lowercased.",
+											"examples": [
+												"somchai@example.com"
+											]
 										},
 										"entries": {
 											"type": "array",
@@ -192,7 +213,7 @@
 						}
 					},
 					"400": {
-						"description": "`from` is later than `to`.",
+						"description": "`from` is later than `to`, or `user` is not an email address.",
 						"content": {
 							"application/json": {
 								"schema": {

@@ -313,15 +313,24 @@ export async function bulkSetQuota(db: D1Database, year: number, leaveTypeId: nu
  * treat NULL as "not deactivated" rather than filtering the row out for an
  * unrelated reason — only an explicit `active = 0` hides a row.
  */
-export async function listLeaveInRange(db: D1Database, from: string, to: string): Promise<LeaveEntry[]> {
+/**
+ * Confirmed leave overlapping a date range, optionally for one person.
+ *
+ * `email` narrows to that person and nothing else changes: deactivated people
+ * stay out either way, because this is what the shared surfaces read and a
+ * former colleague is not part of "who is out". Their history is still on
+ * `/u/:email` for an admin.
+ */
+export async function listLeaveInRange(db: D1Database, from: string, to: string, email?: string): Promise<LeaveEntry[]> {
 	const res = await db
 		.prepare(
 			`SELECT ${ENTRY_COLUMNS} ${ENTRY_FROM}
 			 WHERE r.status = 'confirmed' AND r.start_date <= ? AND r.end_date >= ?
 			 AND (u.active IS NULL OR u.active = 1)
+			 AND (?3 IS NULL OR r.user_email = ?3)
 			 ORDER BY r.start_date, display_name`,
 		)
-		.bind(to, from)
+		.bind(to, from, email ?? null)
 		.all<LeaveEntry>();
 	return res.results ?? [];
 }

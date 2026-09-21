@@ -406,7 +406,17 @@ app.get('/book', async (c) => {
 	);
 });
 
-/** JSON feed for the calendar. Same data the grid renders, for scripts and future views. */
+/**
+ * JSON feed for the calendar. Same data the grid renders, for scripts and future views.
+ *
+ * `user` narrows it to one person, by the email Access knows them by. No new
+ * permission: a colleague's schedule is already shared — it is the calendar,
+ * and `/u/:email` renders the same rows as a page. The privacy rules are
+ * unchanged: emails never appear in the response, private notes are absent
+ * rather than hidden, and a deactivated person is left out as everywhere else.
+ * An email nobody has is an empty list, not a 404, which is also what a range
+ * with no leave in it returns.
+ */
 app.get('/api/leave', async (c) => {
 	const today = c.get('today');
 	const viewer = c.get('user');
@@ -414,10 +424,16 @@ app.get('/api/leave', async (c) => {
 	const to = validDateOr(c.req.query('to'), lastOfMonth(Number(today.slice(0, 4)), Number(today.slice(5, 7))));
 	if (from > to) return c.json({ error: 'from is after to' }, 400);
 
-	const entries = await db.listLeaveInRange(c.env.DB, from, to);
+	// Lowercased to match how `ensureUser` stores it, so a capitalised address
+	// finds the same person rather than silently nobody.
+	const raw = c.req.query('user')?.trim().toLowerCase();
+	if (raw !== undefined && !isEmail(raw)) return c.json({ error: 'user is not an email address' }, 400);
+
+	const entries = await db.listLeaveInRange(c.env.DB, from, to, raw);
 	return c.json({
 		from,
 		to,
+		...(raw === undefined ? {} : { user: raw }),
 		entries: entries.map((e) => ({
 			id: e.id,
 			name: e.display_name,
@@ -1404,6 +1420,19 @@ function yearNavBounds(nowYear: number): { minYear: number; maxYear: number } {
 
 function validDateOr(raw: string | undefined, fallback: string): string {
 	return raw && isValidDate(raw) ? raw : fallback;
+}
+
+/**
+ * Is this shaped like an email address?
+ *
+ * Deliberately loose. The addresses here come from Access, not from a signup
+ * form, so this is not the authority on what an address may look like — it only
+ * keeps obvious rubbish out of a lookup, and gives a caller a 400 saying which
+ * parameter is wrong instead of a silently empty list. The length cap is the
+ * SMTP maximum.
+ */
+function isEmail(raw: string): boolean {
+	return raw.length <= 254 && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(raw);
 }
 
 /**
