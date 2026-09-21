@@ -554,5 +554,9 @@ The preview's `error` now carries `message` beside `key`: the same sentence, alr
 
 Since around 2026-09-21, roughly one local `npm run test:smoke` in two dies partway with `harness error -> fetch failed`, and the assertion-site check then reports the tests after that point as never run — which is the check doing its job, not a second fault. A rerun passes with every assertion green, and the same suite is green on CI, so this looks like the local `wrangler dev` child going away rather than anything the app does.
 
-Not yet diagnosed. Suspects, in order: the jump to wrangler 4.135, several wrangler instances from earlier aborted runs competing for the scratch `--persist-to` directory, and the machine's Node default having moved to 20 while `.nvmrc` asks for 24. Worth capturing the server log on failure — the harness already keeps it — rather than guessing.
+It reached CI on 2026-09-21, failing after `feed by user: an address nobody has…`, and a rerun of the same commit passed.
+
+Ruled out so far: the request it stopped on is fine — `?user=not-an-email` answers 400 sixty times in a row against a local worker, which stays up and serving afterwards; the failure point moves between runs (37, 40 and 80 assertion sites missed on three occasions), so it is not tied to any one test; and three consecutive local runs afterwards were green.
+
+The harness now prints, on a harness error, the server's pid, exit code, signal and whether it was killed, plus the last 25 lines it logged. That should say next time whether the worker died, the child was killed, or only the socket went. Remaining suspects: the jump to wrangler 4.135, and the `wrangler d1 execute` calls the suite makes against the same `--persist-to` directory the running dev server holds open.
 

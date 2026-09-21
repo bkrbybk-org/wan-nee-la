@@ -1234,6 +1234,14 @@ try {
 	fail++;
 	failures.push(`harness: ${err.message}`);
 	console.log(`\nFAIL: harness error -> ${err.message}`);
+	// "fetch failed" on its own says nothing about *why* the connection went:
+	// a crashed worker, a killed child and a closed socket all read the same.
+	// Whatever the server said last is the only evidence there is (ISSUES #44).
+	console.log(
+		`\nserver: pid ${server?.pid ?? '-'}, exitCode ${server?.exitCode ?? 'still running'}, signal ${server?.signalCode ?? '-'}, killed ${server?.killed ?? '-'}`,
+	);
+	console.log('last of the server log:');
+	for (const line of serverLog.split('\n').slice(-25)) console.log(`  | ${line}`);
 } finally {
 	await stopServer();
 	rmSync(STATE, { recursive: true, force: true });
