@@ -197,6 +197,30 @@ Capped at 366 days.
 
 Full reference at `/docs`.
 
+## Letting a machine read the feeds
+
+A rota board or a bot cannot sign in: Access service tokens carry no email, and
+every row here is keyed by one. The two read-only feeds accept them anyway,
+under two gates that are deliberately in different places:
+
+1. In Access, create a **service token** and add a policy on this application
+   with a **Service Auth** include for it.
+2. Name it in `SERVICE_TOKENS` in `wrangler.local.jsonc`, comma-separated, and
+   deploy. Empty — the default — means no machine may call the app at all.
+
+The caller then sends the token's two headers:
+
+```bash
+curl -H "CF-Access-Client-Id: $ID" -H "CF-Access-Client-Secret: $SECRET" \
+  "https://<your-host>/api/v1/leave/by-date?from=2026-09-01&to=2026-09-30"
+```
+
+A service token may read `/api/v1/leave` and `/api/v1/leave/by-date`, and
+nothing else: no pages, no admin, no writes, and not the booking preview, which
+costs a real person's quota to compute. It never receives a note — not even a
+shared one, since a token is not the colleague it was shared with. Anything
+else answers 403 naming the token.
+
 ## Cloudflare API Shield
 
 `public/openapi.yaml` is OpenAPI 3.1. API Shield's schema validation accepts
@@ -217,6 +241,18 @@ dashboard.
 The other 24 routes — HTML pages and form posts — are deliberately not in the
 spec. So do **not** deploy API Shield's fallthrough rule ("mitigate requests to
 unidentified endpoints") on this hostname: it would block the whole app.
+Upload with a token that has the **API Gateway** permission, rather than by
+hand:
+
+```bash
+export CLOUDFLARE_API_TOKEN=…
+npm run openapi:shield && npm run shield:upload -- --activate --prune
+```
+
+`--activate` switches validation on for the new schema, `--prune` removes this
+script's earlier uploads. It never creates the WAF rule: uploading supplies the
+detection, and blocking stays a rule you deploy deliberately.
+
 **A path or parameter change means a re-upload.** The schema names paths
 exactly, so after any change to what the API accepts, run `npm run
 openapi:shield` and upload the file again — until you do, those operations are

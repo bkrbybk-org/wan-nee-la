@@ -52,6 +52,7 @@ The 2026-08-16 review found **no critical and no high-severity issues**. SQL is 
 | --- | --- | --- | --- |
 | ~~3.1~~ | ~~Act on the notes decision (2.1)~~ | — | **Done:** per-note choice, private by default, filtered in the route. |
 | ~~3.2~~ | ~~Audit trail (2.2)~~ | — | **Done:** see 2.2. Undo (2026-09-01) added a `restored` action, re-authorises through `ownedLeave`, and re-runs the booking rules before any restore. |
+| 3.4 | Rate-limit the JSON feeds | **Owner** then **Sonnet** | Authentication stops strangers, not a signed-in colleague or a service token pulling the whole roster's leave in a loop. A Cloudflare rate-limiting rule on `/api/v1/*` — say 60 requests a minute per identity — costs one rule and no code. |
 | ~~3.3~~ | ~~Consider a Content-Security-Policy header~~ | — | **Done:** CSP with the inline theme script allowed by hash, plus `no-store` on HTML and the other headers (ISSUES #30). |
 
 ---
@@ -74,7 +75,7 @@ Nothing here is urgent. Ordered by cost-to-benefit.
 | ~~4.10~~ | ~~Run `npm run lint` in CI~~ | — | **Done** (2026-09-18), beside Typecheck (ISSUES #38). |
 | 4.11 | Show the push title in the admin preview | **Sonnet** | `/admin` → Preview renders the digest body, not the `วันนี้ … ลา` title a phone actually shows. |
 | ~~4.12~~ | ~~One command for the release order~~ | — | **Done** (2026-09-18): `npm run ship` — local checks, then deploy, then production checks, stopping at the first failure. Docs, commit and push stay manual on purpose. |
-| 4.14 | Keep the API Shield schema current automatically | **Owner** then **Sonnet** | Uploaded by hand today, so changing what a JSON operation accepts can silently start 403-ing real requests. `ship` could upload `dist/openapi-shield.json` through the API, or refuse when it differs from the active schema. Needs an API token with API Gateway permission, which is the owner's to create. |
+| 4.14 | Keep the API Shield schema current automatically | **Owner** | **Half done** (2026-09-21): `npm run shield:upload` uploads `dist/openapi-shield.json` through the API, with `--activate` and `--prune`. It needs a token with the API Gateway permission, which is the owner's to mint; until that exists the upload is still a dashboard errand. Wiring it into `ship` should wait until the token does. |
 | 4.13 | Warn on config drift before deploying | **Sonnet** | `wrangler deploy` overwrites Worker vars and only warns (ISSUES #40). `ship` could compare `wrangler.local.jsonc` against the live version's vars first and refuse on a difference. |
 
 ---
