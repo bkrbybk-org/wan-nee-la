@@ -493,12 +493,17 @@ app.get('/api/v1/leave/by-date', async (c) => {
 		if (!onThatDay) continue;
 		data.push({
 			date,
-			employees: onThatDay.map((e) => ({
-				email: e.user_email,
-				name: e.display_name,
-				leave_type: e.type_label_en,
-				period: PERIOD[halfOn(e, date)],
-			})),
+			// By name within the day. The rows arrive ordered by the booking's
+			// start date, which on any given date is the order the bookings were
+			// *made* for — arbitrary to somebody reading one day's list.
+			employees: [...onThatDay]
+				.sort((a, b) => a.display_name.localeCompare(b.display_name))
+				.map((e) => ({
+					email: e.user_email,
+					name: e.display_name,
+					leave_type: e.type_label_en,
+					period: PERIOD[halfOn(e, date)],
+				})),
 		});
 	}
 

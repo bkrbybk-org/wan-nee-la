@@ -689,6 +689,24 @@ async function main() {
 		leaveTypeId: '1', startDate: MON, endDate: addDays(MON, 2), note: 'smoke-private-note',
 	});
 
+	// Two people out on one day come back in name order, not in the order their
+	// bookings happen to have started.
+	const shared = addDays(MON, 1);
+	d1(`INSERT INTO users (email, display_name, is_admin, active, created_at) VALUES ('zoe@example.com', 'Zoe Zephyr', 0, 1, '2026-01-01')`);
+	d1(
+		`INSERT INTO leave_requests (id, user_email, leave_type_id, start_date, end_date, start_half, end_half, days_total, note, note_private, status, created_at)
+		 VALUES ('smoke-by-date-zoe', 'zoe@example.com', 1, '${shared}', '${shared}', 'full', 'full', 1, NULL, 1, 'confirmed', '${shared}')`,
+	);
+	const twoOut = await (await fetch(`${BASE}/api/v1/leave/by-date?from=${shared}&to=${shared}`)).json();
+	eq('by-date: both people on the day', twoOut.data[0]?.employees.length, 2);
+	eq('by-date: in name order', twoOut.data[0]?.employees.map((e) => e.name).join(', '), 'Admin, Zoe Zephyr');
+	d1(`DELETE FROM leave_requests WHERE id = 'smoke-by-date-zoe'`);
+	d1(`DELETE FROM users WHERE email = 'zoe@example.com'`);
+
+	// The unversioned paths were dropped, not aliased, when /api/v1 arrived.
+	eq('the unversioned feed is gone', (await fetch(`${BASE}/api/leave?from=${MON}&to=${FRI}`)).status, 404);
+	eq('and so is the unversioned preview', (await fetch(`${BASE}/api/leave/preview?start=${MON}`)).status, 404);
+
 	const emptyRange = await (await fetch(`${BASE}/api/v1/leave/by-date?from=2030-06-01&to=2030-06-30`)).json();
 	eq('by-date: a range with no leave is an empty list', emptyRange.data.length, 0);
 	const backwards = await fetch(`${BASE}/api/v1/leave/by-date?from=${FRI}&to=${MON}`);

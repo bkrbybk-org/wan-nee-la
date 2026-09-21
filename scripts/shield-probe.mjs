@@ -3,7 +3,7 @@
  * Probe production to see whether Cloudflare API Shield schema validation is
  * doing anything.
  *
- * Sends pairs of anonymous requests to the seven operations in the uploaded
+ * Sends pairs of anonymous requests to the operations in the uploaded
  * schema (see scripts/openapi-shield.mjs): one that matches the schema and
  * one that breaks it in exactly one way. Nothing here can change data — every
  * request is either stopped at the edge (by the WAF or by Access) or, for the

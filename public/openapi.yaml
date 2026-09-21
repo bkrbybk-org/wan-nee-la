@@ -1,6 +1,6 @@
 # wan-nee-la — the JSON surface.
 #
-# Deliberately not the whole app. Of the 31 routes the Worker serves, seven
+# Deliberately not the whole app. Of the 32 routes the Worker serves, seven
 # render HTML pages and seventeen are form posts that answer with a 303 and a
 # flash cookie; those are a browser flow, and describing them here would
 # document the shape of a redirect rather than an interface anyone can call.
@@ -33,7 +33,7 @@ info:
     tokens* deliberately cannot use the app — a token has no email, and every
     row here is keyed by one.
 
-    **Four of the seven operations are not enabled yet** — the three under
+    **Four of the eight operations are not enabled yet** — the three under
     Push and the LINE webhook. They answer, and their requests are validated at
     the edge like the rest, but nothing is delivered: the deployment's push keys
     do not match each other, and the LINE channel is switched off. Each one says
