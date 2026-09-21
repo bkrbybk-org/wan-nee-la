@@ -4,7 +4,7 @@
 		"title": "wan-nee-la",
 		"version": "0.1.0",
 		"summary": "Employee leave tracker — the endpoints that answer in JSON.",
-		"description": "Two things are worth knowing before calling anything here.\n\n**Every route except `/line/webhook` sits behind Cloudflare Access**, which\nauthenticates at the edge, before the Worker runs. There is no API key and\nno signup: an Access identity the app has not seen becomes a user on its\nfirst request, with the current year's quotas seeded. Access *service\ntokens* deliberately cannot use the app — a token has no email, and every\nrow here is keyed by one.\n\n**Mutations require an `Origin` header matching `Host`.** Access is an\nauthentication gate, not a CSRF defence: its cookie rides along on a form\npost from any origin. A missing `Origin` is refused rather than waved\nthrough, so a non-browser client must send one explicitly. `/line/webhook`\nis the exception and proves itself with an HMAC signature instead.\n"
+		"description": "Two things are worth knowing before calling anything here.\n\n**Every route except `/line/webhook` sits behind Cloudflare Access**, which\nauthenticates at the edge, before the Worker runs. There is no API key and\nno signup: an Access identity the app has not seen becomes a user on its\nfirst request, with the current year's quotas seeded. Access *service\ntokens* deliberately cannot use the app — a token has no email, and every\nrow here is keyed by one.\n\n**Four of the seven operations are not enabled yet** — the three under\nPush and the LINE webhook. They answer, and their requests are validated at\nthe edge like the rest, but nothing is delivered: the deployment's push keys\ndo not match each other, and the LINE channel is switched off. Each one says\nso, and the tag descriptions say what is missing.\n\n**Mutations require an `Origin` header matching `Host`.** Access is an\nauthentication gate, not a CSRF defence: its cookie rides along on a form\npost from any origin. A missing `Origin` is refused rather than waved\nthrough, so a non-browser client must send one explicitly. `/line/webhook`\nis the exception and proves itself with an HMAC signature instead.\n"
 	},
 	"servers": [
 		{
@@ -28,11 +28,11 @@
 		},
 		{
 			"name": "Push",
-			"description": "Web Push subscriptions for the 09:00 weekday digest."
+			"description": "**Not enabled yet.** Web Push subscriptions for the 09:00 weekday digest.\nThe code is finished and these endpoints answer, but no notification can\nbe delivered until the deployment's VAPID keypair is put right: the public\nkey browsers subscribe with no longer matches the private key the Worker\nsigns with. Until then `/api/push/subscribe` stores a subscription that\ncannot be pushed to, and the digest sends nothing.\n"
 		},
 		{
 			"name": "LINE",
-			"description": "The one route Access cannot protect."
+			"description": "**Not enabled yet.** The one route Access cannot protect. The channel is\noff behind the `LINE_ENABLED` flag, and this path has no Access Bypass\nrule, so LINE's servers reach the login page rather than the Worker.\nTurning it on is a deployment step, not a code change.\n"
 		}
 	],
 	"paths": {
@@ -331,7 +331,7 @@
 				"tags": [
 					"Push"
 				],
-				"summary": "Register this browser for the morning digest",
+				"summary": "Not enabled yet: register this browser for the morning digest",
 				"description": "Stored against the caller's own identity. One person may have several\nbrowsers subscribed; each is a separate row keyed by its endpoint.\n",
 				"requestBody": {
 					"required": true,
@@ -376,7 +376,7 @@
 				"tags": [
 					"Push"
 				],
-				"summary": "Stop pushing to one browser",
+				"summary": "Not enabled yet: stop pushing to one browser",
 				"description": "Scoped to the owner. A push endpoint is not a secret — it travels to\nthe push service on every send — so knowing someone else's must not let\nyou silence their notifications.\n",
 				"requestBody": {
 					"required": true,
@@ -430,7 +430,7 @@
 				"tags": [
 					"Push"
 				],
-				"summary": "Send a test notification to the caller's own browsers",
+				"summary": "Not enabled yet: send a test notification to the caller's own browsers",
 				"description": "Without this, the only way to learn whether push works is to wait until\n08:00 the next working day — which is how a broken setup stays broken.\n\nSends to every browser the caller has subscribed, and prunes any the\npush service reports as gone. A test is exactly when a stale\nsubscription surfaces.\n",
 				"responses": {
 					"200": {
@@ -498,7 +498,7 @@
 				"tags": [
 					"LINE"
 				],
-				"summary": "Capture the group id LINE will not show you",
+				"summary": "Not enabled yet: capture the group id LINE will not show you",
 				"description": "The one publicly reachable route in the app: LINE's servers must reach\nit and cannot carry an Access token, so it needs a Bypass rule on this\npath in the Access policy.\n\nIt therefore defends itself. The raw body is read exactly once and its\nHMAC checked before anything is parsed — `json()` consumes the stream,\nand a later re-read would verify the signature over an empty body. An\nunsigned request is refused outright rather than logged and allowed.\n\nThe only state it may write is the group id, which is not visible in\nthe LINE app and arrives here as `source.groupId` on a `join` or\n`message` event. Capture it once and this route has done its job.\n",
 				"security": [
 					{

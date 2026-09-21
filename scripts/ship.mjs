@@ -98,6 +98,14 @@ function parseJsonc(text) {
 // ---------------------------------------------------------------------------
 
 stage('1/3 local checks');
+
+// The test scripts import .ts directly, which needs the Node in .nvmrc. An
+// older one fails several commands in with "bad option: --experimental-strip-
+// types", which reads like a broken test rather than a shell on the wrong node.
+const want = Number(readFileSync('.nvmrc', 'utf8').trim().split('.')[0]);
+const have = Number(process.versions.node.split('.')[0]);
+if (have < want) fail(`Node ${have} is too old: .nvmrc asks for ${want}. Try \`nvm use\`.`);
+
 run('npm', ['run', 'typecheck'], 'typecheck');
 run('npm', ['run', 'lint'], 'lint');
 run('npm', ['test'], 'unit tests');

@@ -147,6 +147,7 @@ Optional — the app is fully functional without it, and the channel is **off by
    ```
 4. Post any message in the group. The webhook captures the group id; `/admin` will show it.
 5. Set `"LINE_ENABLED": "1"` in `wrangler.local.jsonc` and redeploy. Until then `/admin` reports the channel as switched off, whatever the secrets say.
+6. Drop the "Not enabled yet" wording from the LINE tag and operation in `public/openapi.yaml`, then `npm run build:spec`. `/docs` says the channel is off until you do.
 6. Use **Preview** on `/admin`, then **Send now**.
 
 LINE bills a group push **per member**, so a 20-person group posted to daily is ~600 messages a month. The job skips weekends, public holidays, and days with nobody on leave. See [docs/ISSUES.md](docs/ISSUES.md) #2.
@@ -177,6 +178,8 @@ Optional, free, and independent of LINE: subscribers get a notification at 09:00
 4. Deploy, then open `/me` and turn notifications on. **Send a test** proves the whole path without waiting for 09:00.
 
 Leave `VAPID_PUBLIC_KEY` empty to keep the feature off: the card disappears from `/me` and the digest skips the channel.
+
+Once notifications actually reach a phone, drop the "Not enabled yet" wording from the Push tag and its three operations in `public/openapi.yaml` and run `npm run build:spec`.
 
 **On iPhone and iPad** this only works from an installed web app — Share → *Add to Home Screen*, then turn notifications on from there. Safari tabs have no Push API at all (docs/ISSUES.md #21). Android Chrome works in an ordinary tab.
 

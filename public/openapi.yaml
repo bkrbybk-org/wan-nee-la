@@ -30,6 +30,12 @@ info:
     tokens* deliberately cannot use the app — a token has no email, and every
     row here is keyed by one.
 
+    **Four of the seven operations are not enabled yet** — the three under
+    Push and the LINE webhook. They answer, and their requests are validated at
+    the edge like the rest, but nothing is delivered: the deployment's push keys
+    do not match each other, and the LINE channel is switched off. Each one says
+    so, and the tag descriptions say what is missing.
+
     **Mutations require an `Origin` header matching `Host`.** Access is an
     authentication gate, not a CSRF defence: its cookie rides along on a form
     post from any origin. A missing `Origin` is refused rather than waved
@@ -49,9 +55,19 @@ tags:
   - name: Leave
     description: Reading the shared calendar, and costing a booking before making one.
   - name: Push
-    description: Web Push subscriptions for the 09:00 weekday digest.
+    description: |
+      **Not enabled yet.** Web Push subscriptions for the 09:00 weekday digest.
+      The code is finished and these endpoints answer, but no notification can
+      be delivered until the deployment's VAPID keypair is put right: the public
+      key browsers subscribe with no longer matches the private key the Worker
+      signs with. Until then `/api/push/subscribe` stores a subscription that
+      cannot be pushed to, and the digest sends nothing.
   - name: LINE
-    description: The one route Access cannot protect.
+    description: |
+      **Not enabled yet.** The one route Access cannot protect. The channel is
+      off behind the `LINE_ENABLED` flag, and this path has no Access Bypass
+      rule, so LINE's servers reach the login page rather than the Worker.
+      Turning it on is a deployment step, not a code change.
 
 paths:
   /health:
@@ -270,7 +286,7 @@ paths:
     post:
       operationId: pushSubscribe
       tags: [Push]
-      summary: Register this browser for the morning digest
+      summary: 'Not enabled yet: register this browser for the morning digest'
       description: |
         Stored against the caller's own identity. One person may have several
         browsers subscribed; each is a separate row keyed by its endpoint.
@@ -296,7 +312,7 @@ paths:
     post:
       operationId: pushUnsubscribe
       tags: [Push]
-      summary: Stop pushing to one browser
+      summary: 'Not enabled yet: stop pushing to one browser'
       description: |
         Scoped to the owner. A push endpoint is not a secret — it travels to
         the push service on every send — so knowing someone else's must not let
@@ -331,7 +347,7 @@ paths:
     post:
       operationId: pushTest
       tags: [Push]
-      summary: Send a test notification to the caller's own browsers
+      summary: "Not enabled yet: send a test notification to the caller's own browsers"
       description: |
         Without this, the only way to learn whether push works is to wait until
         08:00 the next working day — which is how a broken setup stays broken.
@@ -373,7 +389,7 @@ paths:
     post:
       operationId: lineWebhook
       tags: [LINE]
-      summary: Capture the group id LINE will not show you
+      summary: 'Not enabled yet: capture the group id LINE will not show you'
       description: |
         The one publicly reachable route in the app: LINE's servers must reach
         it and cannot carry an Access token, so it needs a Bypass rule on this
