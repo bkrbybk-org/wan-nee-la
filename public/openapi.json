@@ -32,7 +32,7 @@
 		},
 		{
 			"name": "Push",
-			"description": "**Not enabled yet.** Web Push subscriptions for the 09:00 weekday digest.\nThe code is finished and these endpoints answer, but no notification can\nbe delivered until the deployment's VAPID keypair is put right: the public\nkey browsers subscribe with no longer matches the private key the Worker\nsigns with. Until then `/api/v1/push/subscribe` stores a subscription that\ncannot be pushed to, and the digest sends nothing.\n"
+			"description": "**Not verified yet.** Web Push subscriptions for the 09:00 weekday digest.\nThe keypair was re-paired on 2026-09-21, so the public key browsers\nsubscribe with matches the private key the Worker signs with again. What\nhas still never happened is a real push service accepting a message and a\ndevice showing it: nobody has subscribed, so the digest has sent nothing.\nSubscribing from `/me` and pressing **Send a test** is what settles it.\n"
 		},
 		{
 			"name": "LINE",

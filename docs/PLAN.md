@@ -27,7 +27,7 @@ Nothing here needs code.
 | ~~1.1~~ | ~~Sign in through a browser~~ | **Done.** Ten active users; the first became the admin. |
 | 1.2 | Switch on LINE, if wanted | Off by default behind `LINE_ENABLED` since 2026-09-06. Channel, bot in the group, Access **Bypass** rule on `/line/webhook`, two `wrangler secret put` calls, then `"LINE_ENABLED": "1"` and a redeploy. Steps in the [README](../README.md#turning-on-the-line-post). |
 | 1.3 | Check the LINE message allowance | Billing is per group member. ~600 messages/month for a 20-person group, and the free tier varies by country ([ISSUES.md](ISSUES.md) #2). Moot while 1.2 stays off. |
-| 1.4 | **Re-pair the push keys** ([ISSUES.md](ISSUES.md) #40) | `VAPID_PRIVATE_KEY` was set on 2026-09-13 with a matching public key set on the Worker directly. The 2026-09-18 deploy put the older public key from `wrangler.local.jsonc` back, so the pair no longer matches. Copy the 09-13 public key into the main checkout's `wrangler.local.jsonc` (or `npm run vapid` for a fresh pair and set both — there are no subscriptions to invalidate), set a real `VAPID_SUBJECT`, redeploy, then **Send a test** from `/me`. On iPhone the site must be installed to the Home Screen first (#21). |
+| 1.4 | **Prove a push arrives** ([ISSUES.md](ISSUES.md) #23, #31) | The keys are paired again as of 2026-09-21 (#40), but nothing has ever been delivered: nobody has subscribed. Sign in, turn notifications on from `/me`, press **Send a test**. If a push service rejects it, the status and body are surfaced verbatim — a placeholder `VAPID_SUBJECT` is the likeliest complaint, and `npm run vapid` plus two `wrangler secret put`/config edits would replace the pair outright. On iPhone the site must be installed to the Home Screen first (#21). |
 
 ---
 

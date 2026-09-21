@@ -8,13 +8,13 @@ Updated: 2026-09-13
 
 ## Status
 
-Deployed and serving. Version `0e63caf6-e698-4697-b1d2-40286ee2f526`, deployed 2026-09-21 with `npm run ship`, D1 `<database-id>` in APAC, behind Cloudflare Access on `<hostname>`. Production checks passed: the new version serves all traffic, `/health` and `/` both 302 to Access, production D1 answers, and migration 0011 is applied with every type still offered. That deploy also carried the 09:00 weekday schedule — production had still been on the old daily `0 1 * * *` cron until then.
+Deployed and serving. Version `1a2bc86c-9850-4174-b9d6-f8f414848e65`, deployed 2026-09-21 with `npm run ship`, D1 `<database-id>` in APAC, behind Cloudflare Access on `<hostname>`. Production checks passed: the new version serves all traffic, `/health` and `/` both 302 to Access, production D1 answers, and migration 0011 is applied with every type still offered. That deploy also carried the 09:00 weekday schedule — production had still been on the old daily `0 1 * * *` cron until then.
 
 **In real use.** Ten active users, 20 confirmed bookings, 26 holidays, four leave types, 31 rows in the audit trail. That changes what matters here: the shared surfaces now have a real audience, so note visibility, the audit trail and the privacy rules on `/u/:email` are load-bearing rather than theoretical.
 
 Two optional channels are still inert, both needing the owner rather than more code:
 
-1. **Browser notifications.** The code is finished and verified locally end to end, and the private key has been set since 2026-09-13 — but the 2026-09-18 deploy replaced the matching public key with an older one from `wrangler.local.jsonc`, so the pair no longer matches (ISSUES #40). Nobody had subscribed. Re-pairing is a config edit and a redeploy; then **Send a test** closes #23 and #31.
+1. **Browser notifications.** The code is finished and verified locally end to end; the private key has been set since 2026-09-13 and the matching public key was restored on 2026-09-21 after a deploy overwrote it (ISSUES #40). Nothing has ever been delivered, because nobody has subscribed — turning notifications on from `/me` and pressing **Send a test** is what closes #23 and #31.
 2. **The LINE post.** Off by default behind `LINE_ENABLED`, and not wanted for now. Would need a Messaging API channel, an Access Bypass rule on `/line/webhook`, two secrets and the flag. Billed per group member (#2).
 
 ---
@@ -166,7 +166,7 @@ It is built against its own worst failure mode — passing while testing nothing
 
 ## Open items
 
-**One known regression, in configuration rather than code:** the push keypair is mismatched in production (#40). 635 assertions are green and `npm audit` is clean. The 2026-08-25 audit and the 2026-09-13 review both found and fixed what they turned up — the second a quota overdraw when moving a booking across New Year (#36) — and each fix is covered by a test or, where a test could not reach it, recorded in [ISSUES.md](ISSUES.md).
+**No known bugs.** The push keypair mismatch (#40) was repaired on 2026-09-21. 635 assertions are green and `npm audit` is clean. The 2026-08-25 audit and the 2026-09-13 review both found and fixed what they turned up — the second a quota overdraw when moving a booking across New Year (#36) — and each fix is covered by a test or, where a test could not reach it, recorded in [ISSUES.md](ISSUES.md).
 
 What follows is decisions, unfinished configuration, accepted trade-offs and debt — not defects.
 
@@ -189,7 +189,7 @@ What follows is decisions, unfinished configuration, accepted trade-offs and deb
 
 ### Configuration outstanding
 
-- **Push keys need re-pairing** (#40). Put the public key from version `b24169d9` into `wrangler.local.jsonc` (or generate a fresh pair and set both), set a real `VAPID_SUBJECT`, redeploy. Then `/me` → **Send a test**, which is the only way to close #23 and #31.
+- **Browser notifications are unproven.** The keys are paired again (#40) and `VAPID_SUBJECT` is still the placeholder `mailto:dev@example.com`, which a push service may or may not accept. Subscribe from `/me`, press **Send a test**, and set a real subject if it complains. That is the only way to close #23 and #31.
 - **LINE is switched off**, deliberately, by `LINE_ENABLED`. Turning it on needs the channel, the Access Bypass rule on `/line/webhook`, the two secrets, and the flag.
 - **Thai lunar holidays need entering each year** (#10). Only fixed-date holidays are seeded; the paste-a-list importer on `/admin` makes it a one-minute job, but nothing *fetches* the announcement. A yearly reminder would close it.
 
@@ -249,6 +249,7 @@ Features — iCal, CSV export, team grouping, coverage scoped to a team — are 
 
 ## Change log
 
+- **2026-09-21** — The push keypair is paired again (#40): the public key that was live alongside the private key on 2026-09-13 is back in the config and deployed, verified against `wrangler versions view`. Still never delivered to a real device, since nobody has subscribed — `/docs` now says "Not verified yet" rather than "Not enabled yet" for those three operations.
 - **2026-09-21** — Review and cross-check after the API work. `/api/v1/leave/by-date` now lists a day's people in name order; they had been arriving in the order their bookings started, which reads as arbitrary on a single day. Smoke pins that, and pins that the unversioned paths really are gone rather than quietly aliased.
 - **2026-09-21** — API spec review against common practice, and the fixes it called for. Paths moved to `/api/v1/…` with the unversioned ones dropped; every JSON failure is now one shape, `{ error: { message, key? } }`, in place of three; the calendar feed gained the 366-day cap `by-date` already had; response schemas that were written inline became named components (`Health`, `LeaveFeed`, `LeaveByDate`, `LeaveDay`, `LeaveDayPerson`, `Error`); the 400s gained examples; `info` gained a contact. Kept deliberately: the preview answering 200 for refused input, and `by-date`'s snake_case, which its first consumer specified. **The uploaded API Shield schema must be re-uploaded** — it names the old paths, so the API is unvalidated until then (`npm run shield:probe` shows it).
 - **2026-09-21** — `/api/v1/leave/by-date`: the same leave grouped by calendar date, one entry per date with each person's `period` for that day (`full_day`/`morning`/`afternoon`), so callers stop reimplementing the half-day expansion. Dates with nobody away are absent; the range is capped at 366 days. It carries email addresses by the owner's decision — the one endpoint that does.

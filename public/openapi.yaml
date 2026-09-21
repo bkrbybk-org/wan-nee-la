@@ -59,12 +59,12 @@ tags:
     description: Reading the shared calendar, and costing a booking before making one.
   - name: Push
     description: |
-      **Not enabled yet.** Web Push subscriptions for the 09:00 weekday digest.
-      The code is finished and these endpoints answer, but no notification can
-      be delivered until the deployment's VAPID keypair is put right: the public
-      key browsers subscribe with no longer matches the private key the Worker
-      signs with. Until then `/api/v1/push/subscribe` stores a subscription that
-      cannot be pushed to, and the digest sends nothing.
+      **Not verified yet.** Web Push subscriptions for the 09:00 weekday digest.
+      The keypair was re-paired on 2026-09-21, so the public key browsers
+      subscribe with matches the private key the Worker signs with again. What
+      has still never happened is a real push service accepting a message and a
+      device showing it: nobody has subscribed, so the digest has sent nothing.
+      Subscribing from `/me` and pressing **Send a test** is what settles it.
   - name: LINE
     description: |
       **Not enabled yet.** The one route Access cannot protect. The channel is

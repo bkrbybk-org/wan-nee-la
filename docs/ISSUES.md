@@ -336,7 +336,7 @@ The encryption is checked against RFC 8291's own worked example byte for byte, a
 
 It cannot be tested from a terminal: it needs a real browser subscription, which needs a real person granting permission. The automation browser used during development has notifications denied at the profile level.
 
-`/docs` marks the three Push operations "Not enabled yet" until this is fixed (2026-09-21).
+`/docs` marks the three Push operations "Not verified yet": the keys were re-paired on 2026-09-21 (#40), and what remains is a real subscription and a real send.
 
 **As of 2026-09-13** `VAPID_PRIVATE_KEY` is set in production, together with a matching public key set directly on the Worker rather than in `wrangler.local.jsonc`. **The 2026-09-18 deploy overwrote that public key** with the older one the config file still held, so the pair no longer matches and a push would be refused (#40). No browser had subscribed yet, so nobody lost anything; `push_subscriptions` and `notification_runs` are both still empty. A local run with a throwaway keypair confirmed the rest of the path — card offered, subscription stored, run claimed, delivery attempted and recorded — so the remaining unknown is exactly a real push service and a real device.
 
@@ -512,7 +512,7 @@ Personal leave was asked to go next, and it has one confirmed booking from 2026-
 
 ---
 
-## #40 — A deploy overwrites Worker vars set outside the config file `open — owner action`
+## #40 — A deploy overwrites Worker vars set outside the config file `resolved`
 
 `wrangler deploy` replaces every var on the Worker with the ones in the config it deploys. On 2026-09-13 a push keypair was set up: the private key as a secret, which a deploy leaves alone, and the public key as a var on the Worker, which it does not. `wrangler.local.jsonc` still held an older public key, so the next deploy — 2026-09-18, version `9dd99b38` — put that one back. Wrangler printed a warning that the local config "differs from the remote configuration", and the deploy went ahead anyway, as it always does. `VAPID_SUBJECT` went back to a different placeholder at the same time.
 
@@ -520,7 +520,11 @@ Effect: the public key browsers subscribe with no longer matches the private key
 
 Fix, owner-side because it edits the real config: put the public key from version `b24169d9` into `VAPID_PUBLIC_KEY` in the main checkout's `wrangler.local.jsonc`, set a real `VAPID_SUBJECT`, and redeploy. `npx wrangler versions view b24169d9-666d-406d-aa23-f572c6e6ed07` shows the key. If there is any doubt the two halves match, `npm run vapid` for a fresh pair and set both — with no subscriptions there is nothing to invalidate.
 
-The lasting lesson is in the README: `wrangler.local.jsonc` is the only place a var may be changed, and a deploy's "differs from the remote configuration" warning is worth reading rather than scrolling past.
+**Fixed 2026-09-21.** The 09-13 public key was put back into `wrangler.local.jsonc` and deployed as version `b75c55f2`; `wrangler versions view` confirms the deployed `VAPID_PUBLIC_KEY` is byte-for-byte the one that was live alongside the private key. The value was recovered from the deploy warning that reported the overwrite, and checked before use: 87 characters, decoding to a 65-byte uncompressed P-256 point. Nobody had subscribed in the meantime, so nothing was lost.
+
+What this does *not* prove is that the two halves match — only the deployment that set them both knows that, and no push has ever been sent. Subscribing from `/me` and pressing **Send a test** is the proof, and it also closes #23 and #31.
+
+The lasting lesson is in the README: `wrangler.local.jsonc` is the only place a var may be changed, and a deploy's "differs from the remote configuration" warning is worth reading rather than scrolling past. PLAN 4.13 would make `ship` refuse on drift rather than warn.
 
 ---
 
