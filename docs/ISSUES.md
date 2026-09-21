@@ -255,7 +255,7 @@ So:
 
 ## #17 — Leave notes are visible to everyone, not just the booker `resolved`
 
-The optional free-text note on a booking is shown to **every** authenticated user, not only the owner and admins. It reaches them three ways: the chip's `title` tooltip, the `data-note` attribute the detail popup reads, and the `note` field in `GET /api/leave`.
+The optional free-text note on a booking is shown to **every** authenticated user, not only the owner and admins. It reaches them three ways: the chip's `title` tooltip, the `data-note` attribute the detail popup reads, and the `note` field in `GET /api/v1/leave`.
 
 Verified live: a user who is neither the booker nor an admin loaded the calendar and the JSON feed and saw a note reading "oncology follow-up" in both.
 
@@ -544,7 +544,7 @@ The same page had a second fault that predated this: the spec's `servers` entry 
 
 ## #43 — The booking preview printed `[object Object]` `resolved`
 
-Validation errors became message keys (`{ key, vars }`) so pure functions need not know the reader's language, and `/api/leave/preview` returned that object as its `error`. The client still assigned `error` straight to `textContent`, so any refused preview — a weekend, a holiday, an end before the start — read `[object Object]`. On `/me` it showed on every weekend, since the form defaults to today. Found 2026-09-19 while feature-testing production.
+Validation errors became message keys (`{ key, vars }`) so pure functions need not know the reader's language, and `/api/v1/leave/preview` returned that object as its `error`. The client still assigned `error` straight to `textContent`, so any refused preview — a weekend, a holiday, an end before the start — read `[object Object]`. On `/me` it showed on every weekend, since the form defaults to today. Found 2026-09-19 while feature-testing production.
 
 The preview's `error` now carries `message` beside `key`: the same sentence, already in the reader's language. The key stays for programs. A smoke test pins both.
 

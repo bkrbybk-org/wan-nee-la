@@ -154,19 +154,19 @@ Self-serve model (owner's decision): a POST creates a `confirmed` row directly. 
 | GET | `/` | Calendar. A month grid at every width — names on a laptop, dots on a phone with the day list beneath. Upcoming list, month/year jump. |
 | GET | `/book?date=` | Booking page, prefilled. The no-JS destination for a day cell. |
 | GET | `/docs` | API reference, Swagger UI over `/openapi.json` — the committed JSON copy of `public/openapi.yaml`, because the zone refuses `*.yaml` at the edge. "Try it out" targets the page's own origin. A Worker route rather than an asset, so it carries the CSP. |
-| GET | `/api/leave/by-date?from=&to=` | The same leave grouped by date: one entry per date, each listing who is away and which part of the day (`full_day`/`morning`/`afternoon`). **Carries email addresses** — a deliberate exception, see below. Max 366 days. |
-| GET | `/api/leave?from=&to=&user=` | JSON feed, active users only. No email addresses in the response; notes filtered per viewer. `user` takes an address as *input* to narrow the feed to one person — the rows `/u/:email` renders as a page. |
-| GET | `/api/leave/preview` | Server-side day count and coverage for the form's live preview. |
-| POST | `/api/leave` | Book. Server computes days, checks overlap and the start year's balance. A refusal carries the submission and the offending field back to the form. |
+| GET | `/api/v1/leave/by-date?from=&to=` | The same leave grouped by date: one entry per date, each listing who is away and which part of the day (`full_day`/`morning`/`afternoon`). **Carries email addresses** — a deliberate exception, see below. Max 366 days. |
+| GET | `/api/v1/leave?from=&to=&user=` | JSON feed, active users only. No email addresses in the response; notes filtered per viewer. `user` takes an address as *input* to narrow the feed to one person — the rows `/u/:email` renders as a page. |
+| GET | `/api/v1/leave/preview` | Server-side day count and coverage for the form's live preview. |
+| POST | `/api/v1/leave` | Book. Server computes days, checks overlap and the start year's balance. A refusal carries the submission and the offending field back to the form. |
 | GET | `/leave/:id/edit` | Edit one booking; the no-JS destination for an entry. |
-| POST | `/api/leave/:id/edit` | Save an edit, and offer undo. Also the drag-to-move target, which carries `returnTo` and so gets no form prefill. |
-| POST | `/api/leave/:id/cancel` | Soft cancel, idempotent. Offers undo. |
-| POST | `/api/leave/:id/undo` | Undo the last cancel or edit within ten minutes, after re-running the booking rules. |
+| POST | `/api/v1/leave/:id/edit` | Save an edit, and offer undo. Also the drag-to-move target, which carries `returnTo` and so gets no form prefill. |
+| POST | `/api/v1/leave/:id/cancel` | Soft cancel, idempotent. Offers undo. |
+| POST | `/api/v1/leave/:id/undo` | Undo the last cancel or edit within ten minutes, after re-running the booking rules. |
 | GET | `/me` | Balances, upcoming and past leave, settings, notifications card. Year navigation. |
 | GET | `/u/:email` | One person's leave. Schedule shared; balances to them and admins; notes never. |
 | POST | `/me/name` · `/me/week-start` · `/me/lang` | Display name; Monday or Sunday first; English or Thai. |
-| POST | `/api/push/subscribe` · `/api/push/unsubscribe` | This browser's subscription. Unsubscribe is scoped to its owner. |
-| POST | `/api/push/test` | Push to the caller's own browsers. |
+| POST | `/api/v1/push/subscribe` · `/api/v1/push/unsubscribe` | This browser's subscription. Unsubscribe is scoped to its owner. |
+| POST | `/api/v1/push/test` | Push to the caller's own browsers. |
 | GET | `/admin` | Users, quotas, leave types, holidays, LINE status, run log, audit trail. Admin only. |
 | POST | `/admin/quotas` · `/admin/quotas/bulk` | One person, or one leave type for every active user. |
 | POST | `/admin/user` | Role and active flag. The last admin cannot demote itself. |
@@ -340,11 +340,23 @@ Snapshots are JSON rather than mirrored columns so the trail keeps its meaning w
 
 **Retention.** After the digest, the same cron run deletes audit rows older than three years and `notification_runs` rows older than 90 days (`AUDIT_KEEP_YEARS`, `NOTIFICATION_KEEP_DAYS` in `src/repo/db.ts`). In its own `try`, so housekeeping can never delay or block a post. Three years covers the year being worked in, the two before it, and any balance that crossed New Year; everything the app can still change — 90 days of backdating, 10 minutes of undo — sits well inside it.
 
+## Errors
+
+Every JSON failure is `{ "error": { "message", "key"?, "vars"? } }`. `message` is a sentence in the reader's language, ready to show; `key` is present when the booking rules named the message, for a program that would rather match than parse prose. There were three shapes before 2026-09-21 — a bare string on the feeds, `{ ok: false, error }` on the push routes, and a bare key from the preview — and a caller had to know which endpoint it was talking to before it could read a failure.
+
+Success bodies are unchanged: the feeds return their data, the push routes `{ ok: true }`.
+
+## Versioning
+
+API paths are `/api/v1/…` since 2026-09-21; the unversioned ones were dropped rather than kept as aliases, since every caller was inside this repo. `/health` and `/line/webhook` are deliberately outside the versioned space: one is monitoring, the other a URL configured in someone else's console.
+
+The uploaded API Shield schema names paths exactly, so a path change leaves those operations unvalidated until the schema is regenerated and uploaded again.
+
 ## Email addresses in the API
 
-The calendar feed has never carried them: a name and a leave type are what the calendar shows, and an address list is what turns a leave tracker into a staff directory. `/api/leave` still does not, and `user=` there takes an address only as input.
+The calendar feed has never carried them: a name and a leave type are what the calendar shows, and an address list is what turns a leave tracker into a staff directory. `/api/v1/leave` still does not, and `user=` there takes an address only as input.
 
-`/api/leave/by-date` is the exception, decided by the owner on 2026-09-21: an integration consuming "who is away today" needs a stable identifier per person, and a display name is neither unique nor stable. The scope of that exception is exactly one endpoint, and it changes who can read addresses — any signed-in colleague, not only admins. Notes are still absent from it entirely.
+`/api/v1/leave/by-date` is the exception, decided by the owner on 2026-09-21: an integration consuming "who is away today" needs a stable identifier per person, and a display name is neither unique nor stable. The scope of that exception is exactly one endpoint, and it changes who can read addresses — any signed-in colleague, not only admins. Notes are still absent from it entirely.
 
 ## Leave types
 
@@ -356,7 +368,7 @@ The calendar feed has never carried them: a name and a leave type are what the c
 
 Delete is offered only for a type with no bookings in any status, and the `DELETE` repeats that guard itself (the same `NOT EXISTS` as 0010), so a booking made between page load and click cannot be orphaned. The last offered type cannot be retired.
 
-**Undo reads the trail back.** `POST /api/leave/:id/undo` acts on the most recent audit row for that booking, within ten minutes. A cancellation is undone by flipping the status back — the row never left, so its note is intact — and recorded as its own `restored` action. An edit is undone from the `before` snapshot, but the note always comes from the row, because the snapshot deliberately records only `has_note`; rebuilding a booking from the trail alone would have wiped every note it touched. Both re-run the booking rules first, since quota and dates can change between a change and its undo. The route re-authorises through `ownedLeave` and finds the audit row itself — the undo offer rides in a client-held cookie and is trusted for nothing.
+**Undo reads the trail back.** `POST /api/v1/leave/:id/undo` acts on the most recent audit row for that booking, within ten minutes. A cancellation is undone by flipping the status back — the row never left, so its note is intact — and recorded as its own `restored` action. An edit is undone from the `before` snapshot, but the note always comes from the row, because the snapshot deliberately records only `has_note`; rebuilding a booking from the trail alone would have wiped every note it touched. Both re-run the booking rules first, since quota and dates can change between a change and its undo. The route re-authorises through `ownedLeave` and finds the audit row itself — the undo offer rides in a client-held cookie and is trusted for nothing.
 
 ## Non-goals (v1)
 

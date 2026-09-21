@@ -185,11 +185,11 @@ Once notifications actually reach a phone, drop the "Not enabled yet" wording fr
 
 ## The JSON feed
 
-`GET /api/leave?from=2026-01-01&to=2026-12-31` returns confirmed leave over a
+`GET /api/v1/leave?from=2026-01-01&to=2026-12-31` returns confirmed leave over a
 range, and `&user=someone@example.com` narrows it to one person. Emails never
 appear in that response; there, an address is input only.
 
-`GET /api/leave/by-date?from=&to=` returns the same leave grouped by calendar
+`GET /api/v1/leave/by-date?from=&to=` returns the same leave grouped by calendar
 date instead of by booking — one entry per date, listing who is away and which
 part of the day (`full_day`, `morning`, `afternoon`). This one **does** carry
 email addresses, so that an integration has a stable identifier per person.
@@ -217,6 +217,12 @@ dashboard.
 The other 24 routes — HTML pages and form posts — are deliberately not in the
 spec. So do **not** deploy API Shield's fallthrough rule ("mitigate requests to
 unidentified endpoints") on this hostname: it would block the whole app.
+**A path or parameter change means a re-upload.** The schema names paths
+exactly, so after any change to what the API accepts, run `npm run
+openapi:shield` and upload the file again — until you do, those operations are
+simply not validated. Moving to `/api/v1/…` on 2026-09-21 left the whole API
+unvalidated until the re-upload, which `npm run shield:probe` shows plainly.
+
 An uploaded schema only *detects*: it sets
 `cf.schema_validation.uploaded.violated` and blocks nothing. Enforcement is a
 WAF custom rule on that field, scoped to this hostname — start it on **Log**,

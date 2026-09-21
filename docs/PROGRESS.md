@@ -8,7 +8,7 @@ Updated: 2026-09-13
 
 ## Status
 
-Deployed and serving. Version `5153b9f0-6295-4167-a189-a4f13ac6da9d`, deployed 2026-09-21 with `npm run ship`, D1 `<database-id>` in APAC, behind Cloudflare Access on `<hostname>`. Production checks passed: the new version serves all traffic, `/health` and `/` both 302 to Access, production D1 answers, and migration 0011 is applied with every type still offered. That deploy also carried the 09:00 weekday schedule — production had still been on the old daily `0 1 * * *` cron until then.
+Deployed and serving. Version `9a212854-ca9c-4990-8eab-cf390b82c6e9`, deployed 2026-09-21 with `npm run ship`, D1 `<database-id>` in APAC, behind Cloudflare Access on `<hostname>`. Production checks passed: the new version serves all traffic, `/health` and `/` both 302 to Access, production D1 answers, and migration 0011 is applied with every type still offered. That deploy also carried the 09:00 weekday schedule — production had still been on the old daily `0 1 * * *` cron until then.
 
 **In real use.** Ten active users, 20 confirmed bookings, 26 holidays, four leave types, 31 rows in the audit trail. That changes what matters here: the shared surfaces now have a real audience, so note visibility, the audit trail and the privacy rules on `/u/:email` are load-bearing rather than theoretical.
 
@@ -71,18 +71,18 @@ Two consequences worth remembering:
 | GET | `/` | Calendar. Month grid at every width — names on a laptop, dots on a phone. Upcoming list from 768px; day list below the grid on a phone. Month/year jump. |
 | GET | `/book?date=` | Booking page — the no-JS destination for calendar day cells. |
 | GET | `/docs` | API reference over `/openapi.json` (the zone blocks `*.yaml`). A Worker route rather than an asset, so it carries the CSP. |
-| GET | `/api/leave?from=&to=&user=` | JSON feed. No email addresses in the response; `user` narrows it to one person. |
-| GET | `/api/leave/by-date?from=&to=` | The same leave grouped by date, with each person's part of that day. Carries emails, by decision (2026-09-21). |
-| GET | `/api/leave/preview` | Server-side day count for the form's live preview. |
-| POST | `/api/leave` | Book. Server computes days, checks overlap and the start year's balance. A refusal hands the submission and the offending field back to the form. |
-| GET · POST | `/leave/:id/edit` · `/api/leave/:id/edit` | Edit, and offer undo. Also the drag-to-move target. |
-| POST | `/api/leave/:id/cancel` | Soft cancel; idempotent. Offers undo. |
-| POST | `/api/leave/:id/undo` | Undo the last cancel or edit within ten minutes, re-running the booking rules first. |
+| GET | `/api/v1/leave?from=&to=&user=` | JSON feed. No email addresses in the response; `user` narrows it to one person. |
+| GET | `/api/v1/leave/by-date?from=&to=` | The same leave grouped by date, with each person's part of that day. Carries emails, by decision (2026-09-21). |
+| GET | `/api/v1/leave/preview` | Server-side day count for the form's live preview. |
+| POST | `/api/v1/leave` | Book. Server computes days, checks overlap and the start year's balance. A refusal hands the submission and the offending field back to the form. |
+| GET · POST | `/leave/:id/edit` · `/api/v1/leave/:id/edit` | Edit, and offer undo. Also the drag-to-move target. |
+| POST | `/api/v1/leave/:id/cancel` | Soft cancel; idempotent. Offers undo. |
+| POST | `/api/v1/leave/:id/undo` | Undo the last cancel or edit within ten minutes, re-running the booking rules first. |
 | GET | `/me` | Balances, upcoming and past leave, settings. Year navigation. |
 | GET | `/u/:email` | One person's leave. Schedule is shared; balances only for that person and admins; notes never. |
 | POST | `/me/name` · `/me/week-start` · `/me/lang` | Display name; Monday or Sunday first; English or Thai. |
-| POST | `/api/push/subscribe` · `/api/push/unsubscribe` | This browser's push subscription. Unsubscribe is scoped to its owner. |
-| POST | `/api/push/test` | Sends to the caller's own browsers, so a fresh setup can be proved without waiting for 09:00. |
+| POST | `/api/v1/push/subscribe` · `/api/v1/push/unsubscribe` | This browser's push subscription. Unsubscribe is scoped to its owner. |
+| POST | `/api/v1/push/test` | Sends to the caller's own browsers, so a fresh setup can be proved without waiting for 09:00. |
 | GET | `/admin` | Users, quotas, leave types, holidays, LINE status and run log. Admin only. |
 | POST | `/admin/quotas` · `/admin/quotas/bulk` | One person, or every active user at once. |
 | POST | `/admin/user` | Role and active flag. Last admin cannot demote itself. |
@@ -139,7 +139,7 @@ Two consequences worth remembering:
 
 ## Verification
 
-**626 automated assertions**, all green. CI runs them, and lint, on every push and pull request.
+**631 automated assertions**, all green. CI runs them, and lint, on every push and pull request.
 
 | Suite | Assertions | Covers |
 | --- | --- | --- |
@@ -149,7 +149,7 @@ Two consequences worth remembering:
 | `test-push.mjs` | 29 | RFC 8291 encryption against the spec's worked example, VAPID token and signature, the `วันนี้ … ลา` title |
 | `test-holidays.mjs` | 30 | Parsing a pasted holiday list, and its bounds |
 | `test-i18n.mjs` | 27 | Lookup, placeholders, plurals, and the catalogue's own health |
-| `smoke.mjs` | 269 | The HTTP layer — see below |
+| `smoke.mjs` | 274 | The HTTP layer — see below |
 | `check-openapi.mjs` | — | Each of the 32 routes is either documented in `openapi.yaml` or deliberately listed as not, and the API Shield 3.0.3 copy still builds from it |
 
 The smoke suite boots a real worker against a scratch database and exercises what pure functions cannot reach: the CSRF guard, ownership checks on edit and cancel, booking rules over real requests, the open-redirect guards on `returnTo` **and on the `Referer` header**, note visibility across two identities, the audit trail's contents, the security headers, digest decisions, the webhook signature, push subscription ownership, admin authorisation, undo and its re-validation, next-year and cross-year quota, a LINE channel switched off by its flag, adding, retiring and deleting leave types, and history pruning through the real scheduled handler.
@@ -166,7 +166,7 @@ It is built against its own worst failure mode — passing while testing nothing
 
 ## Open items
 
-**One known regression, in configuration rather than code:** the push keypair is mismatched in production (#40). 626 assertions are green and `npm audit` is clean. The 2026-08-25 audit and the 2026-09-13 review both found and fixed what they turned up — the second a quota overdraw when moving a booking across New Year (#36) — and each fix is covered by a test or, where a test could not reach it, recorded in [ISSUES.md](ISSUES.md).
+**One known regression, in configuration rather than code:** the push keypair is mismatched in production (#40). 631 assertions are green and `npm audit` is clean. The 2026-08-25 audit and the 2026-09-13 review both found and fixed what they turned up — the second a quota overdraw when moving a booking across New Year (#36) — and each fix is covered by a test or, where a test could not reach it, recorded in [ISSUES.md](ISSUES.md).
 
 What follows is decisions, unfinished configuration, accepted trade-offs and debt — not defects.
 
@@ -224,7 +224,7 @@ Features — iCal, CSV export, team grouping, coverage scoped to a team — are 
 ## Decisions log
 
 - Self-serve booking. No approval workflow, no pending state. — owner
-- Email addresses stay out of the calendar feed, but `/api/leave/by-date` carries them (2026-09-21) — owner. An integration needs a stable identifier for a person; a display name is neither. The exception is that one endpoint, and it is readable by any signed-in colleague.
+- Email addresses stay out of the calendar feed, but `/api/v1/leave/by-date` carries them (2026-09-21) — owner. An integration needs a stable identifier for a person; a display name is neither. The exception is that one endpoint, and it is readable by any signed-in colleague.
 - Per-type annual quota (annual / sick / personal). No carry-over in v1. — owner
 - Unpaid leave removed (migration 0010). Seeded from the start and never booked once in production; the migration refuses to delete a type that has bookings, because the entry query inner-joins leave_types and an orphaned request would silently vanish rather than error. — owner
 - Deactivated users disappear from the calendar, feed and digest; their history stays for admins. Those three surfaces answer "who of us is out", and a former employee is not.
@@ -249,7 +249,8 @@ Features — iCal, CSV export, team grouping, coverage scoped to a team — are 
 
 ## Change log
 
-- **2026-09-21** — `/api/leave/by-date`: the same leave grouped by calendar date, one entry per date with each person's `period` for that day (`full_day`/`morning`/`afternoon`), so callers stop reimplementing the half-day expansion. Dates with nobody away are absent; the range is capped at 366 days. It carries email addresses by the owner's decision — the one endpoint that does.
+- **2026-09-21** — API spec review against common practice, and the fixes it called for. Paths moved to `/api/v1/…` with the unversioned ones dropped; every JSON failure is now one shape, `{ error: { message, key? } }`, in place of three; the calendar feed gained the 366-day cap `by-date` already had; response schemas that were written inline became named components (`Health`, `LeaveFeed`, `LeaveByDate`, `LeaveDay`, `LeaveDayPerson`, `Error`); the 400s gained examples; `info` gained a contact. Kept deliberately: the preview answering 200 for refused input, and `by-date`'s snake_case, which its first consumer specified. **The uploaded API Shield schema must be re-uploaded** — it names the old paths, so the API is unvalidated until then (`npm run shield:probe` shows it).
+- **2026-09-21** — `/api/v1/leave/by-date`: the same leave grouped by calendar date, one entry per date with each person's `period` for that day (`full_day`/`morning`/`afternoon`), so callers stop reimplementing the half-day expansion. Dates with nobody away are absent; the range is capped at 366 days. It carries email addresses by the owner's decision — the one endpoint that does.
 - **2026-09-21** — The feed takes `?user=`, narrowing it to one person by the email Access knows them by. No new permission: a colleague's schedule is already the shared calendar, and `/u/:email` has always rendered the same rows as a page. Emails stay out of the *response*, private notes stay absent, deactivated people stay out, an unknown address is an empty list and rubbish is a 400. API Shield does not treat an unknown query parameter as a violation — verified against production — so the new parameter worked before the schema was re-uploaded; re-uploading is what makes it validated.
 - **2026-09-21** — `/docs` now says which endpoints are not switched on: the three Push operations and the LINE webhook carry "Not enabled yet" in their summaries, and their tags say what is missing — the mismatched push keypair (#40) and `LINE_ENABLED`. They stay listed, callable and validated at the edge; `deprecated` was deliberately not used, since nothing here is being retired. README's enabling steps end by removing the markers. `npm run ship` now refuses to run on a Node older than `.nvmrc`.
 - **2026-09-19** — Review and documentation cross-check. One small bug fixed: the leave-types card said "1 bookings". `/docs` now says why when the spec fails to load, instead of rendering blank. Docs brought in line: 598 assertions, the two edge layers in front of Access (ARCHITECTURE "In front of Access"), and the hand-uploaded Shield schema recorded as debt (PLAN 4.14).
