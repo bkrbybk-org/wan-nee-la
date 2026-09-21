@@ -336,6 +336,8 @@ The encryption is checked against RFC 8291's own worked example byte for byte, a
 
 It cannot be tested from a terminal: it needs a real browser subscription, which needs a real person granting permission. The automation browser used during development has notifications denied at the profile level.
 
+`/docs` marks the three Push operations "Not enabled yet" until this is fixed (2026-09-21).
+
 **As of 2026-09-13** `VAPID_PRIVATE_KEY` is set in production, together with a matching public key set directly on the Worker rather than in `wrangler.local.jsonc`. **The 2026-09-18 deploy overwrote that public key** with the older one the config file still held, so the pair no longer matches and a push would be refused (#40). No browser had subscribed yet, so nobody lost anything; `push_subscriptions` and `notification_runs` are both still empty. A local run with a throwaway keypair confirmed the rest of the path — card offered, subscription stored, run claimed, delivery attempted and recorded — so the remaining unknown is exactly a real push service and a real device.
 
 Closing this is one click once the secret is set: sign in, turn notifications on from `/me`, press **Send a test**. If a push service rejects the request its status and body are surfaced verbatim in the response and in `/admin`, which is where a wrong `VAPID_SUBJECT` or a malformed key would show up.

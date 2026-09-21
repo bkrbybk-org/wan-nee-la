@@ -8,7 +8,7 @@ Updated: 2026-09-13
 
 ## Status
 
-Deployed and serving. Version `c53e6228-122c-4811-b985-0bc300f8030e`, deployed 2026-09-19 with `npm run ship`, D1 `<database-id>` in APAC, behind Cloudflare Access on `<hostname>`. Production checks passed: the new version serves all traffic, `/health` and `/` both 302 to Access, production D1 answers, and migration 0011 is applied with every type still offered. That deploy also carried the 09:00 weekday schedule — production had still been on the old daily `0 1 * * *` cron until then.
+Deployed and serving. Version `3506503d-e438-4060-908e-dee907536807`, deployed 2026-09-21 with `npm run ship`, D1 `<database-id>` in APAC, behind Cloudflare Access on `<hostname>`. Production checks passed: the new version serves all traffic, `/health` and `/` both 302 to Access, production D1 answers, and migration 0011 is applied with every type still offered. That deploy also carried the 09:00 weekday schedule — production had still been on the old daily `0 1 * * *` cron until then.
 
 **In real use.** Ten active users, 20 confirmed bookings, 26 holidays, four leave types, 31 rows in the audit trail. That changes what matters here: the shared surfaces now have a real audience, so note visibility, the audit trail and the privacy rules on `/u/:email` are load-bearing rather than theoretical.
 
@@ -247,6 +247,7 @@ Features — iCal, CSV export, team grouping, coverage scoped to a team — are 
 
 ## Change log
 
+- **2026-09-21** — `/docs` now says which endpoints are not switched on: the three Push operations and the LINE webhook carry "Not enabled yet" in their summaries, and their tags say what is missing — the mismatched push keypair (#40) and `LINE_ENABLED`. They stay listed, callable and validated at the edge; `deprecated` was deliberately not used, since nothing here is being retired. README's enabling steps end by removing the markers. `npm run ship` now refuses to run on a Node older than `.nvmrc`.
 - **2026-09-19** — Review and documentation cross-check. One small bug fixed: the leave-types card said "1 bookings". `/docs` now says why when the spec fails to load, instead of rendering blank. Docs brought in line: 598 assertions, the two edge layers in front of Access (ARCHITECTURE "In front of Access"), and the hand-uploaded Shield schema recorded as debt (PLAN 4.14).
 - **2026-09-19** — Feature-tested production behind the new API Shield rule, signed in: booking, the live preview, edit, undo, cancel, pages, language, push test and unsubscribe — nothing blocked. It found two faults, both fixed (#42, #43): `/docs` was blank because the zone refuses every `*.yaml` path, so it now reads a committed `/openapi.json` and its "Try it out" targets this origin rather than example.com; and a refused preview printed `[object Object]` under the booking form, so the preview now sends the sentence as well as the key.
 - **2026-09-19** — `npm run openapi:shield` derives an OpenAPI 3.0.3 copy for Cloudflare API Shield, which rejected the 3.1 spec (#41). The spec itself now documents `/health`'s 503 and the current route counts.
