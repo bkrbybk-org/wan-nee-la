@@ -187,7 +187,15 @@ Once notifications actually reach a phone, drop the "Not enabled yet" wording fr
 
 `GET /api/leave?from=2026-01-01&to=2026-12-31` returns confirmed leave over a
 range, and `&user=someone@example.com` narrows it to one person. Emails never
-appear in the response; this one is input only. Full reference at `/docs`.
+appear in that response; there, an address is input only.
+
+`GET /api/leave/by-date?from=&to=` returns the same leave grouped by calendar
+date instead of by booking — one entry per date, listing who is away and which
+part of the day (`full_day`, `morning`, `afternoon`). This one **does** carry
+email addresses, so that an integration has a stable identifier per person.
+Capped at 366 days.
+
+Full reference at `/docs`.
 
 ## Cloudflare API Shield
 

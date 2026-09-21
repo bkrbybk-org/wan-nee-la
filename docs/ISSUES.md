@@ -548,3 +548,11 @@ Validation errors became message keys (`{ key, vars }`) so pure functions need n
 
 The preview's `error` now carries `message` beside `key`: the same sentence, already in the reader's language. The key stays for programs. A smoke test pins both.
 
+---
+
+## #44 — The smoke suite's local server sometimes fails to stay up `open`
+
+Since around 2026-09-21, roughly one local `npm run test:smoke` in two dies partway with `harness error -> fetch failed`, and the assertion-site check then reports the tests after that point as never run — which is the check doing its job, not a second fault. A rerun passes with every assertion green, and the same suite is green on CI, so this looks like the local `wrangler dev` child going away rather than anything the app does.
+
+Not yet diagnosed. Suspects, in order: the jump to wrangler 4.135, several wrangler instances from earlier aborted runs competing for the scratch `--persist-to` directory, and the machine's Node default having moved to 20 while `.nvmrc` asks for 24. Worth capturing the server log on failure — the harness already keeps it — rather than guessing.
+

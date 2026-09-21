@@ -154,6 +154,7 @@ Self-serve model (owner's decision): a POST creates a `confirmed` row directly. 
 | GET | `/` | Calendar. A month grid at every width — names on a laptop, dots on a phone with the day list beneath. Upcoming list, month/year jump. |
 | GET | `/book?date=` | Booking page, prefilled. The no-JS destination for a day cell. |
 | GET | `/docs` | API reference, Swagger UI over `/openapi.json` — the committed JSON copy of `public/openapi.yaml`, because the zone refuses `*.yaml` at the edge. "Try it out" targets the page's own origin. A Worker route rather than an asset, so it carries the CSP. |
+| GET | `/api/leave/by-date?from=&to=` | The same leave grouped by date: one entry per date, each listing who is away and which part of the day (`full_day`/`morning`/`afternoon`). **Carries email addresses** — a deliberate exception, see below. Max 366 days. |
 | GET | `/api/leave?from=&to=&user=` | JSON feed, active users only. No email addresses in the response; notes filtered per viewer. `user` takes an address as *input* to narrow the feed to one person — the rows `/u/:email` renders as a page. |
 | GET | `/api/leave/preview` | Server-side day count and coverage for the form's live preview. |
 | POST | `/api/leave` | Book. Server computes days, checks overlap and the start year's balance. A refusal carries the submission and the offending field back to the form. |
@@ -338,6 +339,12 @@ The write is batched with the change itself, inside the repo functions that perf
 Snapshots are JSON rather than mirrored columns so the trail keeps its meaning when `leave_requests` changes shape.
 
 **Retention.** After the digest, the same cron run deletes audit rows older than three years and `notification_runs` rows older than 90 days (`AUDIT_KEEP_YEARS`, `NOTIFICATION_KEEP_DAYS` in `src/repo/db.ts`). In its own `try`, so housekeeping can never delay or block a post. Three years covers the year being worked in, the two before it, and any balance that crossed New Year; everything the app can still change — 90 days of backdating, 10 minutes of undo — sits well inside it.
+
+## Email addresses in the API
+
+The calendar feed has never carried them: a name and a leave type are what the calendar shows, and an address list is what turns a leave tracker into a staff directory. `/api/leave` still does not, and `user=` there takes an address only as input.
+
+`/api/leave/by-date` is the exception, decided by the owner on 2026-09-21: an integration consuming "who is away today" needs a stable identifier per person, and a display name is neither unique nor stable. The scope of that exception is exactly one endpoint, and it changes who can read addresses — any signed-in colleague, not only admins. Notes are still absent from it entirely.
 
 ## Leave types
 
