@@ -360,6 +360,33 @@ export async function confirmedRanges(
 }
 
 /** Days used per leave type for a user in a year. Attributed by start date. */
+/**
+ * Days taken per person per leave type in a year, for everyone at once.
+ *
+ * One query rather than `usedByType` in a loop: the balances feed answers for
+ * the whole roster, and a query per person is the shape that made `/admin` slow
+ * enough to be worth fixing (PLAN 4.2).
+ */
+export async function usedByTypeForYear(db: D1Database, year: number): Promise<Map<string, Map<number, number>>> {
+	const res = await db
+		.prepare(
+			`SELECT user_email, leave_type_id, SUM(days_total) AS days
+			 FROM leave_requests
+			 WHERE status = 'confirmed' AND start_date BETWEEN ? AND ?
+			 GROUP BY user_email, leave_type_id`,
+		)
+		.bind(`${year}-01-01`, `${year}-12-31`)
+		.all<{ user_email: string; leave_type_id: number; days: number }>();
+
+	const byUser = new Map<string, Map<number, number>>();
+	for (const row of res.results ?? []) {
+		const forUser = byUser.get(row.user_email) ?? new Map<number, number>();
+		forUser.set(row.leave_type_id, row.days);
+		byUser.set(row.user_email, forUser);
+	}
+	return byUser;
+}
+
 export async function usedByType(db: D1Database, email: string, year: number): Promise<Map<number, number>> {
 	const res = await db
 		.prepare(

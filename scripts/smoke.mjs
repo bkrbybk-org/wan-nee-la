@@ -666,6 +666,27 @@ async function main() {
 		0,
 	);
 
+	// --- holidays and balances ------------------------------------------------
+	const hol = await (await fetch(`${BASE}/api/v1/holidays?from=2026-01-01&to=2026-12-31`)).json();
+	check('holidays: the seeded ones are listed', hol.holidays.length > 0, 'none');
+	check('holidays: each has a date and a label', hol.holidays.every((h) => /^\d{4}-\d{2}-\d{2}$/.test(h.date) && h.label), JSON.stringify(hol.holidays[0]));
+	eq('holidays: backwards range refused', (await fetch(`${BASE}/api/v1/holidays?from=2026-12-31&to=2026-01-01`)).status, 400);
+
+	const bal = await (await fetch(`${BASE}/api/v1/balances?year=${Number(MON.slice(0, 4))}`)).json();
+	check('balances: an admin may read them', bal.people.length > 0, JSON.stringify(bal));
+	const adminRow = bal.people.find((p) => p.email === ADMIN);
+	check('balances: the caller is in there', Boolean(adminRow), JSON.stringify(bal.people.map((p) => p.email)));
+	const annual = adminRow?.balances.find((b) => b.leaveType === 'annual');
+	eq('balances: a type with an allowance says so', annual?.countsQuota, true);
+	check('balances: allotted is the enforced number, seeded or not', annual?.allotted > 0, JSON.stringify(annual));
+	eq('balances: remaining is allotted minus used', annual?.remaining, Number((annual.allotted - annual.used).toFixed(1)));
+	const medical = adminRow?.balances.find((b) => b.leaveType === 'medical');
+	eq('balances: a type with no allowance is flagged', medical?.countsQuota, false);
+	const one = await (await fetch(`${BASE}/api/v1/balances?user=${encodeURIComponent(ADMIN)}`)).json();
+	eq('balances: narrowing to one person', one.people.length, 1);
+	eq('balances: and echoing who', one.user, ADMIN);
+	eq('balances: rubbish for user is refused', (await fetch(`${BASE}/api/v1/balances?user=nonsense`)).status, 400);
+
 	// --- the feed, grouped by date ------------------------------------------
 	//
 	// The admin is booked MON..MON+2 at this point, full days.
@@ -843,6 +864,13 @@ async function main() {
 	eq('second user cannot reach an admin action', (await post('/admin/quotas/bulk', { year: '2027', leaveTypeId: '1', days: '1' })).status, 403);
 	eq('second user cannot import holidays', (await post('/admin/holidays/import', { list: '2030-01-01 Sneaky' })).status, 403);
 	eq('and nothing was imported', d1Rows("SELECT COUNT(*) AS n FROM holidays WHERE date LIKE '2030-%'")[0]?.n, 0);
+	eq('second user cannot read balances', (await fetch(`${BASE}/api/v1/balances`)).status, 403);
+	check(
+		'and is told who may',
+		/admin or an allowlisted service token/.test((await (await fetch(`${BASE}/api/v1/balances`)).json()).error?.message ?? ''),
+		'unhelpful refusal',
+	);
+	eq('second user may still read holidays', (await fetch(`${BASE}/api/v1/holidays`)).status, 200);
 	eq('second user cannot add a leave type', (await post('/admin/type', { code: 'sneaky', label_th: 'x', label_en: 'x', color: '#000000', default_days: '1' })).status, 403);
 	eq('second user cannot retire one', (await post('/admin/type', { id: '1', label_th: 'x', label_en: 'x', color: '#000000', default_days: '1' })).status, 403);
 	eq('second user cannot delete one', (await post('/admin/type/delete', { id: '5' })).status, 403);
@@ -1281,6 +1309,10 @@ async function main() {
 	check('service token: and gets the bookings', botEntries.length > 0, 'no entries');
 	check('service token: but never a note, shared or not', botEntries.every((e) => e.note === null), JSON.stringify(botEntries.map((e) => e.note)));
 	eq('service token: may read the by-date feed', (await fetch(`${BASE}/api/v1/leave/by-date?from=${MON}&to=${FRI}`)).status, 200);
+	eq('service token: may read holidays', (await fetch(`${BASE}/api/v1/holidays`)).status, 200);
+	const botBalances = await fetch(`${BASE}/api/v1/balances`);
+	eq('service token: may read balances, which an ordinary employee may not', botBalances.status, 200);
+	check('service token: and they carry the roster', (await botBalances.json()).people.length > 0, 'empty');
 
 	// Everything else is refused, including reads that cost somebody's quota.
 	eq('service token: cannot preview a booking', (await fetch(`${BASE}/api/v1/leave/preview?leaveTypeId=1&start=${MON}`)).status, 403);

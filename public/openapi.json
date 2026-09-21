@@ -8,7 +8,7 @@
 			"url": "https://github.com/bkrbybk-org/wan-nee-la"
 		},
 		"summary": "Employee leave tracker — the endpoints that answer in JSON.",
-		"description": "Two things are worth knowing before calling anything here.\n\n**Every route except `/line/webhook` sits behind Cloudflare Access**, which\nauthenticates at the edge, before the Worker runs. There is no API key and\nno signup: an Access identity the app has not seen becomes a user on its\nfirst request, with the current year's quotas seeded. Access *service\ntokens* deliberately cannot use the app — a token has no email, and every\nrow here is keyed by one.\n\n**Four of the eight operations are not enabled yet** — the three under\nPush and the LINE webhook. They answer, and their requests are validated at\nthe edge like the rest, but nothing is delivered: the deployment's push keys\ndo not match each other, and the LINE channel is switched off. Each one says\nso, and the tag descriptions say what is missing.\n\n**Mutations require an `Origin` header matching `Host`.** Access is an\nauthentication gate, not a CSRF defence: its cookie rides along on a form\npost from any origin. A missing `Origin` is refused rather than waved\nthrough, so a non-browser client must send one explicitly. `/line/webhook`\nis the exception and proves itself with an HMAC signature instead.\n"
+		"description": "Two things are worth knowing before calling anything here.\n\n**Every route except `/line/webhook` sits behind Cloudflare Access**, which\nauthenticates at the edge, before the Worker runs. There is no API key and\nno signup: an Access identity the app has not seen becomes a user on its\nfirst request, with the current year's quotas seeded. Access *service\ntokens* deliberately cannot use the app — a token has no email, and every\nrow here is keyed by one.\n\n**Four of the ten operations are not enabled yet** — the three under\nPush and the LINE webhook. They answer, and their requests are validated at\nthe edge like the rest, but nothing is delivered: the deployment's push keys\ndo not match each other, and the LINE channel is switched off. Each one says\nso, and the tag descriptions say what is missing.\n\n**Mutations require an `Origin` header matching `Host`.** Access is an\nauthentication gate, not a CSRF defence: its cookie rides along on a form\npost from any origin. A missing `Origin` is refused rather than waved\nthrough, so a non-browser client must send one explicitly. `/line/webhook`\nis the exception and proves itself with an HMAC signature instead.\n"
 	},
 	"servers": [
 		{
@@ -231,6 +231,298 @@
 								"example": {
 									"error": {
 										"message": "from is after to"
+									}
+								}
+							}
+						}
+					}
+				}
+			}
+		},
+		"/api/v1/holidays": {
+			"get": {
+				"operationId": "listHolidays",
+				"tags": [
+					"Leave"
+				],
+				"summary": "Public holidays in a date range",
+				"security": [
+					{
+						"cloudflareAccess": []
+					},
+					{
+						"cloudflareAccessServiceToken": []
+					}
+				],
+				"description": "The days that cost nobody a day of leave. Company-wide and about no\nperson at all, which makes it the one feed here with nothing to\nwithhold — every employee already sees these on the calendar.\n\nThai lunar holidays and substitution days move each year and are typed\nin by an admin as they are announced, so a year ahead of the\nannouncements is legitimately sparse rather than wrong.\n",
+				"parameters": [
+					{
+						"name": "from",
+						"in": "query",
+						"description": "Inclusive. Defaults to 1 January of the current Bangkok year.",
+						"schema": {
+							"$ref": "#/components/schemas/Date"
+						}
+					},
+					{
+						"name": "to",
+						"in": "query",
+						"description": "Inclusive. Defaults to 31 December. At most 1098 days after `from`.",
+						"schema": {
+							"$ref": "#/components/schemas/Date"
+						}
+					}
+				],
+				"responses": {
+					"200": {
+						"description": "The range, echoed back, and the holidays in it.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"type": "object",
+									"required": [
+										"from",
+										"to",
+										"holidays"
+									],
+									"properties": {
+										"from": {
+											"$ref": "#/components/schemas/Date"
+										},
+										"to": {
+											"$ref": "#/components/schemas/Date"
+										},
+										"holidays": {
+											"type": "array",
+											"items": {
+												"type": "object",
+												"required": [
+													"date",
+													"label"
+												],
+												"properties": {
+													"date": {
+														"$ref": "#/components/schemas/Date"
+													},
+													"label": {
+														"type": "string",
+														"examples": [
+															"Songkran"
+														]
+													}
+												}
+											}
+										}
+									}
+								},
+								"example": {
+									"from": "2026-01-01",
+									"to": "2026-12-31",
+									"holidays": [
+										{
+											"date": "2026-01-01",
+											"label": "New Year's Day"
+										},
+										{
+											"date": "2026-04-13",
+											"label": "Songkran"
+										}
+									]
+								}
+							}
+						}
+					},
+					"400": {
+						"description": "`from` is later than `to`, or the range is longer than 1098 days.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Error"
+								},
+								"example": {
+									"error": {
+										"message": "from is after to"
+									}
+								}
+							}
+						}
+					}
+				}
+			}
+		},
+		"/api/v1/balances": {
+			"get": {
+				"operationId": "listBalances",
+				"tags": [
+					"Leave"
+				],
+				"summary": "Entitlement, taken and remaining, per person",
+				"security": [
+					{
+						"cloudflareAccess": []
+					},
+					{
+						"cloudflareAccessServiceToken": []
+					}
+				],
+				"description": "**Admins and allowlisted service tokens only.** How much sick leave a\ncolleague has used is not something the rest of the company may read,\nso unlike the other feeds this one refuses an ordinary employee with a\n403. Someone wanting their own balances has them on `/me`.\n\nA year nobody has been seeded for falls back to each leave type's\ndefault allowance, through the same helper the booking check uses — so\nthese are the numbers the app would actually enforce, not a zero\nstanding in for \"no rows yet\". Deactivated people are absent.\n\nA type that draws no allowance, such as planned medical leave, reports\n`countsQuota: false`: `used` is real, `remaining` is meaningless.\n",
+				"parameters": [
+					{
+						"name": "year",
+						"in": "query",
+						"description": "Defaults to the current Bangkok year. Clamped to 2000–2100.",
+						"schema": {
+							"type": "integer",
+							"minimum": 2000,
+							"maximum": 2100,
+							"examples": [
+								2026
+							]
+						}
+					},
+					{
+						"name": "user",
+						"in": "query",
+						"description": "One person's balances, by the email Access knows them by. Omit for the whole active roster.",
+						"schema": {
+							"type": "string",
+							"format": "email",
+							"maxLength": 254
+						}
+					}
+				],
+				"responses": {
+					"200": {
+						"description": "The year, and one entry per active person.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"type": "object",
+									"required": [
+										"year",
+										"people"
+									],
+									"properties": {
+										"year": {
+											"type": "integer"
+										},
+										"user": {
+											"type": "string",
+											"format": "email",
+											"description": "Present only when the request named one."
+										},
+										"people": {
+											"type": "array",
+											"items": {
+												"type": "object",
+												"required": [
+													"email",
+													"name",
+													"balances"
+												],
+												"properties": {
+													"email": {
+														"type": "string",
+														"format": "email"
+													},
+													"name": {
+														"type": "string"
+													},
+													"balances": {
+														"type": "array",
+														"items": {
+															"type": "object",
+															"required": [
+																"leaveType",
+																"label",
+																"countsQuota",
+																"allotted",
+																"used",
+																"remaining"
+															],
+															"properties": {
+																"leaveType": {
+																	"type": "string",
+																	"description": "The leave type's stable code.",
+																	"examples": [
+																		"annual"
+																	]
+																},
+																"label": {
+																	"type": "string",
+																	"description": "Its English label",
+																	"as an admin set it.": null
+																},
+																"countsQuota": {
+																	"type": "boolean",
+																	"description": "False when the type has no allowance; `remaining` is then meaningless."
+																},
+																"allotted": {
+																	"type": "number"
+																},
+																"used": {
+																	"type": "number",
+																	"description": "Days taken",
+																	"charged to the year the booking starts in.": null
+																},
+																"remaining": {
+																	"type": "number"
+																}
+															}
+														}
+													}
+												}
+											}
+										}
+									}
+								},
+								"example": {
+									"year": 2026,
+									"people": [
+										{
+											"email": "somchai@example.com",
+											"name": "Somchai P",
+											"balances": [
+												{
+													"leaveType": "annual",
+													"label": "Annual",
+													"countsQuota": true,
+													"allotted": 10,
+													"used": 4,
+													"remaining": 6
+												}
+											]
+										}
+									]
+								}
+							}
+						}
+					},
+					"400": {
+						"description": "`user` is not an email address.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Error"
+								},
+								"example": {
+									"error": {
+										"message": "user is not an email address"
+									}
+								}
+							}
+						}
+					},
+					"403": {
+						"description": "The caller is neither an admin nor an allowlisted service token.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Error"
+								},
+								"example": {
+									"error": {
+										"message": "Balances are readable by an admin or an allowlisted service token."
 									}
 								}
 							}

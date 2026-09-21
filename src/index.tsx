@@ -19,6 +19,7 @@ import {
 import {
 	allottedFor,
 	byDate,
+	computeBalances,
 	draftPayload,
 	fieldForError,
 	parseBooking,
@@ -74,7 +75,12 @@ type Vars = { user: User; service?: string; today: string; flash: Flash; leaveTy
  * caller that is not a person. Everything else, including the preview (it
  * costs a booking against *someone's* quota) and every write, stays human-only.
  */
-const MACHINE_READABLE = new Set(['GET /api/v1/leave', 'GET /api/v1/leave/by-date']);
+const MACHINE_READABLE = new Set([
+	'GET /api/v1/leave',
+	'GET /api/v1/leave/by-date',
+	'GET /api/v1/holidays',
+	'GET /api/v1/balances',
+]);
 const app = new Hono<{ Bindings: Env; Variables: Vars }>();
 
 /**
@@ -535,6 +541,74 @@ app.get('/api/v1/leave/by-date', async (c) => {
 	}
 
 	return c.json({ from, to, data });
+});
+
+/**
+ * The public holidays in a range.
+ *
+ * Company-wide and nobody's personal data — the one feed here that says nothing
+ * about a person. A rota or calendar integration needs it to know which days
+ * cost nothing, and every employee can already see them on the calendar.
+ */
+app.get('/api/v1/holidays', async (c) => {
+	const today = c.get('today');
+	const year = Number(today.slice(0, 4));
+	const from = validDateOr(c.req.query('from'), `${year}-01-01`);
+	const to = validDateOr(c.req.query('to'), `${year}-12-31`);
+	if (from > to) return jsonError(c, 'from is after to', 400);
+	if (daysBetween(from, to) > MAX_RANGE_DAYS * 3) return jsonError(c, `range is longer than ${MAX_RANGE_DAYS * 3} days`, 400);
+
+	const holidays = await db.listHolidays(c.env.DB, from, to);
+	return c.json({ from, to, holidays: holidays.map((h) => ({ date: h.date, label: h.label })) });
+});
+
+/**
+ * Entitlement, taken and remaining, per person per leave type, for one year.
+ *
+ * The most revealing thing this API returns — how much sick leave each
+ * colleague has used is nobody's business but theirs, their admins' and
+ * whatever HR system is asking. So it is not a feed every signed-in employee
+ * may read: an **admin** or an allowlisted **service token**, and nobody else.
+ *
+ * A year nobody has been seeded for falls back to each type's `default_days`,
+ * through the same helper the booking check and the balance cards use, so the
+ * number here is the number the app would actually enforce.
+ */
+app.get('/api/v1/balances', async (c) => {
+	const today = c.get('today');
+	const viewer = c.get('user') as User | undefined;
+	const machine = c.get('service');
+	if (!machine && !viewer?.is_admin) {
+		return jsonError(c, 'Balances are readable by an admin or an allowlisted service token.', 403);
+	}
+
+	const year = clampInt(c.req.query('year'), Number(today.slice(0, 4)), 2000, 2100);
+	const only = c.req.query('user')?.trim().toLowerCase();
+	if (only !== undefined && !isEmail(only)) return jsonError(c, 'user is not an email address', 400);
+
+	const [users, types, quotas, used] = await Promise.all([
+		db.listUsers(c.env.DB),
+		leaveTypesOf(c),
+		db.listQuotasForYear(c.env.DB, year),
+		db.usedByTypeForYear(c.env.DB, year),
+	]);
+
+	const people = users
+		.filter((u) => u.active && (only === undefined || u.email === only))
+		.map((u) => ({
+			email: u.email,
+			name: u.display_name,
+			balances: computeBalances(types, quotas.filter((q) => q.user_email === u.email), used.get(u.email) ?? new Map()).map((b) => ({
+				leaveType: b.type.code,
+				label: b.type.label_en,
+				countsQuota: Boolean(b.type.counts_quota),
+				allotted: b.allotted,
+				used: b.used,
+				remaining: b.remaining,
+			})),
+		}));
+
+	return c.json({ year, ...(only === undefined ? {} : { user: only }), people });
 });
 
 /**
