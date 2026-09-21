@@ -8,7 +8,7 @@ Updated: 2026-09-13
 
 ## Status
 
-Deployed and serving. Version `9a212854-ca9c-4990-8eab-cf390b82c6e9`, deployed 2026-09-21 with `npm run ship`, D1 `<database-id>` in APAC, behind Cloudflare Access on `<hostname>`. Production checks passed: the new version serves all traffic, `/health` and `/` both 302 to Access, production D1 answers, and migration 0011 is applied with every type still offered. That deploy also carried the 09:00 weekday schedule — production had still been on the old daily `0 1 * * *` cron until then.
+Deployed and serving. Version `0e63caf6-e698-4697-b1d2-40286ee2f526`, deployed 2026-09-21 with `npm run ship`, D1 `<database-id>` in APAC, behind Cloudflare Access on `<hostname>`. Production checks passed: the new version serves all traffic, `/health` and `/` both 302 to Access, production D1 answers, and migration 0011 is applied with every type still offered. That deploy also carried the 09:00 weekday schedule — production had still been on the old daily `0 1 * * *` cron until then.
 
 **In real use.** Ten active users, 20 confirmed bookings, 26 holidays, four leave types, 31 rows in the audit trail. That changes what matters here: the shared surfaces now have a real audience, so note visibility, the audit trail and the privacy rules on `/u/:email` are load-bearing rather than theoretical.
 
@@ -139,7 +139,7 @@ Two consequences worth remembering:
 
 ## Verification
 
-**631 automated assertions**, all green. CI runs them, and lint, on every push and pull request.
+**635 automated assertions**, all green. CI runs them, and lint, on every push and pull request.
 
 | Suite | Assertions | Covers |
 | --- | --- | --- |
@@ -149,7 +149,7 @@ Two consequences worth remembering:
 | `test-push.mjs` | 29 | RFC 8291 encryption against the spec's worked example, VAPID token and signature, the `วันนี้ … ลา` title |
 | `test-holidays.mjs` | 30 | Parsing a pasted holiday list, and its bounds |
 | `test-i18n.mjs` | 27 | Lookup, placeholders, plurals, and the catalogue's own health |
-| `smoke.mjs` | 274 | The HTTP layer — see below |
+| `smoke.mjs` | 278 | The HTTP layer — see below |
 | `check-openapi.mjs` | — | Each of the 32 routes is either documented in `openapi.yaml` or deliberately listed as not, and the API Shield 3.0.3 copy still builds from it |
 
 The smoke suite boots a real worker against a scratch database and exercises what pure functions cannot reach: the CSRF guard, ownership checks on edit and cancel, booking rules over real requests, the open-redirect guards on `returnTo` **and on the `Referer` header**, note visibility across two identities, the audit trail's contents, the security headers, digest decisions, the webhook signature, push subscription ownership, admin authorisation, undo and its re-validation, next-year and cross-year quota, a LINE channel switched off by its flag, adding, retiring and deleting leave types, and history pruning through the real scheduled handler.
@@ -166,7 +166,7 @@ It is built against its own worst failure mode — passing while testing nothing
 
 ## Open items
 
-**One known regression, in configuration rather than code:** the push keypair is mismatched in production (#40). 631 assertions are green and `npm audit` is clean. The 2026-08-25 audit and the 2026-09-13 review both found and fixed what they turned up — the second a quota overdraw when moving a booking across New Year (#36) — and each fix is covered by a test or, where a test could not reach it, recorded in [ISSUES.md](ISSUES.md).
+**One known regression, in configuration rather than code:** the push keypair is mismatched in production (#40). 635 assertions are green and `npm audit` is clean. The 2026-08-25 audit and the 2026-09-13 review both found and fixed what they turned up — the second a quota overdraw when moving a booking across New Year (#36) — and each fix is covered by a test or, where a test could not reach it, recorded in [ISSUES.md](ISSUES.md).
 
 What follows is decisions, unfinished configuration, accepted trade-offs and debt — not defects.
 
@@ -200,7 +200,7 @@ Nothing here is urgent; all of it is confirmed present. Owners and ordering in [
 - `/admin` → Preview shows the digest body, not the push title a phone actually receives (PLAN 4.11).
 - `npm run db:init` cannot be run twice (#24): migration `0003` is a bare `ADD COLUMN`, so a real failure is indistinguishable from a no-op.
 - A deploy overwrites Worker vars without stopping (#40); `ship` could refuse on drift instead (PLAN 4.13).
-- The API Shield schema is uploaded by hand. Changing what one of the seven JSON operations accepts means `npm run openapi:shield` and a re-upload in the same change, or real requests get a 403. Nothing checks that the uploaded copy is current.
+- The API Shield schema is uploaded by hand. Changing what one of the eight JSON operations accepts means `npm run openapi:shield` and a re-upload in the same change, or real requests get a 403. Nothing checks that the uploaded copy is current.
 - Deploy is manual, by choice. Deploy-on-merge would put a Cloudflare API token and the infrastructure ids into a public repo's settings.
 
 Dependencies are clean: `npm audit` reports zero vulnerabilities after bumping Hono to `^4.13.8` and Wrangler to `^4.135.0` — the latter clears a HIGH advisory in its bundled `sharp`.
@@ -249,6 +249,7 @@ Features — iCal, CSV export, team grouping, coverage scoped to a team — are 
 
 ## Change log
 
+- **2026-09-21** — Review and cross-check after the API work. `/api/v1/leave/by-date` now lists a day's people in name order; they had been arriving in the order their bookings started, which reads as arbitrary on a single day. Smoke pins that, and pins that the unversioned paths really are gone rather than quietly aliased.
 - **2026-09-21** — API spec review against common practice, and the fixes it called for. Paths moved to `/api/v1/…` with the unversioned ones dropped; every JSON failure is now one shape, `{ error: { message, key? } }`, in place of three; the calendar feed gained the 366-day cap `by-date` already had; response schemas that were written inline became named components (`Health`, `LeaveFeed`, `LeaveByDate`, `LeaveDay`, `LeaveDayPerson`, `Error`); the 400s gained examples; `info` gained a contact. Kept deliberately: the preview answering 200 for refused input, and `by-date`'s snake_case, which its first consumer specified. **The uploaded API Shield schema must be re-uploaded** — it names the old paths, so the API is unvalidated until then (`npm run shield:probe` shows it).
 - **2026-09-21** — `/api/v1/leave/by-date`: the same leave grouped by calendar date, one entry per date with each person's `period` for that day (`full_day`/`morning`/`afternoon`), so callers stop reimplementing the half-day expansion. Dates with nobody away are absent; the range is capped at 366 days. It carries email addresses by the owner's decision — the one endpoint that does.
 - **2026-09-21** — The feed takes `?user=`, narrowing it to one person by the email Access knows them by. No new permission: a colleague's schedule is already the shared calendar, and `/u/:email` has always rendered the same rows as a page. Emails stay out of the *response*, private notes stay absent, deactivated people stay out, an unknown address is an empty list and rubbish is a 400. API Shield does not treat an unknown query parameter as a violation — verified against production — so the new parameter worked before the schema was re-uploaded; re-uploading is what makes it validated.

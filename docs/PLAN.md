@@ -64,7 +64,7 @@ Nothing here is urgent. Ordered by cost-to-benefit.
 | --- | --- | --- | --- |
 | ~~4.1~~ | ~~Stop writing on every request~~ | — | **Done** (2026-09-01): gated on a read that compares a user's quota rows against the number of leave types, so a new year *and* a type added mid-year still seed. |
 | ~~4.2~~ | ~~Fix the `/admin` N+1~~ | — | **Done:** `listQuotasForYear`, one query. |
-| ~~4.3~~ | ~~Extend smoke coverage~~ | — | **Done:** all 31 routes. Current counts in [PROGRESS.md](PROGRESS.md#verification). |
+| ~~4.3~~ | ~~Extend smoke coverage~~ | — | **Done:** all 32 routes. Current counts in [PROGRESS.md](PROGRESS.md#verification). |
 | ~~4.4~~ | ~~Prune `notification_runs` and `leave_audit`~~ | — | **Done** (2026-09-18): the cron keeps audit rows three years and notification runs 90 days (ISSUES #26). |
 | ~~4.5~~ | ~~Correct `ARCHITECTURE.md` schema drift~~ | — | **Done:** the schema block is the one the migrations actually produce, checked against a migrated database. |
 | ~~4.6~~ | ~~Add a formatter and linter~~ | — | **Done:** ESLint with typescript-eslint and @stylistic, tuned to pass on the existing code with zero reformatting. Prettier was tried and cannot reach zero-diff here — the codebase's line breaks are editorial, not width-driven. See 4.10. |

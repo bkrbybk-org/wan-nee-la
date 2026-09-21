@@ -74,7 +74,7 @@ builds from it.
 CI runs it.
 
 `npm run test:smoke` additionally boots a worker against a scratch database and
-exercises the HTTP layer over all 31 routes — CSRF, ownership checks, note
+exercises the HTTP layer over all 32 routes — CSRF, ownership checks, note
 visibility across two identities, booking rules, the audit trail, security
 headers, the digest's decisions and the LINE webhook signature. It needs no
 secrets and makes no outbound calls. Every `check(` and `eq(` written in the
@@ -207,7 +207,7 @@ string`. Upload the derived copy instead:
 npm run openapi:shield
 ```
 
-That writes `dist/openapi-shield.json`: OpenAPI 3.0.3, the seven JSON
+That writes `dist/openapi-shield.json`: OpenAPI 3.0.3, the eight JSON
 operations, request schemas only (API Shield does not validate responses), and
 `servers` set to your real hostname from `wrangler.local.jsonc`. It names the
 hostname, so it stays in the gitignored `dist/`. `npm test` builds it from the

@@ -33,7 +33,7 @@ Admin = `users.is_admin` flag in D1, not an Access group (keeps the app self-con
 
 Two zone-level layers run at the edge **before** Access, so they see anonymous traffic too (both verified 2026-09-19):
 
-- **API Shield schema validation.** The seven JSON operations are uploaded as an OpenAPI 3.0.3 schema derived from `public/openapi.yaml` (`npm run openapi:shield`), and a WAF custom rule blocks on `cf.schema_validation.uploaded.violated`. The other 24 routes are not in the schema and are not checked; there is no fallthrough rule, and there must not be one. A change to what one of those seven operations *accepts* needs the schema regenerated and re-uploaded in the same change, or real requests start getting 403s. `npm run shield:probe` checks enforcement from outside.
+- **API Shield schema validation.** The eight JSON operations are uploaded as an OpenAPI 3.0.3 schema derived from `public/openapi.yaml` (`npm run openapi:shield`), and a WAF custom rule blocks on `cf.schema_validation.uploaded.violated`. The other 24 routes are not in the schema and are not checked; there is no fallthrough rule, and there must not be one. A change to what one of those seven operations *accepts* needs the schema regenerated and re-uploaded in the same change, or real requests start getting 403s. `npm run shield:probe` checks enforcement from outside.
 - **A rule refusing `*.yaml` and `*.yml`.** Which is why `/docs` reads `/openapi.json`, not the YAML (ISSUES #42).
 
 ## Data model (D1)
