@@ -7,6 +7,14 @@ export interface Env {
 	DEV_AUTH_BYPASS: string;
 	DEV_EMAIL: string;
 	/**
+	 * Access service tokens allowed to read the JSON feeds, by the name Access
+	 * knows them by, comma-separated. Empty or absent means no machine may call
+	 * this app at all — the safe default, and how it behaved before.
+	 */
+	SERVICE_TOKENS: string;
+	/** `wrangler dev` only: with DEV_AUTH_BYPASS, act as this service token rather than a person. */
+	DEV_SERVICE_TOKEN: string;
+	/**
 	 * Feature flag for the whole LINE channel. "1" turns it on; anything else,
 	 * including the variable being absent, leaves it off.
 	 *

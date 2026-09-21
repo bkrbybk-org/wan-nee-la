@@ -108,13 +108,14 @@ function d1Rows(sql) {
 	return results;
 }
 
-async function startServer(devEmail) {
+async function startServer(devEmail, { serviceToken = '' } = {}) {
 	serverLog = '';
 	server = spawn(
 		'npx',
 		[
 			...WRANGLER,
 			'--var', 'DEV_AUTH_BYPASS:1',
+			'--var', `DEV_SERVICE_TOKEN:${serviceToken}`,
 			'--var', `DEV_EMAIL:${devEmail}`,
 			'--var', `LINE_CHANNEL_SECRET:${CHANNEL_SECRET}`,
 			// Forced empty, overriding any real token a developer has in their
@@ -147,12 +148,19 @@ async function startServer(devEmail) {
 				const body = await res.json();
 				if (!body.devAuthBypass) throw new Error('dev auth bypass did not take effect');
 
-				// And prove this is a server signed in as `devEmail`, not some
-				// other process answering on the port. Without this an orphaned
-				// worker from an earlier session would quietly run the
+				// And prove this is a server running as the identity asked for,
+				// not some other process answering on the port. Without this an
+				// orphaned worker from an earlier session would quietly run the
 				// authorisation tests as the wrong user — and pass them.
-				const page = await (await fetch(`${BASE}/`)).text();
-				if (!page.includes(`title="${devEmail}"`)) {
+				const page = await fetch(`${BASE}/`);
+				const text = await page.text();
+				if (serviceToken) {
+					// A machine session is proved by what it *cannot* reach: the
+					// calendar is refused, by name.
+					if (page.status !== 403 || !text.includes(serviceToken)) {
+						throw new Error(`server on ${BASE} is not running as service token ${serviceToken}`);
+					}
+				} else if (!text.includes(`title="${devEmail}"`)) {
 					throw new Error(`server on ${BASE} is not signed in as ${devEmail}`);
 				}
 				return;
@@ -1252,6 +1260,40 @@ async function main() {
 	// rather than rendering a misleading "nobody is out today".
 	const farMonth = await (await fetch(`${BASE}/?y=2030&m=6`)).text();
 	check('summary hidden when browsing another month', !farMonth.includes('Out today'), 'stale summary rendered');
+
+	// -----------------------------------------------------------------------
+	// Session 4 — a machine. An Access service token has no email and so no
+	// employee record; it may read the two feeds and nothing else.
+	// -----------------------------------------------------------------------
+	// Something to read: session 3 cancelled the bookings it made. A shared note
+	// too, so "never a note" is a real check and not an empty range passing.
+	d1(
+		`INSERT INTO leave_requests (id, user_email, leave_type_id, start_date, end_date, start_half, end_half, days_total, note, note_private, status, created_at)
+		 VALUES ('smoke-bot-visible', '${ADMIN}', 1, '${MON}', '${MON}', 'full', 'full', 1, 'shared with the team', 0, 'confirmed', '${MON}')`,
+	);
+
+	await stopServer();
+	await startServer(ADMIN, { serviceToken: 'rota-bot' });
+
+	const feedAsBot = await fetch(`${BASE}/api/v1/leave?from=${MON}&to=${FRI}`);
+	eq('service token: may read the feed', feedAsBot.status, 200);
+	const botEntries = (await feedAsBot.json()).entries;
+	check('service token: and gets the bookings', botEntries.length > 0, 'no entries');
+	check('service token: but never a note, shared or not', botEntries.every((e) => e.note === null), JSON.stringify(botEntries.map((e) => e.note)));
+	eq('service token: may read the by-date feed', (await fetch(`${BASE}/api/v1/leave/by-date?from=${MON}&to=${FRI}`)).status, 200);
+
+	// Everything else is refused, including reads that cost somebody's quota.
+	eq('service token: cannot preview a booking', (await fetch(`${BASE}/api/v1/leave/preview?leaveTypeId=1&start=${MON}`)).status, 403);
+	eq('service token: cannot see the calendar page', (await fetch(`${BASE}/`)).status, 403);
+	eq('service token: cannot see a person', (await fetch(`${BASE}/u/${encodeURIComponent(ADMIN)}`)).status, 403);
+	eq('service token: cannot reach admin', (await fetch(`${BASE}/admin`)).status, 403);
+	eq('service token: cannot book', (await post('/api/v1/leave', { leaveTypeId: '1', startDate: MON, endDate: MON })).status, 403);
+	eq('service token: cannot cancel', (await post(`/api/v1/leave/${bookingId}/cancel`)).status, 403);
+	eq('service token: cannot subscribe a browser', (await postJson('/api/v1/push/subscribe', { endpoint: 'https://example.com/x' })).status, 403);
+	const refusal = await (await fetch(`${BASE}/admin`)).json();
+	check('service token: the refusal names the token', /rota-bot/.test(refusal.error?.message ?? ''), JSON.stringify(refusal));
+	eq('service token: and nothing was written', d1Rows("SELECT COUNT(*) AS n FROM users WHERE email = 'rota-bot'")[0]?.n, 0);
+	eq('service token: no booking was created', d1Rows(`SELECT COUNT(*) AS n FROM leave_requests WHERE start_date = '${MON}' AND user_email = 'rota-bot'`)[0]?.n, 0);
 }
 
 let exitCode = 0;

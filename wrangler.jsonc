@@ -85,6 +85,13 @@
 		"DEV_AUTH_BYPASS": "0",
 		"DEV_EMAIL": "dev@example.com",
 
+		// Access service tokens allowed to read the JSON feeds, comma-separated,
+		// by the name Access knows each token by. Empty means no machine may call
+		// this app — the safe default. A token also needs an Access policy that
+		// admits it; this list is the second gate, edited here rather than in the
+		// Access dashboard. See the README, "Letting a machine read the feeds".
+		"SERVICE_TOKENS": "",
+
 		// Feature flag for the whole LINE channel. "1" turns it on; anything else,
 		// including this key being absent, leaves it off.
 		//

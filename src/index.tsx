@@ -1,6 +1,6 @@
 import { Hono } from 'hono';
 import type { Context, MiddlewareHandler } from 'hono';
-import { authenticate } from './auth/access.ts';
+import { authenticate, isService } from './auth/access.ts';
 import {
 	addDays,
 	bangkokNow,
@@ -63,7 +63,18 @@ import type { Env, LeaveRequest, LeaveType, User } from './types.ts';
 // direct SQL or a migration, so a global would keep serving stale data with no
 // event that would ever clear it. Scoping the cache to `c` means it is created
 // fresh every request and simply falls out of scope when the request ends.
-type Vars = { user: User; today: string; flash: Flash; leaveTypes?: LeaveType[] };
+// `user` is typed as always present because every handler that reads it runs
+// only for a person: a service token is turned away in the middleware unless it
+// asked for one of MACHINE_READABLE, and those two read `service` instead.
+type Vars = { user: User; service?: string; today: string; flash: Flash; leaveTypes?: LeaveType[] };
+
+/**
+ * What an Access service token may ask for. Both are read-only, and neither
+ * needs to know who is asking — which is what makes them safe to open to a
+ * caller that is not a person. Everything else, including the preview (it
+ * costs a booking against *someone's* quota) and every write, stays human-only.
+ */
+const MACHINE_READABLE = new Set(['GET /api/v1/leave', 'GET /api/v1/leave/by-date']);
 const app = new Hono<{ Bindings: Env; Variables: Vars }>();
 
 /**
@@ -217,6 +228,20 @@ app.use('*', async (c, next) => {
 		return c.html(<ErrorPage title="Not signed in" detail={auth.reason} />, 403);
 	}
 	const today = bangkokToday();
+
+	// A machine caller. It has no employee record, reads only the two feeds,
+	// and gets no notes at all — not "no private notes", none: a token cannot
+	// be the colleague a shared note was shared with.
+	if (isService(auth.identity)) {
+		if (!MACHINE_READABLE.has(`${c.req.method} ${new URL(c.req.url).pathname}`)) {
+			return jsonError(c, `Service token "${auth.identity.service}" may read ${[...MACHINE_READABLE].join(' and ')}, nothing else.`, 403);
+		}
+		c.set('service', auth.identity.service);
+		c.set('today', today);
+		await next();
+		return;
+	}
+
 	const user = await db.ensureUser(c.env.DB, auth.identity.email, Number(today.slice(0, 4)));
 	if (!user.active) {
 		return c.html(<ErrorPage title="Account inactive" detail="An admin has deactivated this account." />, 403);
@@ -424,7 +449,9 @@ app.get('/book', async (c) => {
  */
 app.get('/api/v1/leave', async (c) => {
 	const today = c.get('today');
-	const viewer = c.get('user');
+	// Absent for a service token, which is why it never sees a note: `visibleNote`
+	// answers "may *this person* read it", and a machine is not one.
+	const viewer = c.get('user') as User | undefined;
 	const from = validDateOr(c.req.query('from'), firstOfMonth(Number(today.slice(0, 4)), Number(today.slice(5, 7))));
 	const to = validDateOr(c.req.query('to'), lastOfMonth(Number(today.slice(0, 4)), Number(today.slice(5, 7))));
 	if (from > to) return jsonError(c, 'from is after to', 400);
@@ -453,7 +480,7 @@ app.get('/api/v1/leave', async (c) => {
 			days: e.days_total,
 			// Same rule as the calendar: a private note is absent from the feed,
 			// not merely hidden by whatever renders it.
-			note: visibleNote(e, viewer),
+			note: viewer ? visibleNote(e, viewer) : null,
 		})),
 	});
 });
@@ -1485,7 +1512,7 @@ function yearNavBounds(nowYear: number): { minYear: number; maxYear: number } {
  * sentence in the reader's language; `key` is there when the booking rules
  * named one, for a program that would rather match than parse prose.
  */
-function jsonError(c: Ctx, message: string, status: 400 | 409 | 500 | 502 | 503, key?: StringKey) {
+function jsonError(c: Ctx, message: string, status: 400 | 403 | 409 | 500 | 502 | 503, key?: StringKey) {
 	return c.json({ error: key === undefined ? { message } : { key, message } }, status);
 }
 

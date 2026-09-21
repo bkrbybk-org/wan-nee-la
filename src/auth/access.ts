@@ -19,6 +19,19 @@ export interface Identity {
 	email: string;
 }
 
+/**
+ * A machine caller: an Access service token, identified by the name Access
+ * knows it by (`common_name`). It has no email, so it is not an employee and
+ * has no leave of its own — which is exactly why it may only read.
+ */
+export interface ServiceIdentity {
+	service: string;
+}
+
+export function isService(i: Identity | ServiceIdentity): i is ServiceIdentity {
+	return 'service' in i;
+}
+
 type Jwk = JsonWebKey & { kid: string };
 
 /**
@@ -80,11 +93,21 @@ function audMatches(aud: unknown, want: string): boolean {
 	return false;
 }
 
-/** Why a structurally valid token still did not yield a person. */
-export type Rejection = { reason: 'service-token' | 'no-email' };
+/** Why a structurally valid token still did not yield a caller we accept. */
+export type Rejection = { reason: 'service-token' | 'no-email'; name?: string };
 
 function isRejection(v: Identity | Rejection | null): v is Rejection {
 	return v !== null && 'reason' in v;
+}
+
+/** The service tokens this deployment admits, lowercased. Absent var = none. */
+function allowedServices(env: Env): Set<string> {
+	return new Set(
+		(env.SERVICE_TOKENS ?? '')
+			.split(',')
+			.map((s) => s.trim().toLowerCase())
+			.filter(Boolean),
+	);
 }
 
 /**
@@ -128,11 +151,12 @@ export async function verifyAccessJwt(
 	if (!email) {
 		// A fully valid Access token carrying no `email` is a service token: its
 		// claims are `common_name`/`sub`, because it identifies a machine, not a
-		// person. This app is a per-person leave record — admitting one would
-		// create a user row named after a credential. Reject it, but say why:
+		// person. Whether this deployment admits it is decided one layer up, by
+		// SERVICE_TOKENS — here we only say which kind of token it was, because
 		// "failed verification" would send someone hunting a signature bug that
 		// is not there.
-		return { reason: typeof payload.common_name === 'string' ? 'service-token' : 'no-email' };
+		const name = typeof payload.common_name === 'string' ? payload.common_name : undefined;
+		return name === undefined ? { reason: 'no-email' } : { reason: 'service-token', name };
 	}
 
 	return { email };
@@ -146,7 +170,7 @@ function readToken(req: Request): string | null {
 	return match ? match[1] : null;
 }
 
-export type AuthResult = { ok: true; identity: Identity } | { ok: false; reason: string };
+export type AuthResult = { ok: true; identity: Identity | ServiceIdentity } | { ok: false; reason: string };
 
 /**
  * Identity for the current request.
@@ -158,6 +182,10 @@ export type AuthResult = { ok: true; identity: Identity } | { ok: false; reason:
  */
 export async function authenticate(req: Request, env: Env): Promise<AuthResult> {
 	if (env.DEV_AUTH_BYPASS === '1') {
+		// The machine path has to be reachable locally too, or the only test of
+		// it would be in production.
+		const asService = (env.DEV_SERVICE_TOKEN ?? '').trim();
+		if (asService) return { ok: true, identity: { service: asService } };
 		const email = (env.DEV_EMAIL || 'dev@example.com').trim().toLowerCase();
 		return { ok: true, identity: { email } };
 	}
@@ -174,6 +202,16 @@ export async function authenticate(req: Request, env: Env): Promise<AuthResult> 
 	const result = await verifyAccessJwt(token, env.ACCESS_TEAM_DOMAIN, env.ACCESS_AUD);
 	if (!result) return { ok: false, reason: 'Access token failed verification.' };
 	if (isRejection(result)) {
+		if (result.reason === 'service-token' && result.name) {
+			// Access decided this token may reach the hostname; SERVICE_TOKENS
+			// decides whether this app answers it. Two gates, because an Access
+			// policy is edited in a different place by a different person.
+			if (allowedServices(env).has(result.name.toLowerCase())) return { ok: true, identity: { service: result.name } };
+			return {
+				ok: false,
+				reason: `Service token "${result.name}" is not in SERVICE_TOKENS, so this deployment does not answer it.`,
+			};
+		}
 		return {
 			ok: false,
 			reason:

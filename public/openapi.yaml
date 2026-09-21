@@ -108,10 +108,17 @@ paths:
       operationId: listLeave
       tags: [Leave]
       summary: Confirmed leave over a date range, for everyone or one person
+      security:
+        - cloudflareAccess: []
+        - cloudflareAccessServiceToken: []
       description: |
         The shared calendar as data. Cancelled bookings are absent, and so are
         deactivated people — those surfaces answer "who of us is out", and a
         former employee is not one of us.
+
+        Readable by a person or by an Access service token. A service token
+        never receives notes, shared or otherwise — it is not the colleague a
+        note was shared with.
 
         Emails are not in the feed. A name and a leave type are what the
         calendar shows; an address is what turns a leave tracker into a
@@ -167,6 +174,9 @@ paths:
       operationId: listLeaveByDate
       tags: [Leave]
       summary: Confirmed leave grouped by calendar date
+      security:
+        - cloudflareAccess: []
+        - cloudflareAccessServiceToken: []
       description: |
         The same bookings as `/api/v1/leave`, turned inside out: one entry per
         **date**, listing who is away that day. A booking spanning a range
@@ -482,6 +492,23 @@ paths:
 
 components:
   securitySchemes:
+    cloudflareAccessServiceToken:
+      type: apiKey
+      in: header
+      name: CF-Access-Client-Id
+      description: |
+        A machine caller: an Access **service token**, sent as the pair
+        `CF-Access-Client-Id` and `CF-Access-Client-Secret` (OpenAPI can only
+        name one header, so the secret is described here rather than declared).
+
+        Access must admit the token — a policy with a Service Auth include —
+        **and** the deployment must name it in `SERVICE_TOKENS`. Two gates on
+        purpose: the Access policy and the app's config are edited in different
+        places by different people.
+
+        A service token has no email, so it is nobody's colleague: it may read
+        the two feeds below and nothing else, and it never receives a note —
+        not even a shared one.
     cloudflareAccess:
       type: apiKey
       in: cookie

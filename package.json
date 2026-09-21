@@ -30,6 +30,7 @@
     "openapi:shield": "node scripts/openapi-shield.mjs",
     "build:spec": "node scripts/spec-json.mjs",
     "shield:probe": "node scripts/shield-probe.mjs",
+    "shield:upload": "node scripts/shield-upload.mjs",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
     "format": "eslint . --fix",
