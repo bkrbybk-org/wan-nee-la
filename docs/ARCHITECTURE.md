@@ -31,10 +31,11 @@ Admin = `users.is_admin` flag in D1, not an Access group (keeps the app self-con
 
 ### Machine callers
 
-An Access service token carries `common_name`, not `email`, so it is nobody's employee. Since 2026-09-21 a named one may read `/api/v1/leave` and `/api/v1/leave/by-date` — and only those:
+An Access service token carries `common_name`, not `email`, so it is nobody's employee. Since 2026-09-21 a named one may read four feeds — `/api/v1/leave`, `/api/v1/leave/by-date`, `/api/v1/holidays` and `/api/v1/balances` — and only those:
 
 - Two gates. Access must admit the token (a Service Auth include on the policy), **and** `SERVICE_TOKENS` must name it. They are edited in different places by different people, and either one alone is not enough. An absent var means no machine may call at all, which is how the app behaved before and what it falls back to.
 - Read-only, and narrow: no pages, no admin, no writes, and not the booking preview, which costs a real person's quota to compute. Anything else answers 403 naming the token.
+- `/api/v1/balances` is the one feed a token may read that an ordinary employee may not: it is admin-or-token, because an integration asking it is an HR system by definition, while a colleague asking it is reading how much sick leave everyone has taken.
 - No employee row is created, and no note is ever returned — not even a shared one, because "shared with the team" means shared with colleagues, and a credential is not one.
 - Exercised locally by `DEV_SERVICE_TOKEN` under `DEV_AUTH_BYPASS`, so the machine path is covered by the smoke suite rather than only in production.
 

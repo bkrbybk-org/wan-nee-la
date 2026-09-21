@@ -8,7 +8,7 @@ Updated: 2026-09-13
 
 ## Status
 
-Deployed and serving. Version `34b3b0db-c0db-4aeb-9238-51116c8f79d2`, deployed 2026-09-21 with `npm run ship`, D1 `<database-id>` in APAC, behind Cloudflare Access on `<hostname>`. Production checks passed: the new version serves all traffic, `/health` and `/` both 302 to Access, production D1 answers, and migration 0011 is applied with every type still offered. That deploy also carried the 09:00 weekday schedule — production had still been on the old daily `0 1 * * *` cron until then.
+Deployed and serving. Version `1d509be5-1989-4b40-b585-adf6dac93b5e`, deployed 2026-09-21 with `npm run ship`, D1 `<database-id>` in APAC, behind Cloudflare Access on `<hostname>`. Production checks passed: the new version serves all traffic, `/health` and `/` both 302 to Access, production D1 answers, and migration 0011 is applied with every type still offered. That deploy also carried the 09:00 weekday schedule — production had still been on the old daily `0 1 * * *` cron until then.
 
 **In real use.** Ten active users, 20 confirmed bookings, 26 holidays, four leave types, 31 rows in the audit trail. That changes what matters here: the shared surfaces now have a real audience, so note visibility, the audit trail and the privacy rules on `/u/:email` are load-bearing rather than theoretical.
 
@@ -73,6 +73,8 @@ Two consequences worth remembering:
 | GET | `/docs` | API reference over `/openapi.json` (the zone blocks `*.yaml`). A Worker route rather than an asset, so it carries the CSP. |
 | GET | `/api/v1/leave?from=&to=&user=` | JSON feed. No email addresses in the response; `user` narrows it to one person. |
 | GET | `/api/v1/leave/by-date?from=&to=` | The same leave grouped by date, with each person's part of that day. Carries emails, by decision (2026-09-21). |
+| GET | `/api/v1/holidays?from=&to=` | Public holidays in a range. The only feed about nobody. |
+| GET | `/api/v1/balances?year=&user=` | Entitlement, taken and remaining per person. Admins and service tokens only. |
 | GET | `/api/v1/leave/preview` | Server-side day count for the form's live preview. |
 | POST | `/api/v1/leave` | Book. Server computes days, checks overlap and the start year's balance. A refusal hands the submission and the offending field back to the form. |
 | GET · POST | `/leave/:id/edit` · `/api/v1/leave/:id/edit` | Edit, and offer undo. Also the drag-to-move target. |
@@ -139,7 +141,7 @@ Two consequences worth remembering:
 
 ## Verification
 
-**649 automated assertions**, all green. CI runs them, and lint, on every push and pull request.
+**667 automated assertions**, all green. CI runs them, and lint, on every push and pull request.
 
 | Suite | Assertions | Covers |
 | --- | --- | --- |
@@ -149,8 +151,8 @@ Two consequences worth remembering:
 | `test-push.mjs` | 29 | RFC 8291 encryption against the spec's worked example, VAPID token and signature, the `วันนี้ … ลา` title |
 | `test-holidays.mjs` | 30 | Parsing a pasted holiday list, and its bounds |
 | `test-i18n.mjs` | 27 | Lookup, placeholders, plurals, and the catalogue's own health |
-| `smoke.mjs` | 292 | The HTTP layer — see below |
-| `check-openapi.mjs` | — | Each of the 32 routes is either documented in `openapi.yaml` or deliberately listed as not, and the API Shield 3.0.3 copy still builds from it |
+| `smoke.mjs` | 310 | The HTTP layer — see below |
+| `check-openapi.mjs` | — | Each of the 34 routes is either documented in `openapi.yaml` or deliberately listed as not, and the API Shield 3.0.3 copy still builds from it |
 
 The smoke suite boots a real worker against a scratch database and exercises what pure functions cannot reach: the CSRF guard, ownership checks on edit and cancel, booking rules over real requests, the open-redirect guards on `returnTo` **and on the `Referer` header**, note visibility across two identities, the audit trail's contents, the security headers, digest decisions, the webhook signature, push subscription ownership, admin authorisation, undo and its re-validation, next-year and cross-year quota, a LINE channel switched off by its flag, adding, retiring and deleting leave types, and history pruning through the real scheduled handler.
 
@@ -166,7 +168,7 @@ It is built against its own worst failure mode — passing while testing nothing
 
 ## Open items
 
-**No known bugs.** The push keypair mismatch (#40) was repaired on 2026-09-21. 649 assertions are green and `npm audit` is clean. The 2026-08-25 audit and the 2026-09-13 review both found and fixed what they turned up — the second a quota overdraw when moving a booking across New Year (#36) — and each fix is covered by a test or, where a test could not reach it, recorded in [ISSUES.md](ISSUES.md).
+**No known bugs.** The push keypair mismatch (#40) was repaired on 2026-09-21. 667 assertions are green and `npm audit` is clean. The 2026-08-25 audit and the 2026-09-13 review both found and fixed what they turned up — the second a quota overdraw when moving a booking across New Year (#36) — and each fix is covered by a test or, where a test could not reach it, recorded in [ISSUES.md](ISSUES.md).
 
 What follows is decisions, unfinished configuration, accepted trade-offs and debt — not defects.
 
@@ -250,6 +252,7 @@ Features — iCal, CSV export, team grouping, coverage scoped to a team — are 
 
 ## Change log
 
+- **2026-09-21** — Two read-only feeds for machines, so an integration never has to scrape `/admin`: `/api/v1/holidays` (company-wide, about no person) and `/api/v1/balances` (entitlement, taken, remaining per person). Balances are the one feed a service token may read that an ordinary employee may not — an integration asking is an HR system, a colleague asking is reading everyone's sick leave. One query for the whole roster rather than one per person, the lesson from PLAN 4.2.
 - **2026-09-21** — A machine can read the feeds. A named Access service token may call `/api/v1/leave` and `/api/v1/leave/by-date` and nothing else, gated twice — by the Access policy and by `SERVICE_TOKENS`, absent by default — with no employee row created and no note ever returned, shared or not. Fourteen smoke assertions cover what it can and cannot do. `npm run shield:upload` makes re-uploading the Shield schema a command rather than a dashboard errand (PLAN 4.14, half done).
 - **2026-09-21** — The push keypair is paired again (#40): the public key that was live alongside the private key on 2026-09-13 is back in the config and deployed, verified against `wrangler versions view`. Still never delivered to a real device, since nobody has subscribed — `/docs` now says "Not verified yet" rather than "Not enabled yet" for those three operations.
 - **2026-09-21** — Review and cross-check after the API work. `/api/v1/leave/by-date` now lists a day's people in name order; they had been arriving in the order their bookings started, which reads as arbitrary on a single day. Smoke pins that, and pins that the unversioned paths really are gone rather than quietly aliased.

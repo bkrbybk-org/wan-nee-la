@@ -189,6 +189,15 @@ Once notifications actually reach a phone, drop the "Not enabled yet" wording fr
 range, and `&user=someone@example.com` narrows it to one person. Emails never
 appear in that response; there, an address is input only.
 
+`GET /api/v1/holidays?from=&to=` returns the public holidays in a range: the
+days that cost nobody a day of leave, and the only feed here about no person at
+all.
+
+`GET /api/v1/balances?year=&user=` returns entitlement, days taken and days
+remaining per person per leave type. **Admins and service tokens only** — how
+much sick leave a colleague has used is not company-wide reading. Your own
+balances are on `/me`.
+
 `GET /api/v1/leave/by-date?from=&to=` returns the same leave grouped by calendar
 date instead of by booking — one entry per date, listing who is away and which
 part of the day (`full_day`, `morning`, `afternoon`). This one **does** carry
@@ -215,7 +224,8 @@ curl -H "CF-Access-Client-Id: $ID" -H "CF-Access-Client-Secret: $SECRET" \
   "https://<your-host>/api/v1/leave/by-date?from=2026-09-01&to=2026-09-30"
 ```
 
-A service token may read `/api/v1/leave` and `/api/v1/leave/by-date`, and
+A service token may read four feeds — `/api/v1/leave`,
+`/api/v1/leave/by-date`, `/api/v1/holidays` and `/api/v1/balances` — and
 nothing else: no pages, no admin, no writes, and not the booking preview, which
 costs a real person's quota to compute. It never receives a note — not even a
 shared one, since a token is not the colleague it was shared with. Anything
