@@ -52,14 +52,26 @@ let pass = 0;
 let fail = 0;
 const failures = [];
 
-// "fetch failed" names neither the request nor the reason. Every request in
-// this file goes through here, so when one dies the error says which URL and
-// what undici actually saw (ECONNRESET, a refused header, …) — ISSUES #44.
+// Every request in this file goes through here (ISSUES #44).
+//
+// The suite pauses for a second or more at a time while `wrangler d1 execute`
+// inspects the database, and a keep-alive connection left idle that long can be
+// closed by the dev server just as the next request reuses it. The request then
+// never reaches the worker and undici reports UND_ERR_SOCKET "other side
+// closed" — on a slow CI runner often enough to fail the build twice running.
+// A connection closed before the request was sent is safe to retry on a fresh
+// one, which is what a browser does too; anything else is thrown, with the URL
+// and undici's own reason, since "fetch failed" alone names neither.
+let staleRetries = 0;
 const rawFetch = globalThis.fetch;
 globalThis.fetch = async (url, init) => {
 	try {
 		return await rawFetch(url, init);
 	} catch (err) {
+		if (err?.cause?.code === 'UND_ERR_SOCKET') {
+			staleRetries++;
+			return await rawFetch(url, init);
+		}
 		const cause = err?.cause ? ` — ${err.cause.code ?? ''} ${err.cause.message ?? err.cause}`.trimEnd() : '';
 		throw new Error(`${err.message}: ${init?.method ?? 'GET'} ${url}${cause}`, { cause: err });
 	}
@@ -1408,4 +1420,6 @@ if (fail > 0) {
 	exitCode = 1;
 }
 if (exitCode === 0) console.log(`\nAll ${pass} smoke assertions passed; all ${sites.length} assertion sites ran.`);
+// Said out loud so a rising count is noticed rather than absorbed.
+if (staleRetries > 0) console.log(`(${staleRetries} request(s) retried after the dev server closed an idle connection — ISSUES #44)`);
 process.exit(exitCode);

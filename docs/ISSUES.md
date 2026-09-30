@@ -554,7 +554,7 @@ The preview's `error` now carries `message` beside `key`: the same sentence, alr
 
 ---
 
-## #44 — The smoke suite's local server sometimes fails to stay up `open`
+## #44 — The smoke suite's local server sometimes fails to stay up `resolved`
 
 Since around 2026-09-21, roughly one local `npm run test:smoke` in two dies partway with `harness error -> fetch failed`, and the assertion-site check then reports the tests after that point as never run — which is the check doing its job, not a second fault. A rerun passes with every assertion green, and the same suite is green on CI, so this looks like the local `wrangler dev` child going away rather than anything the app does.
 
@@ -563,4 +563,8 @@ It reached CI on 2026-09-21, failing after `feed by user: an address nobody has�
 Ruled out so far: the request it stopped on is fine — `?user=not-an-email` answers 400 sixty times in a row against a local worker, which stays up and serving afterwards; the failure point moves between runs (37, 40 and 80 assertion sites missed on three occasions), so it is not tied to any one test; and three consecutive local runs afterwards were green.
 
 The harness now prints, on a harness error, the server's pid, exit code, signal and whether it was killed, plus the last 25 lines it logged. That should say next time whether the worker died, the child was killed, or only the socket went. Remaining suspects: the jump to wrangler 4.135, and the `wrangler d1 execute` calls the suite makes against the same `--persist-to` directory the running dev server holds open.
+
+**Diagnosed and fixed 2026-09-30.** The server never went down. CI failed twice in a row at the same request, and the added diagnostics showed the worker still running, the request never logged, and undici's cause as `UND_ERR_SOCKET` "other side closed": a stale keep-alive connection. The suite blocks for a second or more at a time on `wrangler d1 execute`, a connection left idle that long can be closed by the dev server just as the next request reuses it, and a slower CI runner makes that likelier. It moved around between runs because it depends on where those pauses fall.
+
+The harness now retries once on that one error, which is what a browser does with a connection closed before the request was sent, and prints how many retries it made so a rising number is seen rather than absorbed. Any other fetch failure still fails the run, now with the method, URL and cause.
 
