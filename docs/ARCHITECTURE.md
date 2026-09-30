@@ -273,6 +273,8 @@ Native `<dialog>` + `showModal()` is used for focus trapping and Escape-to-close
 
 Only one booking form exists per page, inside the create dialog — two would collide on element ids.
 
+**"+N more"** opens a native popover (`popovertarget`), not a script-built dialog: no JavaScript is needed to open or dismiss it, the browser handles Escape, click-outside and returning focus, and the top layer means the cell's clipping cannot cut it off. Its rows carry the same `data-entry` attributes as chips, so a click opens the same detail popup — but they are not `.chip`, which drag-to-move would otherwise pick up.
+
 ### Layout
 
 One `public/app.css`, mobile-first, single breakpoint at 768px. The month grid renders at every width: coloured chips with names above it, dots below it with the whole cell as one tap target into the day list underneath (a 7×5 grid of names is unreadable on a phone). The booking form is a `<form>` that works without JS; JS only adds the live day-count preview and the half-day field toggling.

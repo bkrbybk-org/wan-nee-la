@@ -8,7 +8,7 @@ Updated: 2026-09-13
 
 ## Status
 
-Deployed and serving. Version `1d509be5-1989-4b40-b585-adf6dac93b5e`, deployed 2026-09-21 with `npm run ship`, D1 `<database-id>` in APAC, behind Cloudflare Access on `<hostname>`. Production checks passed: the new version serves all traffic, `/health` and `/` both 302 to Access, production D1 answers, and migration 0011 is applied with every type still offered. That deploy also carried the 09:00 weekday schedule — production had still been on the old daily `0 1 * * *` cron until then.
+Deployed and serving. Version `45dc90c1-2df8-48a2-8b04-0f7d00ab0220`, deployed 2026-09-30 with `npm run ship`, D1 `<database-id>` in APAC, behind Cloudflare Access on `<hostname>`. Production checks passed: the new version serves all traffic, `/health` and `/` both 302 to Access, production D1 answers, and migration 0011 is applied with every type still offered. That deploy also carried the 09:00 weekday schedule — production had still been on the old daily `0 1 * * *` cron until then.
 
 **In real use.** Ten active users, 20 confirmed bookings, 26 holidays, four leave types, 31 rows in the audit trail. That changes what matters here: the shared surfaces now have a real audience, so note visibility, the audit trail and the privacy rules on `/u/:email` are load-bearing rather than theoretical.
 
@@ -97,7 +97,7 @@ Two consequences worth remembering:
 
 ## What is built
 
-**Calendar** — a month grid at every width, saying different things at each. On a laptop a cell carries names and the page fits the window: the body stops scrolling and the grid's rows share whatever height is left, so the last week is never below the fold. On a phone the same cell is ~48px, so each person away is a coloured dot and the whole cell is one tap target that jumps to that day in the list underneath. Click an empty day to book it, click an entry to open a detail popup, drag an entry to move it (desktop). Everything is a real link first; the dialogs are an upgrade, and the calendar works with scripting off. A month/year picker sits beside the heading, because stepping is fine for next week and useless for next January. The prev/next buttons sit ahead of the month name, so they do not move as the name changes length.
+**Calendar** — a month grid at every width, saying different things at each. On a laptop a cell carries names and the page fits the window: the body stops scrolling and the grid's rows share whatever height is left, so the last week is never below the fold. On a phone the same cell is ~48px, so each person away is a coloured dot and the whole cell is one tap target that jumps to that day in the list underneath. Click an empty day to book it, click an entry to open a detail popup, drag an entry to move it (desktop). A day with more people than fit shows "+N more", which opens the whole day's list. Everything is a real link first; the dialogs are an upgrade, and the calendar works with scripting off. A month/year picker sits beside the heading, because stepping is fine for next week and useless for next January. The prev/next buttons sit ahead of the month name, so they do not move as the name changes length.
 
 **Upcoming list** — everything from today to 90 days out, grouped by day under sticky headings, with a caption saying it is anchored to today. Shown from 768px: a sidebar once the window is at least 1024×700, stacked under the grid otherwise — it used to vanish entirely on any screen under 700px tall. Wherever it shows it replaces the who-summary card, which said the same thing in a worse shape. Fetched separately from the grid rather than filtered out of it, so paging back to April does not change the answer to "who is away soon".
 
@@ -141,7 +141,7 @@ Two consequences worth remembering:
 
 ## Verification
 
-**667 automated assertions**, all green. CI runs them, and lint, on every push and pull request.
+**674 automated assertions**, all green. CI runs them, and lint, on every push and pull request.
 
 | Suite | Assertions | Covers |
 | --- | --- | --- |
@@ -151,7 +151,7 @@ Two consequences worth remembering:
 | `test-push.mjs` | 29 | RFC 8291 encryption against the spec's worked example, VAPID token and signature, the `วันนี้ … ลา` title |
 | `test-holidays.mjs` | 30 | Parsing a pasted holiday list, and its bounds |
 | `test-i18n.mjs` | 27 | Lookup, placeholders, plurals, and the catalogue's own health |
-| `smoke.mjs` | 310 | The HTTP layer — see below |
+| `smoke.mjs` | 317 | The HTTP layer — see below |
 | `check-openapi.mjs` | — | Each of the 34 routes is either documented in `openapi.yaml` or deliberately listed as not, and the API Shield 3.0.3 copy still builds from it |
 
 The smoke suite boots a real worker against a scratch database and exercises what pure functions cannot reach: the CSRF guard, ownership checks on edit and cancel, booking rules over real requests, the open-redirect guards on `returnTo` **and on the `Referer` header**, note visibility across two identities, the audit trail's contents, the security headers, digest decisions, the webhook signature, push subscription ownership, admin authorisation, undo and its re-validation, next-year and cross-year quota, a LINE channel switched off by its flag, adding, retiring and deleting leave types, and history pruning through the real scheduled handler.
@@ -168,7 +168,7 @@ It is built against its own worst failure mode — passing while testing nothing
 
 ## Open items
 
-**No known bugs.** The push keypair mismatch (#40) was repaired on 2026-09-21. 667 assertions are green and `npm audit` is clean. The 2026-08-25 audit and the 2026-09-13 review both found and fixed what they turned up — the second a quota overdraw when moving a booking across New Year (#36) — and each fix is covered by a test or, where a test could not reach it, recorded in [ISSUES.md](ISSUES.md).
+**No known bugs.** The push keypair mismatch (#40) was repaired on 2026-09-21. 674 assertions are green and `npm audit` is clean. The 2026-08-25 audit and the 2026-09-13 review both found and fixed what they turned up — the second a quota overdraw when moving a booking across New Year (#36) — and each fix is covered by a test or, where a test could not reach it, recorded in [ISSUES.md](ISSUES.md).
 
 What follows is decisions, unfinished configuration, accepted trade-offs and debt — not defects.
 
@@ -252,6 +252,7 @@ Features — iCal, CSV export, team grouping, coverage scoped to a team — are 
 
 ## Change log
 
+- **2026-09-30** — "+N more" on a full day opens a list of everyone away that day, with their leave type and any half day; a name in it opens the same detail popup a chip does. A native popover, so it needs no script — the calendar still works with JavaScript off — and the browser handles Escape, click-outside and returning focus. It lists the whole day, not only the names the cell hid.
 - **2026-09-21** — Two read-only feeds for machines, so an integration never has to scrape `/admin`: `/api/v1/holidays` (company-wide, about no person) and `/api/v1/balances` (entitlement, taken, remaining per person). Balances are the one feed a service token may read that an ordinary employee may not — an integration asking is an HR system, a colleague asking is reading everyone's sick leave. One query for the whole roster rather than one per person, the lesson from PLAN 4.2.
 - **2026-09-21** — A machine can read the feeds. A named Access service token may call `/api/v1/leave` and `/api/v1/leave/by-date` and nothing else, gated twice — by the Access policy and by `SERVICE_TOKENS`, absent by default — with no employee row created and no note ever returned, shared or not. Fourteen smoke assertions cover what it can and cannot do. `npm run shield:upload` makes re-uploading the Shield schema a command rather than a dashboard errand (PLAN 4.14, half done).
 - **2026-09-21** — The push keypair is paired again (#40): the public key that was live alongside the private key on 2026-09-13 is back in the config and deployed, verified against `wrangler versions view`. Still never delivered to a real device, since nobody has subscribed — `/docs` now says "Not verified yet" rather than "Not enabled yet" for those three operations.
