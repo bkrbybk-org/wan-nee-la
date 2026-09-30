@@ -58,6 +58,7 @@ export const STRINGS = {
 	'cal.nothingUpcoming': { en: 'Nothing booked in the next {days} days.', th: 'ไม่มีการลาใน {days} วันข้างหน้า' },
 	'cal.upcomingWindow': { en: 'Next {days} days, from today', th: '{days} วันข้างหน้า นับจากวันนี้' },
 	'cal.more': { en: '+{n} more', th: 'อีก {n}' },
+	'cal.seeAll': { en: 'See the {n} person away on {date}|See all {n} people away on {date}', th: 'ดูทั้ง {n} คนที่ลาวันที่ {date}' },
 	'cal.whoIsOut': { en: 'Who is out', th: 'ใครลาบ้าง' },
 	'cal.outToday': { en: 'Out today', th: 'ลาวันนี้' },
 	'cal.nobodyToday': { en: 'Nobody is out today.', th: 'วันนี้ไม่มีใครลา' },

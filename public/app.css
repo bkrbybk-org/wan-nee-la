@@ -1378,12 +1378,47 @@ form.inline:has(.tf-support) { margin-bottom: 28px; }
    phones, where the entries are dots and they all fit. */
 .chip-more {
 	display: none;
+	position: relative;
+	z-index: 1;
+	margin: 0;
+	border: 0;
+	border-radius: var(--md-shape-full);
+	background: none;
 	padding: 0 6px;
+	font: inherit;
 	font-size: 11px;
 	line-height: 16px;
 	font-weight: 500;
 	color: var(--md-on-surface-variant);
+	text-align: left;
+	cursor: pointer;
 }
+.chip-more:hover { background: color-mix(in srgb, var(--md-on-surface) 8%, transparent); color: var(--md-on-surface); }
+.chip-more:focus-visible { outline: 2px solid var(--md-primary); outline-offset: 1px; }
+
+/* The list "+N more" opens. A native popover, so it sits in the top layer:
+   centred like the entry popup, with the same surface, and nothing in the
+   cell can clip it. */
+.day-more { inset: 0; margin: auto; height: fit-content; }
+.day-more::backdrop { background: color-mix(in srgb, var(--md-scrim) 32%, transparent); }
+@media (prefers-reduced-motion: no-preference) {
+	.day-more:popover-open { animation: dialog-in var(--md-dur-medium) var(--md-ease-decel); }
+}
+.day-more-list { list-style: none; margin: 0; padding: 0; }
+.day-more-item {
+	display: flex;
+	align-items: center;
+	gap: 12px;
+	margin: 0 -8px;
+	padding: 8px;
+	border-radius: var(--md-shape-sm);
+	color: inherit;
+	text-decoration: none;
+}
+.day-more-item:hover { background: color-mix(in srgb, var(--md-on-surface) 8%, transparent); }
+.day-more-item:focus-visible { outline: 2px solid var(--md-primary); outline-offset: -2px; }
+.day-more-name { font-weight: 500; }
+.day-more-type { margin-left: auto; font-size: 14px; white-space: nowrap; }
 
 /* ---------- desktop ---------- */
 

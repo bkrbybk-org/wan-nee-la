@@ -1105,6 +1105,30 @@ async function main() {
 			 VALUES ('${id}', '${email}', 1, '${date}', '${date}', 'full', 'full', 1, NULL, 1, 'confirmed', '${date}')`,
 		);
 
+	// --- "+N more" opens the whole day ----------------------------------------
+	//
+	// Four people on one day overflows a cell's three chips. The button has to
+	// name its panel, and the panel has to list everyone — the whole answer to
+	// "who is out that day", not only the ones the cell had no room for.
+	const busyDay = addDays(TODAY, 45);
+	for (const who of ['a', 'b', 'c', 'd']) {
+		d1(
+			`INSERT INTO leave_requests (id, user_email, leave_type_id, start_date, end_date, start_half, end_half, days_total, note, note_private, status, created_at)
+			 VALUES ('smoke-busy-${who}', 'busy-${who}@example.com', 1, '${busyDay}', '${busyDay}', 'full', 'full', 1, NULL, 1, 'confirmed', '${busyDay}')`,
+		);
+	}
+	const busyHtml = await (await fetch(`${BASE}/?y=${busyDay.slice(0, 4)}&m=${Number(busyDay.slice(5, 7))}`)).text();
+	check('+N more: is a button wired to its panel', busyHtml.includes(`popovertarget="more-${busyDay}"`), 'no popovertarget');
+	check('+N more: counts the ones the cell hid', busyHtml.includes('+1 more'), 'wrong count');
+	const panel = busyHtml.slice(busyHtml.indexOf(`id="more-${busyDay}"`), busyHtml.indexOf('</ul>', busyHtml.indexOf(`id="more-${busyDay}"`)));
+	check('+N more: the panel is a native popover', /popover="auto"/.test(busyHtml.slice(busyHtml.indexOf(`id="more-${busyDay}"`) - 20, busyHtml.indexOf(`id="more-${busyDay}"`) + 80)), 'not a popover');
+	eq('+N more: and lists every person that day', (panel.match(/class="day-more-item"/g) ?? []).length, 4);
+	check('+N more: each row opens the detail popup like a chip', (panel.match(/data-entry="smoke-busy-/g) ?? []).length === 4, 'rows lack data-entry');
+	check('+N more: rows are not chips, so drag-to-move leaves them alone', !/class="chip[ "]/.test(panel), 'a row is a .chip');
+	const quietDay = addDays(TODAY, 46);
+	check('+N more: absent where everyone fits', !busyHtml.includes(`popovertarget="more-${quietDay}"`), 'rendered on a quiet day');
+	d1(`DELETE FROM leave_requests WHERE id LIKE 'smoke-busy-%'`);
+
 	// Nothing booked in the window: one line, not two cards each saying nothing.
 	const quietHtml = await (await fetch(`${BASE}/`)).text();
 	check(

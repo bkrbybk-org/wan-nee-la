@@ -112,6 +112,10 @@ document.addEventListener('click', (e) => {
 
 	e.preventDefault();
 
+	// Opened from a day's "+N more" list: put that away first, so the detail
+	// popup is not stacked over a panel the reader has finished with.
+	el.closest<HTMLElement>('[popover]')?.hidePopover?.();
+
 	const id = el.getAttribute('data-entry') ?? '';
 	const canEdit = el.getAttribute('data-can-edit') === '1';
 	const note = el.getAttribute('data-note') ?? '';

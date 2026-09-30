@@ -159,6 +159,73 @@ function halfMark(h: Half, lang: Lang): string {
 }
 
 /**
+ * "+2 more", and the list it opens.
+ *
+ * A native popover rather than a script-built dialog: `popovertarget` wires the
+ * button to the panel with no JavaScript at all, the browser handles focus,
+ * Escape and click-outside, and the panel renders in the top layer, so the
+ * cell's clipping cannot cut it off. The calendar is built to work with
+ * scripting off, and this keeps that true.
+ *
+ * Every entry for the day is listed, not only the hidden ones — someone asking
+ * "who's out on the 8th" wants the whole answer in one place. Each row carries
+ * the same data attributes as a chip, so a click opens the same detail popup.
+ * The rows are deliberately not `.chip`: drag-to-move picks those up, and a
+ * list in a floating panel is not somewhere to drag from.
+ */
+function DayMore(props: {
+	date: string;
+	entries: LeaveEntry[];
+	canEdit: (e: LeaveEntry) => boolean;
+	noteFor: (e: LeaveEntry) => string | null;
+}) {
+	const { date, entries, canEdit, noteFor } = props;
+	const t = useT();
+	const lang = useLang();
+	const id = `more-${date}`;
+	return (
+		<>
+			<button
+				type="button"
+				class="chip-more"
+				popovertarget={id}
+				aria-label={t('cal.seeAll', { n: entries.length, count: entries.length, date: longDate(date, lang) })}
+			>
+				{t('cal.more', { n: entries.length - CELL_CHIPS })}
+			</button>
+			<div id={id} popover="auto" class="popup day-more" aria-label={longDate(date, lang)}>
+				<div class="popup-head">
+					<h2>{longDate(date, lang)}</h2>
+					<button type="button" class="icon-btn popup-x" popovertarget={id} popovertargetaction="hide" aria-label={t('popup.close')}>
+						<CloseIcon />
+					</button>
+				</div>
+				<ul class="day-more-list">
+					{entries.map((e) => (
+						<li>
+							<a
+								class="day-more-item"
+								href={canEdit(e) ? `/leave/${e.id}/edit` : '#'}
+								style={`--chip: ${e.color}`}
+								aria-label={entryLabel(e, date, lang)}
+								{...entryData(e, canEdit(e), noteFor(e), lang)}
+							>
+								<span class="dot" aria-hidden="true" />
+								<span class="day-more-name" aria-hidden="true">
+									{e.display_name}
+									{halfMark(halfOn(e, date), lang)}
+								</span>
+								<span class="day-more-type muted" aria-hidden="true">{typeLabel(e, lang)}</span>
+							</a>
+						</li>
+					))}
+				</ul>
+			</div>
+		</>
+	);
+}
+
+/**
  * What a screen reader hears for one entry.
  *
  * The visible chip is just a name, which is enough when you can see which cell
@@ -459,7 +526,7 @@ function CalendarBody(props: CalendarProps) {
 														</a>
 													))}
 													{dayEntries.length > CELL_CHIPS ? (
-														<span class="chip-more">{t('cal.more', { n: dayEntries.length - CELL_CHIPS })}</span>
+														<DayMore date={date} entries={dayEntries} canEdit={canEdit} noteFor={noteFor} />
 													) : null}
 												</div>
 											</td>
