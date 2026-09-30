@@ -52,6 +52,19 @@ let pass = 0;
 let fail = 0;
 const failures = [];
 
+// "fetch failed" names neither the request nor the reason. Every request in
+// this file goes through here, so when one dies the error says which URL and
+// what undici actually saw (ECONNRESET, a refused header, …) — ISSUES #44.
+const rawFetch = globalThis.fetch;
+globalThis.fetch = async (url, init) => {
+	try {
+		return await rawFetch(url, init);
+	} catch (err) {
+		const cause = err?.cause ? ` — ${err.cause.code ?? ''} ${err.cause.message ?? err.cause}`.trimEnd() : '';
+		throw new Error(`${err.message}: ${init?.method ?? 'GET'} ${url}${cause}`, { cause: err });
+	}
+};
+
 // Assertion sites that have run, as line numbers in this file. Deep enough to
 // reach the call site through a helper or two.
 const SELF = fileURLToPath(import.meta.url);
