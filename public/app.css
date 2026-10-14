@@ -330,6 +330,30 @@ a { color: var(--md-primary); }
 .theme-toggle { display: none; }
 :root[data-js="1"] .theme-toggle { display: inline-flex; }
 
+/* The notifications bell beside it. All three icons are in the markup, and the
+   state push.ts sets picks one — so the change is a class flip, not markup the
+   script has to build. `hidden` until that script has run, for the same reason
+   as the theme toggle. */
+.push-bell[hidden] { display: none; }
+.push-bell .icon { display: none; }
+.push-bell[data-push-state="off"] .push-icon-off,
+.push-bell[data-push-state="on"] .push-icon-on,
+.push-bell[data-push-state="blocked"] .push-icon-blocked { display: inline-block; }
+.push-bell[data-push-state="on"] { color: var(--md-primary); }
+
+/* Drops down from the trailing end of the app bar, under the bell that opened
+   it, rather than sitting mid-screen like the entry popup: it is a setting
+   reached from the corner, and should look like it came from there. */
+/* `.popup.push-panel`, not `.push-panel`: the shared popup rules come later in
+   this file and would otherwise win on width and backdrop. No scrim — a menu
+   from the corner should not dim the page the way a dialog does. */
+.popup.push-panel { inset: 64px 16px auto auto; margin: 0; width: min(380px, calc(100vw - 32px)); }
+.popup.push-panel::backdrop { background: transparent; }
+@media (prefers-reduced-motion: no-preference) {
+	.push-panel:popover-open { animation: dialog-in var(--md-dur-medium) var(--md-ease-decel); }
+}
+.push-panel .actions { display: flex; flex-wrap: wrap; gap: 8px; }
+
 .wrap { max-width: 1100px; margin: 0 auto; padding: var(--pad); }
 .foot {
 	display: flex;

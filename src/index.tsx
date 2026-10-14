@@ -1,5 +1,6 @@
 import { Hono } from 'hono';
 import type { Context, MiddlewareHandler } from 'hono';
+import type { Child } from 'hono/jsx';
 import { authenticate, isService } from './auth/access.ts';
 import {
 	addDays,
@@ -43,6 +44,7 @@ import { EditPage } from './views/edit.tsx';
 import { ErrorPage, Layout, THEME_SCRIPT } from './views/layout.tsx';
 import { MePage } from './views/me.tsx';
 import { UserPage } from './views/user.tsx';
+import { PushKeyProvider } from './views/site.tsx';
 import { groupIdFromWebhook, verifyLineSignature } from './notify/line.ts';
 import {
 	GROUP_ID_KEY,
@@ -357,7 +359,8 @@ app.get('/', async (c) => {
 		db.listLeaveInRange(c.env.DB, today, addDays(today, UPCOMING_DAYS)),
 	]);
 
-	return c.html(
+	return page(
+		c,
 		<CalendarPage
 			user={user}
 			year={year}
@@ -426,7 +429,8 @@ app.get('/book', async (c) => {
 	const raw = c.req.query('date');
 	const types = await leaveTypesOf(c);
 
-	return c.html(
+	return page(
+		c,
 		<BookPage
 			user={user}
 			types={types}
@@ -845,7 +849,8 @@ app.get('/leave/:id/edit', async (c) => {
 	const [entry, types] = await Promise.all([db.getLeaveEntry(c.env.DB, id), leaveTypesOf(c)]);
 	if (!entry) return redirectWithFlash('/me', 'err', say(c, 'flash.gone'));
 
-	return c.html(
+	return page(
+		c,
 		<EditPage
 			user={user}
 			entry={entry}
@@ -1098,7 +1103,8 @@ app.get('/me', async (c) => {
 		db.listUserLeave(c.env.DB, user.email, year),
 	]);
 
-	return c.html(
+	return page(
+		c,
 		<MePage
 			user={user}
 			year={year}
@@ -1111,7 +1117,6 @@ app.get('/me', async (c) => {
 			// The VAPID public key is meant to be handed out — the browser needs
 			// it to subscribe, and it can only be used to verify our signature,
 			// never to make one.
-			vapidPublicKey={pushConfigured(c.env) ? c.env.VAPID_PUBLIC_KEY : undefined}
 			version={c.env.CF_VERSION_METADATA?.id}
 			error={flashOf(c.get('flash'), 'err')}
 			errorField={flashField(c.get('flash'))}
@@ -1155,7 +1160,8 @@ app.get('/u/:email', async (c) => {
 		canSeeBalances ? db.balancesFor(c.env.DB, subject.email, year, await leaveTypesOf(c)) : Promise.resolve(undefined),
 	]);
 
-	return c.html(
+	return page(
+		c,
 		<UserPage
 			viewer={viewer}
 			subject={subject}
@@ -1307,7 +1313,8 @@ app.get('/admin', async (c) => {
 	const configured = lineConfigured(c.env);
 	const enabled = lineEnabled(c.env);
 
-	return c.html(
+	return page(
+		c,
 		<AdminPage
 			user={user}
 			year={year}
@@ -1542,7 +1549,8 @@ app.post('/admin/holiday/delete', async (c) => {
 app.notFound((c) => {
 	const user = c.get('user');
 	if (!user) return c.html(<ErrorPage title="Not found" detail="No such page." />, 404);
-	return c.html(
+	return page(
+		c,
 		<Layout title="Not found" user={user} active="calendar">
 			<div class="card centered">
 				<h1>Not found</h1>
@@ -1592,6 +1600,16 @@ function jsonError(c: Ctx, message: string, status: 400 | 403 | 409 | 500 | 502 
 
 /** Our half-day vocabulary, in the words this feed speaks. */
 const PERIOD: Record<Half, string> = { full: 'full_day', am: 'morning', pm: 'afternoon' };
+
+/**
+ * Render a page with the per-deployment facts the shared header reads — today
+ * only the push key, which decides whether the notifications bell is drawn.
+ * See src/views/site.tsx for why that is a context and not a prop.
+ */
+function page(c: Ctx, node: Child, status?: 404) {
+	const pushKey = pushConfigured(c.env) ? c.env.VAPID_PUBLIC_KEY : '';
+	return c.html(<PushKeyProvider value={pushKey}>{node}</PushKeyProvider>, status);
+}
 
 function validDateOr(raw: string | undefined, fallback: string): string {
 	return raw && isValidDate(raw) ? raw : fallback;

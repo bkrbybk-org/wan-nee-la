@@ -14,8 +14,9 @@
  */
 
 const card = document.querySelector<HTMLElement>('[data-push-card]');
+const bell = document.querySelector<HTMLButtonElement>('[data-push-bell]');
 
-if (card) {
+if (card && bell) {
 	const status = card.querySelector<HTMLElement>('[data-push-status]')!;
 	const enableBtn = card.querySelector<HTMLButtonElement>('[data-push-enable]')!;
 	const disableBtn = card.querySelector<HTMLButtonElement>('[data-push-disable]')!;
@@ -31,6 +32,7 @@ if (card) {
 	 * truthful instead of going blank.
 	 */
 	const S: Record<string, string> = {
+		title: 'Browser notifications',
 		on: 'On for this browser.',
 		off: 'Off for this browser.',
 		blocked: 'Blocked. Notifications are switched off for this site in your browser settings.',
@@ -51,7 +53,21 @@ if (card) {
 		})(),
 	};
 
-	card.hidden = false;
+	// Only now, with a script to make its buttons work, is the bell worth showing.
+	bell.hidden = false;
+
+	/**
+	 * Which bell the header shows, and what it says when hovered or read aloud.
+	 * The icon carries the state at a glance — ringing when on, plain when off,
+	 * struck through when this browser cannot or will not — so someone can tell
+	 * without opening the panel.
+	 */
+	function mark(state: 'on' | 'off' | 'blocked', message: string) {
+		bell!.dataset.pushState = state;
+		const label = `${S.title}: ${message}`;
+		bell!.title = label;
+		bell!.setAttribute('aria-label', label);
+	}
 
 	const supported = 'serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window;
 
@@ -83,8 +99,10 @@ if (card) {
 			if (iOS && !standalone) {
 				iosNote.hidden = false;
 				show(S.tabOnly);
+				mark('blocked', S.tabOnly);
 			} else {
 				show(S.unsupported);
+				mark('blocked', S.unsupported);
 			}
 			return;
 		}
@@ -92,15 +110,18 @@ if (card) {
 		if (Notification.permission === 'denied') {
 			buttons({});
 			show(S.blocked);
+			mark('blocked', S.blocked);
 			return;
 		}
 
 		const sub = await (await registration()).pushManager.getSubscription();
 		if (sub) {
 			show(S.on);
+			mark('on', S.on);
 			buttons({ disable: true, test: true });
 		} else {
 			show(S.off);
+			mark('off', S.off);
 			buttons({ enable: true });
 		}
 	}

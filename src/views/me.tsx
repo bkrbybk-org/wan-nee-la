@@ -4,7 +4,7 @@ import type { Balance, LeaveEntry, LeaveType, User } from '../types.ts';
 import { FlashBanner, Layout, YearNav } from './layout.tsx';
 import { BookingForm } from './booking.tsx';
 import { TextField } from './fields.tsx';
-import { BellIcon, CheckIcon, DeleteIcon, EditIcon } from './icons.tsx';
+import { CheckIcon, DeleteIcon, EditIcon } from './icons.tsx';
 import { useLang, useT } from '../i18n/context.tsx';
 import { LANGS, t as translate, toLang, type Lang } from '../i18n/strings.ts';
 
@@ -17,8 +17,6 @@ interface MeProps {
 	entries: LeaveEntry[];
 	types: LeaveType[];
 	today: string;
-	/** Absent when the server has no VAPID pair — the whole card is hidden then. */
-	vapidPublicKey?: string;
 	version?: string;
 	error?: string;
 	errorField?: string;
@@ -38,7 +36,7 @@ export function MePage(props: MeProps) {
 }
 
 function MeBody(props: MeProps) {
-	const { user, year, minYear, maxYear, balances, entries, types, today, vapidPublicKey, error, errorField, notice, draft, undo } = props;
+	const { user, year, minYear, maxYear, balances, entries, types, today, error, errorField, notice, draft, undo } = props;
 	const t = useT();
 	const lang = useLang();
 	const upcoming = entries.filter((e) => e.status === 'confirmed' && e.end_date >= today);
@@ -125,7 +123,8 @@ function MeBody(props: MeProps) {
 				)}
 			</section>
 
-			{vapidPublicKey ? <PushCard vapidPublicKey={vapidPublicKey} /> : null}
+			{/* Browser notifications moved to the bell beside the theme toggle,
+			    on every page: like the theme, they belong to this browser. */}
 
 			<section class="card">
 				<h2>{t('me.calendar')}</h2>
@@ -178,60 +177,6 @@ function MeBody(props: MeProps) {
 				</form>
 			</section>
 		</>
-	);
-}
-
-/**
- * Browser notifications for the 09:00 digest.
- *
- * Entirely script-driven, and deliberately inert without JS: there is no
- * server-rendered "on" or "off" state to show, because the answer is per
- * browser and only that browser knows it. `push.ts` fills in the status,
- * enables the buttons, and — on iOS, where the Push API exists only inside an
- * installed web app — replaces the controls with the install instructions.
- */
-function PushCard({ vapidPublicKey }: { vapidPublicKey: string }) {
-	const t = useT();
-	return (
-		<section
-			class="card"
-			data-push-card
-			hidden
-			// The client script paints states this page cannot know in advance —
-			// permission denied, subscribed here, a test in flight — so it needs
-			// the wording. Handing it over as data keeps every translated string
-			// in the catalogue rather than half of them in a bundle.
-			data-push-strings={JSON.stringify({
-				on: t('push.stateOn'),
-				off: t('push.stateOff'),
-				blocked: t('push.blocked'),
-				unsupported: t('push.unsupported'),
-				tabOnly: t('push.tabOnly'),
-				asking: t('push.asking'),
-				sending: t('push.sending'),
-				sent: t('push.sent'),
-				failed: t('push.failed'),
-				refused: t('push.refused'),
-				enableFailed: t('push.enableFailed'),
-			})}
-		>
-			<h2>{t('push.title')}</h2>
-			<p class="muted">{t('push.help')}</p>
-
-			<p class="push-status" data-push-status aria-live="polite"></p>
-
-			<div class="actions" data-vapid-key={vapidPublicKey}>
-				<button type="button" class="btn primary" data-push-enable hidden>
-					<BellIcon class="sm" />
-					{t('push.on')}
-				</button>
-				<button type="button" class="btn" data-push-disable hidden>{t('push.off')}</button>
-				<button type="button" class="btn text" data-push-test hidden>{t('push.test')}</button>
-			</div>
-
-			{/* Shown only on iOS, where a tab cannot subscribe at all. */}
-			<p class="muted" data-push-ios hidden>{t('push.ios')}</p>
-		</section>
 	);
 }
 

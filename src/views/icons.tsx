@@ -103,6 +103,24 @@ export const BellIcon = (p: IconProps) => (
 	</Svg>
 );
 
+/** Notifications on: the bell with the two strokes that say it is ringing. */
+export const BellRingIcon = (p: IconProps) => (
+	<Svg {...p}>
+		<path d="M6 9a6 6 0 0 1 12 0c0 4 1.5 5.5 2 6H4c.5-.5 2-2 2-6z" />
+		<path d="M10 19a2 2 0 0 0 4 0" />
+		<path d="M3 5.5a9 9 0 0 1 2.2-3M21 5.5a9 9 0 0 0-2.2-3" />
+	</Svg>
+);
+
+/** Notifications impossible here: blocked in the browser, or no Push API at all. */
+export const BellOffIcon = (p: IconProps) => (
+	<Svg {...p}>
+		<path d="M8.5 4.2A6 6 0 0 1 18 9c0 2 .4 3.4.9 4.4M17 15H4c.5-.5 2-2 2-6 0-.7.1-1.3.3-1.9" />
+		<path d="M10 19a2 2 0 0 0 4 0" />
+		<path d="M3 3l18 18" />
+	</Svg>
+);
+
 export const CheckIcon = (p: IconProps) => (
 	<Svg {...p}>
 		<path d="M5 13l4 4 10-10" />

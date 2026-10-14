@@ -1,7 +1,18 @@
 import type { Child } from 'hono/jsx';
 import type { User } from '../types.ts';
-import { AdminIcon, CalendarIcon, ChevronLeftIcon, ChevronRightIcon, PersonIcon } from './icons.tsx';
+import {
+	AdminIcon,
+	BellIcon,
+	BellOffIcon,
+	BellRingIcon,
+	CalendarIcon,
+	ChevronLeftIcon,
+	ChevronRightIcon,
+	CloseIcon,
+	PersonIcon,
+} from './icons.tsx';
 import { LangProvider, useT } from '../i18n/context.tsx';
+import { usePushKey } from './site.tsx';
 import { toLang, type StringKey } from '../i18n/strings.ts';
 
 /**
@@ -158,6 +169,7 @@ function LayoutShell({
 						))}
 					</nav>
 					<div class="topbar-end">
+						<NotificationsBell />
 						<button type="button" class="icon-btn theme-toggle" data-theme-toggle aria-label={t('nav.theme')}></button>
 							{/* The name is shown beside the avatar on a wide screen and hidden
 						    on a phone, so the avatar — not the name — carries the spoken
@@ -252,6 +264,94 @@ export function YearNav({ basePath, year, minYear, maxYear }: { basePath: string
 }
 
 /** Full-page message for the states where there is no session to render a nav for. */
+/**
+ * Browser notifications, reached from a bell beside the theme toggle on every
+ * page. They are a per-browser setting like the theme, not a fact about the
+ * reader's leave, so they live with it rather than on /me.
+ *
+ * Absent when the deployment has no push key. Hidden without JavaScript, since
+ * subscribing *is* script: a bell that opened a panel of dead buttons would be
+ * worse than no bell. `push.ts` reveals it, picks which icon shows, and fills
+ * in the panel — whose state lives in this browser, so the server cannot
+ * render it truthfully in advance.
+ *
+ * The panel is a native popover: Escape, click-outside and focus return come
+ * from the browser, the same as the calendar's "+N more".
+ */
+function NotificationsBell() {
+	const t = useT();
+	const key = usePushKey();
+	if (!key) return null;
+	return (
+		<>
+			<button
+				type="button"
+				class="icon-btn push-bell"
+				popovertarget="push-panel"
+				data-push-bell
+				data-push-state="off"
+				aria-label={t('push.title')}
+				title={t('push.title')}
+				hidden
+			>
+				<BellIcon class="push-icon-off" />
+				<BellRingIcon class="push-icon-on" />
+				<BellOffIcon class="push-icon-blocked" />
+			</button>
+			<div
+				id="push-panel"
+				popover="auto"
+				class="popup push-panel"
+				aria-label={t('push.title')}
+				data-push-card
+				// The client script paints states this page cannot know in advance —
+				// permission denied, subscribed here, a test in flight — so it needs
+				// the wording. Handing it over as data keeps every translated string
+				// in the catalogue rather than half of them in a bundle.
+				data-push-strings={JSON.stringify({
+					title: t('push.title'),
+					on: t('push.stateOn'),
+					off: t('push.stateOff'),
+					blocked: t('push.blocked'),
+					unsupported: t('push.unsupported'),
+					tabOnly: t('push.tabOnly'),
+					asking: t('push.asking'),
+					sending: t('push.sending'),
+					sent: t('push.sent'),
+					failed: t('push.failed'),
+					refused: t('push.refused'),
+					enableFailed: t('push.enableFailed'),
+				})}
+			>
+				<div class="popup-head">
+					<h2>{t('push.title')}</h2>
+					<button
+						type="button"
+						class="icon-btn popup-x"
+						popovertarget="push-panel"
+						popovertargetaction="hide"
+						aria-label={t('popup.close')}
+					>
+						<CloseIcon />
+					</button>
+				</div>
+				<p class="muted">{t('push.help')}</p>
+				<p class="push-status" data-push-status aria-live="polite"></p>
+				<div class="actions" data-vapid-key={key}>
+					<button type="button" class="btn primary" data-push-enable hidden>
+						<BellIcon class="sm" />
+						{t('push.on')}
+					</button>
+					<button type="button" class="btn" data-push-disable hidden>{t('push.off')}</button>
+					<button type="button" class="btn text" data-push-test hidden>{t('push.test')}</button>
+				</div>
+				{/* Shown only on iOS, where a tab cannot subscribe at all. */}
+				<p class="muted" data-push-ios hidden>{t('push.ios')}</p>
+			</div>
+		</>
+	);
+}
+
 export function ErrorPage({ title, detail }: { title: string; detail: string }) {
 	return (
 		<html lang="en">

@@ -133,7 +133,7 @@ function d1Rows(sql) {
 	return results;
 }
 
-async function startServer(devEmail, { serviceToken = '' } = {}) {
+async function startServer(devEmail, { serviceToken = '', pushKeys = false } = {}) {
 	serverLog = '';
 	server = spawn(
 		'npx',
@@ -141,6 +141,10 @@ async function startServer(devEmail, { serviceToken = '' } = {}) {
 			...WRANGLER,
 			'--var', 'DEV_AUTH_BYPASS:1',
 			'--var', `DEV_SERVICE_TOKEN:${serviceToken}`,
+			// Placeholder keys, enough to make the app consider push configured
+			// and draw the bell. Nothing is ever signed with them: no session that
+			// passes these triggers a send.
+			...(pushKeys ? ['--var', 'VAPID_PUBLIC_KEY:smoke-public-key', '--var', 'VAPID_PRIVATE_KEY:smoke-private-key'] : []),
 			'--var', `DEV_EMAIL:${devEmail}`,
 			'--var', `LINE_CHANNEL_SECRET:${CHANNEL_SECRET}`,
 			// Forced empty, overriding any real token a developer has in their
@@ -1375,6 +1379,37 @@ async function main() {
 	check('service token: the refusal names the token', /rota-bot/.test(refusal.error?.message ?? ''), JSON.stringify(refusal));
 	eq('service token: and nothing was written', d1Rows("SELECT COUNT(*) AS n FROM users WHERE email = 'rota-bot'")[0]?.n, 0);
 	eq('service token: no booking was created', d1Rows(`SELECT COUNT(*) AS n FROM leave_requests WHERE start_date = '${MON}' AND user_email = 'rota-bot'`)[0]?.n, 0);
+
+	// -----------------------------------------------------------------------
+	// Session 5 — push configured. The notifications bell lives in the header,
+	// beside the theme toggle, on every page; the card it replaced on /me is
+	// gone. Every earlier session runs without push keys, where it must be absent.
+	// -----------------------------------------------------------------------
+	const noKeysPage = await (await fetch(`${BASE}/health`)).json();
+	check('bell: the earlier sessions ran without push keys', noKeysPage.db === true, 'health unreadable');
+
+	await stopServer();
+	await startServer(ADMIN, { pushKeys: true });
+
+	for (const path of ['/', '/me', '/admin']) {
+		const html = await (await fetch(`${BASE}${path}`)).text();
+		check(`bell: in the header on ${path}`, /data-push-bell/.test(html), 'no bell');
+	}
+	const calendarHtml = await (await fetch(`${BASE}/`)).text();
+	// In the trailing group of the app bar, just ahead of the theme toggle. The
+	// panel's own markup sits between the two in the HTML, invisible until opened.
+	const endAt = calendarHtml.indexOf('class="topbar-end"');
+	// Searched from the app bar on: the theme script in <head> names the same attribute.
+	const bellAt = calendarHtml.indexOf('data-push-bell', endAt);
+	const toggleAt = calendarHtml.indexOf('data-theme-toggle', endAt);
+	check('bell: sits in the app bar, just before the theme toggle', endAt >= 0 && endAt < bellAt && bellAt < toggleAt, `${endAt} ${bellAt} ${toggleAt}`);
+	check('bell: hidden until the script has run', /<button[^>]*data-push-bell[^>]*hidden/.test(calendarHtml), 'visible without JS');
+	check('bell: opens a native popover panel', calendarHtml.includes('popovertarget="push-panel"') && /id="push-panel"[^>]*popover="auto"|popover="auto"[^>]*id="push-panel"/.test(calendarHtml), 'not a popover');
+	check('bell: carries all three state icons', ['push-icon-off', 'push-icon-on', 'push-icon-blocked'].every((c) => calendarHtml.includes(c)), 'icon missing');
+	check('bell: the panel has the controls', ['data-push-enable', 'data-push-disable', 'data-push-test', 'data-push-status'].every((a) => calendarHtml.includes(a)), 'controls missing');
+	check('bell: the panel carries the public key', calendarHtml.includes('data-vapid-key="smoke-public-key"'), 'no key');
+	const meHtml = await (await fetch(`${BASE}/me`)).text();
+	eq('bell: exactly one panel on /me, so the old card is gone', (meHtml.match(/data-push-card/g) ?? []).length, 1);
 }
 
 let exitCode = 0;
