@@ -175,9 +175,9 @@ Optional, free, and independent of LINE: subscribers get a notification at 09:00
    npx wrangler secret put VAPID_PRIVATE_KEY --config wrangler.local.jsonc
    ```
 
-4. Deploy, then open `/me` and turn notifications on. **Send a test** proves the whole path without waiting for 09:00.
+4. Deploy, then click the **bell** beside the light/dark toggle and turn notifications on. **Send a test** proves the whole path without waiting for 09:00.
 
-Leave `VAPID_PUBLIC_KEY` empty to keep the feature off: the card disappears from `/me` and the digest skips the channel.
+Leave `VAPID_PUBLIC_KEY` empty to keep the feature off: the bell disappears from the header and the digest skips the channel.
 
 Once notifications actually reach a phone, drop the "Not enabled yet" wording from the Push tag and its three operations in `public/openapi.yaml` and run `npm run build:spec`.
 
