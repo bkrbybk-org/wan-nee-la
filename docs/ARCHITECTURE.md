@@ -273,6 +273,14 @@ Native `<dialog>` + `showModal()` is used for focus trapping and Escape-to-close
 
 Only one booking form exists per page, inside the create dialog — two would collide on element ids.
 
+**Bars, not chips** (from 768px). A booking is one bar across the days it covers in each week (`weekLanes` in `src/domain/leave.ts`, unit-tested): pieces are cut at week boundaries and flagged so the bar loses its rounded end on that side, and stacked into the fewest rows that keep two pieces sharing a day apart, longer pieces on top so a long absence stays a straight line. Cells clip their content, so the bars cannot live in them: each week's bars sit in one positioned layer (`.week-bars`) inside the week's first cell — a table row can hold nothing but cells — laid out as a seven-column grid with the table's own spacing, which puts every column exactly on a day. The layer ignores the pointer except on the bars themselves, so clicks between bars still book that day. Because the layer no longer makes a row grow, every cell carries an invisible spacer sized to the week's rows. Three rows show; each day counts the rest as "+N more". Drag-to-move finds the day under the pointer through the layer (`elementsFromPoint` down to the cell's `.cell-add`), so a bar grabbed by its Thursday moves by the distance dragged, not from its first day. On a phone the layer is hidden and each cell shows its dots, as before.
+
+The trade-off: a screen reader meets a week's bars inside its first day cell. Each bar's label therefore carries the whole range ("Parkpoom P — Annual, 19 – 30 Oct"), not one day.
+
+**Who is who.** The stripe and tint still mean the leave type; a badge with the person's initials says whose (`src/views/person.ts`). Colours are handed out in sign-up order — every user row, deactivated included, since rows are never deleted — so nobody shares one until there are more than nine people, and nobody's changes when someone joins. A hash of the email was tried first and put three of eight people on one colour. All nine carry white at WCAG AA in both themes and avoid the leave types' colours; `scripts/palette.mjs` checks both.
+
+**Holidays** are hatched, not tinted: the tertiary teal they used sat beside planned medical's green and read as the same thing. Leave types own colour; a holiday owns a texture.
+
 **"+N more"** opens a native popover (`popovertarget`), not a script-built dialog: no JavaScript is needed to open or dismiss it, the browser handles Escape, click-outside and returning focus, and the top layer means the cell's clipping cannot cut it off. Its rows carry the same `data-entry` attributes as chips, so a click opens the same detail popup — but they are not `.chip`, which drag-to-move would otherwise pick up.
 
 ### Layout
