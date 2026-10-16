@@ -213,6 +213,23 @@ for (const [scheme, map] of [['light', light], ['dark', dark]]) {
 	}
 }
 
+// --- person badges ----------------------------------------------------------
+
+/*
+ * The initials badge on each calendar entry (src/views/person.ts). White text on
+ * a colour that is the same in both themes, so one check covers both. And none
+ * may be a leave type's own colour: the stripe says what kind of leave, the
+ * badge says whose, and the two must not be confusable.
+ */
+const { PERSON_COLORS } = await import('../src/views/person.ts');
+for (const colour of PERSON_COLORS) {
+	const r = contrast('#ffffff', colour);
+	const clash = Object.values(LEAVE_TYPE_COLORS).includes(colour);
+	const ok = r >= 4.5 && !clash;
+	if (!ok) bad++;
+	console.error(`${ok ? 'ok  ' : 'FAIL'} badge white on ${colour}: ${r.toFixed(2)} (min 4.5)${clash ? ' — same as a leave type' : ''}`);
+}
+
 // --- the stylesheet must actually hold these values ------------------------
 
 /*

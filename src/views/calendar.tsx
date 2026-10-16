@@ -1,6 +1,5 @@
 import {
 	addDays,
-	isWeekend,
 	dayOfWeek,
 	describeRange,
 	formatDays,
@@ -15,7 +14,9 @@ import {
 	weekdayName,
 	MONDAY,
 } from '../domain/dates.ts';
-import { byDate, halfOn, visibleNote, type BookingDraft } from '../domain/leave.ts';
+import { byDate, halfOn, visibleNote, weekLanes, type BookingDraft, type WeekSegment } from '../domain/leave.ts';
+import { initials } from './person.ts';
+import { PersonColorsProvider, useColorOf } from './site.tsx';
 import type { Half, Holiday, LeaveEntry, LeaveType, User } from '../types.ts';
 import { FlashBanner, Layout } from './layout.tsx';
 import { BookingForm } from './booking.tsx';
@@ -31,6 +32,8 @@ interface CalendarProps {
 	entries: LeaveEntry[];
 	/** Everything from today forward, independent of the month being browsed. */
 	upcoming: LeaveEntry[];
+	/** Each person's badge colour, by email, in sign-up order. */
+	colors: ReadonlyMap<string, string>;
 	holidays: Holiday[];
 	types: LeaveType[];
 	today: string;
@@ -100,18 +103,24 @@ function UpcomingList({
 	lang: Lang;
 }) {
 	const t = useT();
+	const colorOf = useColorOf();
 	const canEdit = (e: LeaveEntry) => e.user_email === user.email || Boolean(user.is_admin);
 
-	// One row per person per day they are away, from today forward. A booking
-	// that started last week still appears, on its remaining days only.
+	// One row per booking, under the day it starts. It used to be one row per
+	// person per day, so a fortnight away was ten identical rows and the list
+	// ran out of room after a week. Anything already under way sits under
+	// "Today", saying when it ends.
 	const byDay = new Map<string, LeaveEntry[]>();
-	for (const e of entries) {
-		for (let d = e.start_date > today ? e.start_date : today; d <= e.end_date; d = addDays(d, 1)) {
-			if (isWeekend(d)) continue;
-			byDay.set(d, [...(byDay.get(d) ?? []), e]);
-		}
+	for (const e of [...entries].sort((a, b) => a.start_date.localeCompare(b.start_date) || a.display_name.localeCompare(b.display_name))) {
+		if (e.end_date < today) continue;
+		const key = e.start_date > today ? e.start_date : today;
+		byDay.set(key, [...(byDay.get(key) ?? []), e]);
 	}
 	const days = [...byDay.entries()].sort((a, b) => a[0].localeCompare(b[0]));
+	const when = (e: LeaveEntry) =>
+		e.start_date < today && e.end_date > today
+			? t('cal.until', { date: shortDate(e.end_date, lang) })
+			: describeRange(e.start_date, e.end_date, e.start_half, e.end_half, lang);
 
 	return (
 		<section class="cal-upcoming">
@@ -134,14 +143,21 @@ function UpcomingList({
 									<a
 										class={`upcoming-item ${canEdit(e) ? 'mine' : ''}`}
 										href={canEdit(e) ? `/leave/${e.id}/edit` : '#'}
-										aria-label={entryLabel(e, date, lang)}
+										aria-label={rangeLabel(e, lang)}
 										{...entryData(e, canEdit(e), visibleNote(e, user), lang)}
 									>
-										<span class="dot" style={`--chip: ${e.color}`} />
-										<span class="upcoming-name">{e.display_name}</span>
+										<span class="badge" style={`--who: ${colorOf(e.user_email)}`} aria-hidden="true">
+											{initials(e.display_name)}
+										</span>
+										<span class="upcoming-who">
+											<span class="upcoming-name">{e.display_name}</span>
+											<span class="upcoming-when">
+												{when(e)} · {t('cal.dayCount', { n: formatDays(e.days_total), count: e.days_total })}
+											</span>
+										</span>
 										<span class="upcoming-type">
+											<span class="dot" style={`--chip: ${e.color}`} aria-hidden="true" />
 											{typeLabel(e, lang)}
-											{halfMark(halfOn(e, date), lang)}
 										</span>
 									</a>
 								))}
@@ -156,6 +172,92 @@ function UpcomingList({
 
 function halfMark(h: Half, lang: Lang): string {
 	return h === 'am' ? translate(lang, 'cal.markAm') : h === 'pm' ? translate(lang, 'cal.markPm') : '';
+}
+
+/**
+ * A week's leave as bars, each one a single piece across the days it covers.
+ *
+ * Laid out on its own grid of seven equal columns, over the row of cells, so a
+ * bar can run from Monday to Friday — something a cell, which clips what it
+ * holds, cannot do. It sits in the week's first cell only because a table row
+ * cannot hold anything but cells; positioned from there it spans all seven.
+ *
+ * The stripe and tint still mean the leave type. The badge is the person, in a
+ * colour of their own (src/views/person.ts). A bar cut by the edge of the week
+ * loses its rounded end on that side, which is how it says it carries on.
+ *
+ * Every bar keeps the chip's data attributes, so a click opens the same detail
+ * popup and drag-to-move works on it as it did on a chip.
+ */
+function WeekBars(props: {
+	week: readonly string[];
+	segs: readonly WeekSegment[];
+	heldBack: readonly number[];
+	monthPrefix: string;
+	map: Map<string, LeaveEntry[]>;
+	canEdit: (e: LeaveEntry) => boolean;
+	noteFor: (e: LeaveEntry) => string | null;
+}) {
+	const { week, segs, heldBack, monthPrefix, map, canEdit, noteFor } = props;
+	const lang = useLang();
+	const colorOf = useColorOf();
+	return (
+		<div class="week-bars">
+			{segs.map((s) => {
+				const e = s.entry;
+				const days = week.slice(s.col, s.col + s.span);
+				const outside = days.every((d) => !d.startsWith(monthPrefix));
+				// A one-day piece says which half; a longer one leaves that to its
+				// label and popup, where the whole range is spelled out.
+				const half = s.span === 1 && !s.continuesBefore && !s.continuesAfter ? halfMark(halfOn(e, days[0]), lang) : '';
+				const classes = [
+					'chip',
+					'bar',
+					canEdit(e) ? 'mine' : '',
+					s.continuesBefore ? 'cont-before' : '',
+					s.continuesAfter ? 'cont-after' : '',
+					outside ? 'out' : '',
+				]
+					.filter(Boolean)
+					.join(' ');
+				return (
+					<a
+						class={classes}
+						href={canEdit(e) ? `/leave/${e.id}/edit` : '#'}
+						style={`--chip: ${e.color}; grid-column: ${s.col + 1} / span ${s.span}; grid-row: ${s.lane + 1}`}
+						title={`${e.display_name} — ${typeLabel(e, lang)}${noteFor(e) ? `: ${noteFor(e)}` : ''}`}
+						aria-label={rangeLabel(e, lang)}
+						{...entryData(e, canEdit(e), noteFor(e), lang)}
+					>
+						<span class="badge" style={`--who: ${colorOf(e.user_email)}`} aria-hidden="true">
+							{initials(e.display_name)}
+						</span>
+						<span class="bar-name" aria-hidden="true">
+							{e.display_name}
+							{half}
+						</span>
+					</a>
+				);
+			})}
+			{heldBack.map((n, c) =>
+				n > 0 ? (
+					<div class="bar-more" style={`grid-column: ${c + 1}; grid-row: ${CELL_CHIPS + 1}`}>
+						<DayMore date={week[c]} entries={map.get(week[c]) ?? []} hidden={n} canEdit={canEdit} noteFor={noteFor} />
+					</div>
+				) : null,
+			)}
+		</div>
+	);
+}
+
+/** What a screen reader hears for a bar: who, what, and the whole range. */
+function rangeLabel(e: LeaveEntry, lang: Lang): string {
+	return translate(lang, 'cal.entryLabel', {
+		name: e.display_name,
+		type: typeLabel(e, lang),
+		part: '',
+		date: describeRange(e.start_date, e.end_date, e.start_half, e.end_half, lang),
+	});
 }
 
 /**
@@ -176,12 +278,15 @@ function halfMark(h: Half, lang: Lang): string {
 function DayMore(props: {
 	date: string;
 	entries: LeaveEntry[];
+	/** How many of the day's people have no bar showing. */
+	hidden: number;
 	canEdit: (e: LeaveEntry) => boolean;
 	noteFor: (e: LeaveEntry) => string | null;
 }) {
-	const { date, entries, canEdit, noteFor } = props;
+	const { date, entries, hidden, canEdit, noteFor } = props;
 	const t = useT();
 	const lang = useLang();
+	const colorOf = useColorOf();
 	const id = `more-${date}`;
 	return (
 		<>
@@ -191,7 +296,7 @@ function DayMore(props: {
 				popovertarget={id}
 				aria-label={t('cal.seeAll', { n: entries.length, count: entries.length, date: longDate(date, lang) })}
 			>
-				{t('cal.more', { n: entries.length - CELL_CHIPS })}
+				{t('cal.more', { n: hidden })}
 			</button>
 			<div id={id} popover="auto" class="popup day-more" aria-label={longDate(date, lang)}>
 				<div class="popup-head">
@@ -210,12 +315,17 @@ function DayMore(props: {
 								aria-label={entryLabel(e, date, lang)}
 								{...entryData(e, canEdit(e), noteFor(e), lang)}
 							>
-								<span class="dot" aria-hidden="true" />
+								<span class="badge" style={`--who: ${colorOf(e.user_email)}`} aria-hidden="true">
+									{initials(e.display_name)}
+								</span>
 								<span class="day-more-name" aria-hidden="true">
 									{e.display_name}
 									{halfMark(halfOn(e, date), lang)}
 								</span>
-								<span class="day-more-type muted" aria-hidden="true">{typeLabel(e, lang)}</span>
+								<span class="day-more-type muted" aria-hidden="true">
+									<span class="dot" />
+									{typeLabel(e, lang)}
+								</span>
 							</a>
 						</li>
 					))}
@@ -289,7 +399,9 @@ export function CalendarPage(props: CalendarProps) {
 			version={props.version}
 			fitViewport
 		>
-			<CalendarBody {...props} />
+			<PersonColorsProvider value={props.colors}>
+				<CalendarBody {...props} />
+			</PersonColorsProvider>
 		</Layout>
 	);
 }
@@ -456,15 +568,27 @@ function CalendarBody(props: CalendarProps) {
 							</tr>
 						</thead>
 						<tbody>
-							{weeks.map((week) => (
+							{weeks.map((week) => {
+								// Bars for the week, laid out once. Rows past CELL_CHIPS are
+								// not drawn; each day they would have covered says how many
+								// it holds back instead.
+								const segs = weekLanes(week, entries);
+								const shown = segs.filter((s) => s.lane < CELL_CHIPS);
+								const heldBack = week.map(
+									(_, c) => segs.filter((s) => s.lane >= CELL_CHIPS && c >= s.col && c < s.col + s.span).length,
+								);
+								const lanes = Math.min(CELL_CHIPS, segs.reduce((m, s) => Math.max(m, s.lane + 1), 0)) +
+									(heldBack.some((n) => n > 0) ? 1 : 0);
+								return (
 								<tr>
-									{week.map((date) => {
+									{week.map((date, col) => {
 										const inMonth = date.startsWith(monthPrefix);
 										const weekend = dayOfWeek(date) === 0 || dayOfWeek(date) === 6;
 										const holiday = holidayMap.get(date);
 										const dayEntries = map.get(date) ?? [];
 										const classes = [
 											'cell',
+											col === 0 ? 'week-start' : '',
 											inMonth ? '' : 'out',
 											weekend ? 'weekend' : '',
 											holiday ? 'holiday' : '',
@@ -505,10 +629,9 @@ function CalendarBody(props: CalendarProps) {
 													<span class="visually-hidden">{longDate(date, lang)}</span>
 													{holiday ? <span class="holiday-tag" title={holiday}>{holiday}</span> : null}
 												</div>
-												{/* A cell is only as tall as the month allows once the grid
-												    has to fit the window, so it shows the first few and says
-												    how many it kept back. The day is still one click from the
-												    booking form, and the sidebar lists what is coming. */}
+												{/* Phones only: each person away is a coloured dot, because
+												    a 48px cell has room for nothing else. On a wider screen
+												    these are hidden and the week's bars below take over. */}
 												<div class="chips">
 													{dayEntries.map((e) => (
 														<a
@@ -525,15 +648,28 @@ function CalendarBody(props: CalendarProps) {
 															</span>
 														</a>
 													))}
-													{dayEntries.length > CELL_CHIPS ? (
-														<DayMore date={date} entries={dayEntries} canEdit={canEdit} noteFor={noteFor} />
-													) : null}
 												</div>
+												{/* The bars live in a layer above the cells, so they no longer
+												    make a row grow. This reserves the room they need, so a
+												    busy week still gets a taller row. */}
+												<span class="lane-space" aria-hidden="true" style={`--lanes: ${lanes}`}></span>
+												{col === 0 ? (
+													<WeekBars
+														week={week}
+														segs={shown}
+														heldBack={heldBack}
+														monthPrefix={monthPrefix}
+														map={map}
+														canEdit={canEdit}
+														noteFor={noteFor}
+													/>
+												) : null}
 											</td>
 										);
 									})}
 								</tr>
-							))}
+								);
+							})}
 						</tbody>
 					</table>
 				</section>

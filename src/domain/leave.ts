@@ -280,6 +280,71 @@ export function round(n: number): number {
 	return Math.round(n * 2) / 2;
 }
 
+/** One booking's piece of one calendar week, laid out as a bar. */
+export interface WeekSegment {
+	entry: LeaveEntry;
+	/** Column the bar starts in, 0–6. */
+	col: number;
+	/** How many columns it covers, 1–7. */
+	span: number;
+	/** Row within the week, 0 at the top. */
+	lane: number;
+	/** The booking began before this week, so the bar has no left end here. */
+	continuesBefore: boolean;
+	/** The booking runs on past this week. */
+	continuesAfter: boolean;
+}
+
+/**
+ * Lay a week's bookings out as bars: each one a single piece across the days it
+ * covers in this week, stacked into the fewest rows that keep any two that share
+ * a day from overlapping.
+ *
+ * A booking that crosses a week boundary becomes one piece per week, flagged at
+ * the cut so the bar can show it carries on. Longer pieces and earlier starts
+ * take the top rows, which is what keeps a long absence a straight line down the
+ * month rather than stepping between rows week to week. Names break ties, so
+ * the layout is the same on every render.
+ *
+ * `week` is seven consecutive dates.
+ */
+export function weekLanes(week: readonly string[], entries: readonly LeaveEntry[]): WeekSegment[] {
+	const first = week[0];
+	const last = week[week.length - 1];
+	const pieces = entries
+		.filter((e) => e.start_date <= last && e.end_date >= first)
+		.map((e) => {
+			const from = e.start_date > first ? e.start_date : first;
+			const to = e.end_date < last ? e.end_date : last;
+			return {
+				entry: e,
+				col: daysBetween(first, from),
+				span: daysBetween(from, to) + 1,
+				lane: 0,
+				continuesBefore: e.start_date < first,
+				continuesAfter: e.end_date > last,
+			};
+		})
+		.sort(
+			(a, b) =>
+				a.col - b.col ||
+				b.span - a.span ||
+				a.entry.display_name.localeCompare(b.entry.display_name) ||
+				a.entry.id.localeCompare(b.entry.id),
+		);
+
+	const taken: boolean[][] = [];
+	for (const piece of pieces) {
+		let lane = 0;
+		const free = (l: number) => !(taken[l] ?? []).slice(piece.col, piece.col + piece.span).some(Boolean);
+		while (!free(lane)) lane++;
+		taken[lane] ??= [];
+		for (let c = piece.col; c < piece.col + piece.span; c++) taken[lane][c] = true;
+		piece.lane = lane;
+	}
+	return pieces;
+}
+
 /** Index entries by every calendar date they cover, for the month grid. */
 export function byDate(entries: readonly LeaveEntry[]): Map<string, LeaveEntry[]> {
 	const map = new Map<string, LeaveEntry[]>();

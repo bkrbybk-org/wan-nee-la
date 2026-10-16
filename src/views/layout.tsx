@@ -13,6 +13,7 @@ import {
 } from './icons.tsx';
 import { LangProvider, useT } from '../i18n/context.tsx';
 import { usePushKey } from './site.tsx';
+import { initials } from './person.ts';
 import { toLang, type StringKey } from '../i18n/strings.ts';
 
 /**
@@ -68,12 +69,6 @@ interface LayoutProps {
 	children?: Child;
 }
 
-/** Up to two letters for the avatar, e.g. "Somchai Pong" -> "SP". */
-function initials(name: string): string {
-	const parts = name.trim().split(/\s+/).filter(Boolean);
-	if (parts.length === 0) return '?';
-	return (parts[0][0] + (parts[1]?.[0] ?? '')).toUpperCase();
-}
 
 function sections(user: User): { href: string; label: StringKey; key: Section; Icon: typeof CalendarIcon }[] {
 	const items = [

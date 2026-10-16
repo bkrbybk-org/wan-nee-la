@@ -1158,6 +1158,32 @@ async function main() {
 	check('+N more: absent where everyone fits', !busyHtml.includes(`popovertarget="more-${quietDay}"`), 'rendered on a quiet day');
 	d1(`DELETE FROM leave_requests WHERE id LIKE 'smoke-busy-%'`);
 
+	// --- bars, badges, and the Upcoming list one booking at a time ------------
+	//
+	// A three-day booking is one bar across three columns, not three chips, with
+	// the person's badge on it. In the Upcoming list it is one row, not three.
+	const barMon = clearFutureMonday(7);
+	d1(
+		`INSERT INTO leave_requests (id, user_email, leave_type_id, start_date, end_date, start_half, end_half, days_total, note, note_private, status, created_at)
+		 VALUES ('smoke-bar-1', 'bar-person@example.com', 1, '${barMon}', '${addDays(barMon, 2)}', 'full', 'full', 3, NULL, 1, 'confirmed', '${barMon}')`,
+	);
+	const barHtml = await (await fetch(`${BASE}/?y=${barMon.slice(0, 4)}&m=${Number(barMon.slice(5, 7))}`)).text();
+	const bars = barHtml.match(/<a class="chip bar[^"]*"[^>]*data-entry="smoke-bar-1"[^>]*>/g) ?? [];
+	eq('bars: a three-day booking is one bar', bars.length, 1);
+	check('bars: across three days', /span 3/.test(bars[0] ?? ''), bars[0]);
+	check('bars: in the week layer', barHtml.includes('class="week-bars"'), 'no bar layer');
+	const barAt = barHtml.indexOf(bars[0] ?? '<none>');
+	check('bars: carries the person\'s badge', /class="badge" style="--who: #[0-9a-f]{6}"/.test(barHtml.slice(barAt, barAt + 600)), 'no badge');
+	check('bars: read aloud with the whole range, not one day', /aria-label="[^"]*–[^"]*"/.test(bars[0] ?? ''), bars[0]);
+	check('bars: each cell still has its phone dot', (barHtml.match(/<a class="chip [^"]*"[^>]*data-entry="smoke-bar-1"/g) ?? []).length >= 3, 'phone dots gone');
+
+	const homeHtml = await (await fetch(`${BASE}/`)).text();
+	const upcoming = homeHtml.slice(homeHtml.indexOf('class="cal-upcoming"'), homeHtml.indexOf('</section>', homeHtml.indexOf('class="cal-upcoming"')));
+	eq('upcoming: a three-day booking is one row, not three', (upcoming.match(/data-entry="smoke-bar-1"/g) ?? []).length, 1);
+	check('upcoming: and says how long', /3 days/.test(upcoming), 'no day count');
+	check('upcoming: with the badge', upcoming.includes('class="badge"'), 'no badge');
+	d1(`DELETE FROM leave_requests WHERE id = 'smoke-bar-1'`);
+
 	// Nothing booked in the window: one line, not two cards each saying nothing.
 	const quietHtml = await (await fetch(`${BASE}/`)).text();
 	check(

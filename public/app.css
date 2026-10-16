@@ -879,14 +879,30 @@ form.inline:has(.tf-support) { margin-bottom: 28px; }
 	   would let rows with no leave collapse to a thin strip. */
 	height: 104px;
 	padding: 6px;
-	background: var(--md-surface-container-low);
+	--cell-bg: var(--md-surface-container-low);
+	background-color: var(--cell-bg);
 	border-radius: var(--md-shape-md);
 	overflow: hidden;
 	transition: background-color var(--md-dur-short) var(--md-ease);
 }
-.cell.weekend { background: var(--md-surface-container); }
-.cell.holiday { background: var(--md-tertiary-container); }
+.cell.weekend { --cell-bg: var(--md-surface-container); }
+/* A holiday is hatched rather than tinted. It used to take the tertiary teal,
+   which sat beside planned medical leave's green and read as the same thing;
+   the leave types own the colours, so a holiday owns a texture instead. */
+.cell.holiday {
+	background-image: repeating-linear-gradient(
+		135deg,
+		transparent 0 6px,
+		color-mix(in srgb, var(--md-on-surface) 8%, transparent) 6px 9px
+	);
+}
 .cell.out { opacity: 0.5; }
+/* The week's first cell carries the bars for the whole week (see .week-bars),
+   so it may not clip them, and dimming it would dim every bar in the row. Its
+   own contents are dimmed instead, and its background halved by hand. */
+.cell.week-start { overflow: visible; }
+.cell.out.week-start { opacity: 1; background-color: color-mix(in srgb, var(--cell-bg) 50%, transparent); }
+.cell.out.week-start > :not(.week-bars) { opacity: 0.5; }
 
 /* Fills the cell so any empty space books that day. Sits beneath the chips, so
    a click that lands on an entry opens the entry instead. */
@@ -916,7 +932,7 @@ form.inline:has(.tf-support) { margin-bottom: 28px; }
 }
 .cell.today .daynum { background: var(--md-primary); color: var(--md-on-primary); font-weight: 600; }
 .holiday-tag {
-	color: var(--md-on-tertiary-container);
+	color: var(--md-on-surface-variant);
 	font-size: 11px;
 	line-height: 16px;
 	font-weight: 500;
@@ -952,6 +968,35 @@ form.inline:has(.tf-support) { margin-bottom: 28px; }
 .chip:hover { box-shadow: var(--md-shadow-1); }
 .chip:focus-visible, .agenda-item:focus-visible { outline: 2px solid var(--md-primary); outline-offset: 1px; }
 
+/* A person: initials on a colour of their own (src/views/person.ts). The same
+   in both themes — every colour carries white at WCAG AA, which palette.mjs
+   checks. */
+.badge {
+	flex: none;
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	width: 18px;
+	height: 18px;
+	border-radius: var(--md-shape-full);
+	background: var(--who);
+	/* A hairline in the page's own ink, so a dark badge on a dark bar (the
+	   near-black one, in dark mode) still has an edge. */
+	box-shadow: 0 0 0 1px color-mix(in srgb, var(--md-on-surface) 28%, transparent);
+	color: #fff;
+	font-size: 9px;
+	line-height: 1;
+	font-weight: 600;
+	letter-spacing: 0;
+}
+
+/* A week's leave as bars, over the row of cells. Hidden on a phone, where each
+   cell shows dots instead. Positioned from the week's first cell, seven columns
+   wide with the table's own spacing between them, so each column lands exactly
+   on a day. Clicks on the empty layer fall through to the day underneath. */
+.week-bars { display: none; }
+.lane-space { display: none; }
+
 /* Drag-to-move (desktop grid only, see drag.ts's MIN_WIDTH gate). */
 .chip-dragging { cursor: grabbing; opacity: 0.5; box-shadow: var(--md-shadow-2); }
 .cell.drop-target { background: var(--md-secondary-container); outline: 2px solid var(--md-primary); outline-offset: -2px; }
@@ -984,9 +1029,6 @@ form.inline:has(.tf-support) { margin-bottom: 28px; }
 	   grid, not to the page. */
 	.cell .holiday-tag { display: none; }
 
-	/* Softer than on a laptop: at this size the tint is the only thing marking
-	   a holiday, and at full strength it read as a solid slab. */
-	.cell.holiday { background: color-mix(in srgb, var(--md-tertiary-container) 55%, var(--md-surface-container-low)); }
 
 	/* Names become dots. The chip keeps its colour and its data attributes —
 	   only its text and its own tap target go away, because at this size the
@@ -1395,8 +1437,10 @@ form.inline:has(.tf-support) { margin-bottom: 28px; }
 }
 .upcoming-item:hover::before { opacity: var(--md-state-hover); }
 .upcoming-item.mine .upcoming-name { font-weight: 600; }
+.upcoming-who { display: flex; flex-direction: column; min-width: 0; padding: 6px 0; }
 .upcoming-name { font-weight: 500; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.upcoming-type { margin-left: auto; font-size: 12px; line-height: 16px; color: var(--md-on-surface-variant); white-space: nowrap; }
+.upcoming-when { font-size: 12px; line-height: 16px; color: var(--md-on-surface-variant); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.upcoming-type { margin-left: auto; display: inline-flex; align-items: center; gap: 6px; font-size: 12px; line-height: 16px; color: var(--md-on-surface-variant); white-space: nowrap; }
 
 /* The count a cell shows instead of the names it had no room for. Hidden on
    phones, where the entries are dots and they all fit. */
@@ -1442,7 +1486,7 @@ form.inline:has(.tf-support) { margin-bottom: 28px; }
 .day-more-item:hover { background: color-mix(in srgb, var(--md-on-surface) 8%, transparent); }
 .day-more-item:focus-visible { outline: 2px solid var(--md-primary); outline-offset: -2px; }
 .day-more-name { font-weight: 500; }
-.day-more-type { margin-left: auto; font-size: 14px; white-space: nowrap; }
+.day-more-type { margin-left: auto; display: inline-flex; align-items: center; gap: 6px; font-size: 14px; white-space: nowrap; }
 
 /* ---------- desktop ---------- */
 
@@ -1471,10 +1515,36 @@ form.inline:has(.tf-support) { margin-bottom: 28px; }
 	.calendar-actions .hint { display: inline; }
 	.legend { display: flex; }
 
-	/* Names need room, so a cell shows the first three and counts the rest.
-	   The number that decides this lives in calendar.tsx as CELL_CHIPS; the two
-	   have to agree or the count will not match what is hidden. */
-	.cell .chip:nth-of-type(n + 4) { display: none; }
+	/* Bars replace the per-day chips. A week shows three rows of them and each
+	   day counts the rest; CELL_CHIPS in calendar.tsx decides how many rows, and
+	   the server never renders more, so nothing here has to hide extras. */
+	.cell .chips { display: none; }
+	.lane-space { display: block; height: calc(var(--lanes, 0) * 26px); }
+	.week-bars {
+		display: grid;
+		position: absolute;
+		z-index: 1;
+		left: 0;
+		top: 36px;
+		bottom: 0;
+		width: calc(700% + 6 * 6px);
+		grid-template-columns: repeat(7, minmax(0, 1fr));
+		grid-auto-rows: 22px;
+		column-gap: 6px;
+		row-gap: 4px;
+		align-content: start;
+		pointer-events: none;
+		overflow: hidden;
+	}
+	.week-bars > * { pointer-events: auto; margin: 0 6px; min-width: 0; }
+	.bar { display: flex; align-items: center; gap: 6px; padding: 2px 8px 2px 4px; }
+	.bar-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+	/* Cut by the edge of the week: no rounded end and no stripe on that side,
+	   and the bar runs to the cell's edge, so it reads as carrying on. */
+	.bar.cont-before { border-left: 0; border-top-left-radius: 0; border-bottom-left-radius: 0; margin-left: 0; padding-left: 6px; }
+	.bar.cont-after { border-top-right-radius: 0; border-bottom-right-radius: 0; margin-right: 0; }
+	.bar.out { opacity: 0.5; }
+	.bar-more { align-self: center; }
 	.chip-more { display: block; }
 	.wrap { padding: 24px; }
 	.foot { padding-bottom: var(--pad); }

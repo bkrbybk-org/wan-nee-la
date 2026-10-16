@@ -45,6 +45,7 @@ import { ErrorPage, Layout, THEME_SCRIPT } from './views/layout.tsx';
 import { MePage } from './views/me.tsx';
 import { UserPage } from './views/user.tsx';
 import { PushKeyProvider } from './views/site.tsx';
+import { personColors } from './views/person.ts';
 import { groupIdFromWebhook, verifyLineSignature } from './notify/line.ts';
 import {
 	GROUP_ID_KEY,
@@ -352,11 +353,14 @@ app.get('/', async (c) => {
 	// "what is in this month" — it stays anchored to today while someone pages
 	// through months, so it is fetched on its own rather than filtered out of
 	// the grid's data.
-	const [entries, holidays, types, upcoming] = await Promise.all([
+	const [entries, holidays, types, upcoming, users] = await Promise.all([
 		db.listLeaveInRange(c.env.DB, from, to),
 		db.listHolidays(c.env.DB, from, to),
 		leaveTypesOf(c),
 		db.listLeaveInRange(c.env.DB, today, addDays(today, UPCOMING_DAYS)),
+		// Every user, deactivated ones included, because colours are handed out
+		// in sign-up order and leaving someone out would shift everyone after.
+		db.listUsers(c.env.DB),
 	]);
 
 	return page(
@@ -369,6 +373,7 @@ app.get('/', async (c) => {
 			holidays={holidays}
 			types={types}
 			upcoming={upcoming}
+			colors={personColors(users)}
 			today={today}
 			version={c.env.CF_VERSION_METADATA?.id}
 			error={flashOf(c.get('flash'), 'err')}

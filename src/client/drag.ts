@@ -54,10 +54,14 @@ if (grid) {
 	let dropCell: HTMLElement | null = null;
 
 	function cellAt(x: number, y: number): HTMLElement | null {
-		// Elements under the pointer, not the chip being dragged (pointer capture
-		// keeps events on it) or the ghost (pointer-events: none already).
-		const el = document.elementFromPoint(x, y);
-		return el?.closest<HTMLElement>('.cell') ?? null;
+		// The day cell under the pointer, looking through whatever is on top. The
+		// bars sit in a layer above the cells, inside the week's first cell, so
+		// the topmost element's own cell would be that first day wherever on the
+		// bar the pointer was. Every cell has exactly one `.cell-add`, covering it.
+		for (const el of document.elementsFromPoint(x, y)) {
+			if (el.classList.contains('cell-add')) return el.closest<HTMLElement>('.cell');
+		}
+		return null;
 	}
 
 	function dateOf(cell: HTMLElement): string | null {
@@ -116,7 +120,9 @@ if (grid) {
 		const chip = (e.target as HTMLElement).closest<HTMLAnchorElement>('.chip');
 		if (!chip || chip.getAttribute('data-can-edit') !== '1') return;
 
-		const cell = chip.closest<HTMLElement>('.cell');
+		// The day that was grabbed, not the bar's first day: dragging a five-day
+		// bar by its Thursday and dropping it on Friday moves it by one day.
+		const cell = cellAt(e.clientX, e.clientY);
 		originChip = chip;
 		grabDate = cell ? (dateOf(cell) ?? '') : '';
 		startX = e.clientX;

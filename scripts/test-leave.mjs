@@ -15,7 +15,9 @@ import {
 	round,
 	validateBooking,
 	visibleNote,
+	weekLanes,
 } from '../src/domain/leave.ts';
+import { initials, PERSON_COLORS, personColor, personColors } from '../src/views/person.ts';
 import { parseLeaveTypeForm } from '../src/domain/leaveTypes.ts';
 import { defaultDisplayName } from '../src/repo/db.ts';
 
@@ -234,6 +236,77 @@ eq('byDate: two people on one day', two.get('2026-08-18').length, 2);
 
 // A range crossing a month boundary must not drop days.
 eq('byDate: spans month end', byDate([entry({ start_date: '2026-08-30', end_date: '2026-09-02' })]).size, 4);
+
+// ---------------------------------------------------------------------------------------
+// Bars: a week's bookings as pieces in the fewest non-overlapping rows.
+// The week below is Mon 17 – Sun 23 August 2026.
+// ---------------------------------------------------------------------------------------
+
+const WEEK = ['2026-08-17', '2026-08-18', '2026-08-19', '2026-08-20', '2026-08-21', '2026-08-22', '2026-08-23'];
+const piece = (segs, id) => segs.find((s) => s.entry.id === id);
+{
+	const [s] = weekLanes(WEEK, [entry()]);
+	eq('lanes: a booking starts in its own column', s.col, 0);
+	eq('lanes: and covers its days as one piece', s.span, 3);
+	eq('lanes: alone, it takes the top row', s.lane, 0);
+	eq('lanes: and has both ends here', `${s.continuesBefore}/${s.continuesAfter}`, 'false/false');
+}
+{
+	const segs = weekLanes(WEEK, [entry(), entry({ id: 'e2', display_name: 'B', start_date: '2026-08-18', end_date: '2026-08-18' })]);
+	eq('lanes: two that share a day stack', `${piece(segs, 'e1').lane}/${piece(segs, 'e2').lane}`, '0/1');
+}
+{
+	const segs = weekLanes(WEEK, [entry(), entry({ id: 'e2', display_name: 'B', start_date: '2026-08-20', end_date: '2026-08-21' })]);
+	eq('lanes: two that do not overlap share a row', `${piece(segs, 'e1').lane}/${piece(segs, 'e2').lane}`, '0/0');
+}
+{
+	// Same start: the longer takes the top row, so a long absence stays straight.
+	const segs = weekLanes(WEEK, [
+		entry({ id: 'short', display_name: 'A', end_date: '2026-08-17' }),
+		entry({ id: 'long', display_name: 'Z', end_date: '2026-08-21' }),
+	]);
+	eq('lanes: the longer of two same-day starts goes on top', piece(segs, 'long').lane, 0);
+}
+{
+	const [s] = weekLanes(WEEK, [entry({ start_date: '2026-08-12', end_date: '2026-08-26' })]);
+	eq('lanes: a booking from the week before is cut at the start', s.col, 0);
+	eq('lanes: and covers the whole week', s.span, 7);
+	eq('lanes: flagged as carrying on at both ends', `${s.continuesBefore}/${s.continuesAfter}`, 'true/true');
+}
+eq('lanes: a booking outside the week is left out', weekLanes(WEEK, [entry({ start_date: '2026-08-24', end_date: '2026-08-25' })]).length, 0);
+{
+	// Order must not depend on the order the rows came back from the database.
+	const a = weekLanes(WEEK, [entry({ id: 'x', display_name: 'Xa' }), entry({ id: 'y', display_name: 'Ya' })]);
+	const b = weekLanes(WEEK, [entry({ id: 'y', display_name: 'Ya' }), entry({ id: 'x', display_name: 'Xa' })]);
+	eq('lanes: the same layout whatever order the rows arrive in', `${piece(a, 'x').lane}${piece(a, 'y').lane}`, `${piece(b, 'x').lane}${piece(b, 'y').lane}`);
+}
+
+// ---------------------------------------------------------------------------------------
+// Person badges.
+// ---------------------------------------------------------------------------------------
+
+eq('badge: the same email always gets the same colour', personColor('somchai@example.com'), personColor('somchai@example.com'));
+eq('badge: case and stray spaces do not change it', personColor(' Somchai@Example.com '), personColor('somchai@example.com'));
+check('badge: always one of the checked colours', ['a@x', 'b@x', 'c@x', 'd@x', 'e@x'].every((e) => PERSON_COLORS.includes(personColor(e))), 'off-palette');
+check(
+	'badge: ten people spread over several colours',
+	new Set(Array.from({ length: 10 }, (_, i) => personColor(`person${i}@example.com`))).size >= 5,
+	'too few distinct colours',
+);
+{
+	const roster = Array.from({ length: 10 }, (_, i) => ({ email: `p${i}@example.com`, created_at: `2026-01-${String(i + 1).padStart(2, '0')}` }));
+	const colours = personColors(roster);
+	eq('badge: the first nine to sign up all get different colours', new Set(roster.slice(0, 9).map((u) => colours.get(u.email))).size, 9);
+	eq('badge: the tenth wraps round to the first colour', colours.get('p9@example.com'), colours.get('p0@example.com'));
+	const shuffled = personColors([...roster].reverse());
+	check('badge: sign-up order decides, not the order rows arrive in', roster.every((u) => colours.get(u.email) === shuffled.get(u.email)), 'order-dependent');
+	const joined = personColors([...roster, { email: 'new@example.com', created_at: '2026-12-01' }]);
+	check('badge: somebody joining changes nobody else\'s colour', roster.every((u) => colours.get(u.email) === joined.get(u.email)), 'colours shifted');
+}
+eq('initials: two words', initials('Somchai Pong'), 'SP');
+eq('initials: one word', initials('Admin'), 'A');
+eq('initials: lower case is raised', initials('parkpoom p'), 'PP');
+eq('initials: nothing to work with', initials('   '), '?');
 
 const halves = entry({ start_half: 'pm', end_half: 'am' });
 eq('halfOn: start day', halfOn(halves, '2026-08-17'), 'pm');
