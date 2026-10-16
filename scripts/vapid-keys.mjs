@@ -47,7 +47,8 @@ Next steps:
 
        npx wrangler secret put VAPID_PRIVATE_KEY --config wrangler.local.jsonc
 
-  3. Deploy, then turn notifications on from /me.
+  3. Deploy, then click the bell beside the light/dark toggle, turn
+     notifications on, and press "Send a test".
 
 Do not regenerate this pair later: every existing subscription is bound to it
 and would silently stop working.

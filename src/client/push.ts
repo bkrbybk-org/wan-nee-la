@@ -114,7 +114,30 @@ if (card && bell) {
 			return;
 		}
 
-		const sub = await (await registration()).pushManager.getSubscription();
+		const reg = await registration();
+		let sub = await reg.pushManager.getSubscription();
+
+		// A subscription is bound to the public key it was made with. After the
+		// deployment's keypair changes, this browser still holds one made with the
+		// old key: every push to it is refused, yet it would read as "on" here
+		// and "Turn on" would reuse it. Move it to the current key — silently
+		// when permission is already granted, since the reader asked for this
+		// once and should not have to notice a key rotation.
+		if (sub && !madeWithCurrentKey(sub)) {
+			const stale = sub.endpoint;
+			await sub.unsubscribe();
+			await post('/api/v1/push/unsubscribe', { endpoint: stale });
+			sub = null;
+			if (Notification.permission === 'granted') {
+				const fresh = await reg.pushManager.subscribe({
+					userVisibleOnly: true,
+					applicationServerKey: keyBytes(vapidKey) as BufferSource,
+				});
+				if ((await post('/api/v1/push/subscribe', fresh.toJSON())).ok) sub = fresh;
+				else await fresh.unsubscribe();
+			}
+		}
+
 		if (sub) {
 			show(S.on);
 			mark('on', S.on);
@@ -124,6 +147,19 @@ if (card && bell) {
 			mark('off', S.off);
 			buttons({ enable: true });
 		}
+	}
+
+	/**
+	 * Whether this browser's subscription was made with the key the server now
+	 * signs with. A browser that does not report the key is given the benefit of
+	 * the doubt: re-subscribing it on every visit would be worse than a stale one.
+	 */
+	function madeWithCurrentKey(sub: PushSubscription): boolean {
+		const held = sub.options?.applicationServerKey;
+		if (!held) return true;
+		const a = new Uint8Array(held);
+		const b = keyBytes(vapidKey);
+		return a.length === b.length && a.every((v, i) => v === b[i]);
 	}
 
 	/** base64url, as the server stores it, to the bytes `subscribe` wants. */
