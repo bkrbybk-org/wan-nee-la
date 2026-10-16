@@ -330,7 +330,7 @@ Accepted. It is the same information the shared calendar shows to every colleagu
 
 ---
 
-## #23 — Delivery to a real push service is unverified `open`
+## #23 — Delivery to a real push service is unverified `resolved`
 
 The encryption is checked against RFC 8291's own worked example byte for byte, and the VAPID token is verified against its own key, so the bytes leaving the Worker are right. What has not been observed is a push service — FCM, Mozilla, Apple — accepting one and a device showing it.
 
@@ -341,6 +341,10 @@ It cannot be tested from a terminal: it needs a real browser subscription, which
 **As of 2026-09-13** `VAPID_PRIVATE_KEY` is set in production, together with a matching public key set directly on the Worker rather than in `wrangler.local.jsonc`. **The 2026-09-18 deploy overwrote that public key** with the older one the config file still held, so the pair no longer matches and a push would be refused (#40). No browser had subscribed yet, so nobody lost anything; `push_subscriptions` and `notification_runs` are both still empty. A local run with a throwaway keypair confirmed the rest of the path — card offered, subscription stored, run claimed, delivery attempted and recorded — so the remaining unknown is exactly a real push service and a real device.
 
 Closing this is one click once the secret is set: sign in, turn notifications on from the bell in the header (it lived on `/me` until 2026-10-14), press **Send a test**. If a push service rejects the request its status and body are surfaced verbatim in the response and in `/admin`, which is where a wrong `VAPID_SUBJECT` or a malformed key would show up.
+
+**Resolved 2026-10-14/15.** The owner generated a fresh keypair (`npm run vapid`), put the public half and a real `VAPID_SUBJECT` in `wrangler.local.jsonc`, stored the private half with `wrangler secret put`, and deployed. Browsers then subscribed through both Google (FCM, Chrome) and Apple (`web.push.apple.com`, iPhone and Safari), **Send a test** returned 200 three times — the route answers 200 only when a push service accepted the message — and the scheduled 09:00 digest on 2026-10-15 recorded `sent` for one person away. That is the whole chain observed in production: cron, digest, VAPID signature, RFC 8291 encryption, and two different push services accepting the result.
+
+One bug surfaced on the way and is fixed: a browser keeps the subscription it made with the *old* public key after a rotation, and the panel then read "On" while every push to it was refused. `push.ts` now compares the subscription's key with the current one on every load and quietly re-subscribes when they differ (2026-10-14). The live log showed exactly that — each device dropping its old subscription and making a new one — the first time the pages were reloaded after the new key went out.
 
 ---
 
@@ -425,11 +429,13 @@ Not covered: `Strict-Transport-Security`, which belongs at the zone rather than 
 
 ---
 
-## #31 — Service worker registration is unverified `open`
+## #31 — Service worker registration is unverified `resolved`
 
 Same shape as #23: the browser used during development refuses to install service workers, so `/sw.js` has never actually registered. It is served correctly, and no CSP violation is raised when registration is attempted, so the failure is the environment's rather than the policy's — but that is an inference, not an observation.
 
 Closed by the same single action as #23: sign in on a real browser, turn notifications on, press **Send a test**.
+
+**Resolved 2026-10-14.** A push subscription can only be made through a registered service worker, and three were made — Chrome, iPhone and Safari — so `/sw.js` registered on all three under the production CSP.
 
 ---
 

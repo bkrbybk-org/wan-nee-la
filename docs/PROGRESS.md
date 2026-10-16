@@ -8,14 +8,15 @@ Updated: 2026-09-13
 
 ## Status
 
-Deployed and serving. Version `16f0cef8-d917-4b84-91ff-152a26870384`, deployed 2026-10-14 with `npm run ship`, D1 `<database-id>` in APAC, behind Cloudflare Access on `<hostname>`. Production checks passed: the new version serves all traffic, `/health` and `/` both 302 to Access, production D1 answers, and migration 0011 is applied with every type still offered. That deploy also carried the 09:00 weekday schedule — production had still been on the old daily `0 1 * * *` cron until then.
+Deployed and serving. Version `172f5f05-e7bb-44d5-8620-88b4c4ef7fc2`, deployed 2026-10-14 with `npm run ship`, D1 `<database-id>` in APAC, behind Cloudflare Access on `<hostname>`. Production checks passed: the new version serves all traffic, `/health` and `/` both 302 to Access, production D1 answers, and migration 0011 is applied with every type still offered. That deploy also carried the 09:00 weekday schedule — production had still been on the old daily `0 1 * * *` cron until then.
 
 **In real use.** Ten active users, 20 confirmed bookings, 26 holidays, four leave types, 31 rows in the audit trail. That changes what matters here: the shared surfaces now have a real audience, so note visibility, the audit trail and the privacy rules on `/u/:email` are load-bearing rather than theoretical.
 
-Two optional channels are still inert, both needing the owner rather than more code:
+**Browser notifications work in production** (2026-10-14/15): Chrome, iPhone and Safari subscribed, test sends were accepted by Google's and Apple's push services, and the 09:00 digest on 2026-10-15 was the first scheduled notification delivered (ISSUES #23, #31). Each colleague now has to turn the bell on in their own browser; on iPhone, from the Home Screen app.
 
-1. **Browser notifications.** The code is finished and verified locally end to end; the private key has been set since 2026-09-13 and the matching public key was restored on 2026-09-21 after a deploy overwrote it (ISSUES #40). Nothing has ever been delivered, because nobody has subscribed — turning notifications on from the header bell and pressing **Send a test** is what closes #23 and #31.
-2. **The LINE post.** Off by default behind `LINE_ENABLED`, and not wanted for now. Would need a Messaging API channel, an Access Bypass rule on `/line/webhook`, two secrets and the flag. Billed per group member (#2).
+One optional channel is still inert, needing the owner rather than more code:
+
+1. **The LINE post.** Off by default behind `LINE_ENABLED`, and not wanted for now. Would need a Messaging API channel, an Access Bypass rule on `/line/webhook`, two secrets and the flag. Billed per group member (#2).
 
 ---
 
@@ -191,7 +192,7 @@ What follows is decisions, unfinished configuration, accepted trade-offs and deb
 
 ### Configuration outstanding
 
-- **Browser notifications are unproven.** The keys are paired again (#40) and `VAPID_SUBJECT` is still the placeholder `mailto:dev@example.com`, which a push service may or may not accept. Subscribe from the header bell, press **Send a test**, and set a real subject if it complains. That is the only way to close #23 and #31.
+- **Colleagues have to opt in to notifications.** Push is proven in production (#23), but only browsers that turn the bell on receive the 09:00 digest. Do not regenerate the keypair: every subscription is bound to it, and a rotation now costs everyone a reload — the page re-subscribes itself when it notices — rather than nothing.
 - **LINE is switched off**, deliberately, by `LINE_ENABLED`. Turning it on needs the channel, the Access Bypass rule on `/line/webhook`, the two secrets, and the flag.
 - **Thai lunar holidays need entering each year** (#10). Only fixed-date holidays are seeded; the paste-a-list importer on `/admin` makes it a one-minute job, but nothing *fetches* the announcement. A yearly reminder would close it.
 
@@ -252,6 +253,7 @@ Features — iCal, CSV export, team grouping, coverage scoped to a team — are 
 
 ## Change log
 
+- **2026-10-15** — **The first scheduled notification was delivered**: the 09:00 digest recorded `sent` for one person away. The day before, the owner replaced the VAPID keypair and set a real contact address; Chrome, iPhone and Safari subscribed, and test sends were accepted by both Google's and Apple's push services. That closes ISSUES #23 and #31, the last unverified claims in the repo. A browser holding a subscription from the *previous* key now notices and re-subscribes itself on the next page load instead of reading "On" while every push to it is refused.
 - **2026-10-14** — Browser notifications moved from a card on `/me` to a bell beside the light/dark toggle, on every page. Like the theme, they are a per-browser setting rather than a fact about someone's leave. The icon shows the state without opening anything: ringing when on, plain when off, struck through when the browser has blocked them or cannot do them. It opens a native popover from the corner, holding the same controls the card had, and is hidden without JavaScript, since subscribing is script. The push key reaches the shared header through a context set where each page is rendered (`src/views/site.tsx`), not as a prop through seven pages that never use it.
 - **2026-09-30** — "+N more" on a full day opens a list of everyone away that day, with their leave type and any half day; a name in it opens the same detail popup a chip does. A native popover, so it needs no script — the calendar still works with JavaScript off — and the browser handles Escape, click-outside and returning focus. It lists the whole day, not only the names the cell hid.
 - **2026-09-21** — Two read-only feeds for machines, so an integration never has to scrape `/admin`: `/api/v1/holidays` (company-wide, about no person) and `/api/v1/balances` (entitlement, taken, remaining per person). Balances are the one feed a service token may read that an ordinary employee may not — an integration asking is an HR system, a colleague asking is reading everyone's sick leave. One query for the whole roster rather than one per person, the lesson from PLAN 4.2.
