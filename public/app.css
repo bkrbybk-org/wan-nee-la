@@ -1544,6 +1544,13 @@ form.inline:has(.tf-support) { margin-bottom: 28px; }
 	.bar.cont-before { border-left: 0; border-top-left-radius: 0; border-bottom-left-radius: 0; margin-left: 0; padding-left: 6px; }
 	.bar.cont-after { border-top-right-radius: 0; border-bottom-right-radius: 0; margin-right: 0; }
 	.bar.out { opacity: 0.5; }
+	/* Following one person (calendar.ts): everyone else steps back, and theirs
+	   gain a ring. Opacity, not colour, so the leave-type tint still reads. */
+	.bar, .upcoming-item, .day-more-item { transition: opacity var(--md-dur-short) var(--md-ease); }
+	.who-dim .bar:not(.who-lit),
+	.who-dim .upcoming-item:not(.who-lit),
+	.who-dim .day-more-item:not(.who-lit) { opacity: 0.28; }
+	.who-dim .bar.who-lit { box-shadow: 0 0 0 1.5px var(--md-on-surface); }
 	.bar-more { align-self: center; }
 	.chip-more { display: block; }
 	.wrap { padding: 24px; }

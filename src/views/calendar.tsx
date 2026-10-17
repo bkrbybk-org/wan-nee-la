@@ -15,7 +15,7 @@ import {
 	MONDAY,
 } from '../domain/dates.ts';
 import { byDate, halfOn, visibleNote, weekLanes, type BookingDraft, type WeekSegment } from '../domain/leave.ts';
-import { initials } from './person.ts';
+import { initials, personKey, shortName } from './person.ts';
 import { PersonColorsProvider, useColorOf } from './site.tsx';
 import type { Half, Holiday, LeaveEntry, LeaveType, User } from '../types.ts';
 import { FlashBanner, Layout } from './layout.tsx';
@@ -142,6 +142,7 @@ function UpcomingList({
 								{dayEntries.map((e) => (
 									<a
 										class={`upcoming-item ${canEdit(e) ? 'mine' : ''}`}
+										data-who={personKey(e.user_email)}
 										href={canEdit(e) ? `/leave/${e.id}/edit` : '#'}
 										aria-label={rangeLabel(e, lang)}
 										{...entryData(e, canEdit(e), visibleNote(e, user), lang)}
@@ -227,13 +228,17 @@ function WeekBars(props: {
 						style={`--chip: ${e.color}; grid-column: ${s.col + 1} / span ${s.span}; grid-row: ${s.lane + 1}`}
 						title={`${e.display_name} — ${typeLabel(e, lang)}${noteFor(e) ? `: ${noteFor(e)}` : ''}`}
 						aria-label={rangeLabel(e, lang)}
+						data-who={personKey(e.user_email)}
 						{...entryData(e, canEdit(e), noteFor(e), lang)}
 					>
 						<span class="badge" style={`--who: ${colorOf(e.user_email)}`} aria-hidden="true">
 							{initials(e.display_name)}
 						</span>
+						{/* First name and an initial: the surname is what was being cut
+						    off with an ellipsis in every cell. The tooltip, the label
+						    and the popup all keep the full name. */}
 						<span class="bar-name" aria-hidden="true">
-							{e.display_name}
+							{shortName(e.display_name)}
 							{half}
 						</span>
 					</a>
@@ -310,6 +315,7 @@ function DayMore(props: {
 						<li>
 							<a
 								class="day-more-item"
+								data-who={personKey(e.user_email)}
 								href={canEdit(e) ? `/leave/${e.id}/edit` : '#'}
 								style={`--chip: ${e.color}`}
 								aria-label={entryLabel(e, date, lang)}

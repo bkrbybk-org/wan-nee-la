@@ -37,16 +37,43 @@ export function personColors(users: readonly { email: string; created_at: string
 	return new Map(ordered.map((u, i) => [u.email, PERSON_COLORS[i % PERSON_COLORS.length]]));
 }
 
-/** A stable colour for an address with no user row, from the address itself. */
-export function personColor(email: string): string {
-	// FNV-1a: tiny, fast, and spreads short similar strings well enough that
-	// "a.b@x" and "a.c@x" do not land on neighbours.
+/** FNV-1a over the normalised address: tiny, fast, and well spread. */
+function hashOf(email: string): number {
 	let h = 0x811c9dc5;
 	for (const ch of email.trim().toLowerCase()) {
 		h ^= ch.codePointAt(0) ?? 0;
 		h = Math.imul(h, 0x01000193) >>> 0;
 	}
-	return PERSON_COLORS[h % PERSON_COLORS.length];
+	return h;
+}
+
+/** A stable colour for an address with no user row, from the address itself. */
+export function personColor(email: string): string {
+	return PERSON_COLORS[hashOf(email) % PERSON_COLORS.length];
+}
+
+/**
+ * A short opaque key for one person, for matching their bars, rows and panel
+ * entries on the page so hovering one can light up the rest.
+ *
+ * Not the email: the calendar keeps addresses out of the HTML every colleague
+ * receives, and a key copied from the address would put them back. This is one
+ * way — the page can tell two entries are the same person, not who they are
+ * beyond the name already shown.
+ */
+export function personKey(email: string): string {
+	return hashOf(email).toString(36);
+}
+
+/**
+ * A name short enough for a calendar bar: the first name and the next word's
+ * initial — "Chatchai Wongdetsakul" becomes "Chatchai W.". A single word is
+ * left alone. The full name stays in the bar's tooltip, its label and the popup.
+ */
+export function shortName(name: string): string {
+	const parts = name.trim().split(/\s+/).filter(Boolean);
+	if (parts.length < 2) return name.trim();
+	return `${parts[0]} ${Array.from(parts[1])[0]}.`;
 }
 
 /** Up to two letters, e.g. "Somchai Pong" -> "SP". Thai names keep their first characters. */

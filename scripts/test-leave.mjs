@@ -17,7 +17,7 @@ import {
 	visibleNote,
 	weekLanes,
 } from '../src/domain/leave.ts';
-import { initials, PERSON_COLORS, personColor, personColors } from '../src/views/person.ts';
+import { initials, PERSON_COLORS, personColor, personColors, personKey, shortName } from '../src/views/person.ts';
 import { parseLeaveTypeForm } from '../src/domain/leaveTypes.ts';
 import { defaultDisplayName } from '../src/repo/db.ts';
 
@@ -303,6 +303,13 @@ check(
 	const joined = personColors([...roster, { email: 'new@example.com', created_at: '2026-12-01' }]);
 	check('badge: somebody joining changes nobody else\'s colour', roster.every((u) => colours.get(u.email) === joined.get(u.email)), 'colours shifted');
 }
+eq('short name: first name and surname initial', shortName('Chatchai Wongdetsakul'), 'Chatchai W.');
+eq('short name: a single word is left alone', shortName('Admin'), 'Admin');
+eq('short name: already short stays readable', shortName('Parkpoom P'), 'Parkpoom P.');
+eq('short name: extra spaces are ignored', shortName('  Soipachara   Mekalai '), 'Soipachara M.');
+eq('person key: the same person always matches', personKey('a@example.com'), personKey(' A@Example.com'));
+check('person key: different people do not', personKey('a@example.com') !== personKey('b@example.com'), 'collided');
+check('person key: carries nothing of the address', !personKey('somchai@example.com').includes('somchai'), 'leaks the address');
 eq('initials: two words', initials('Somchai Pong'), 'SP');
 eq('initials: one word', initials('Admin'), 'A');
 eq('initials: lower case is raised', initials('parkpoom p'), 'PP');

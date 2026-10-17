@@ -137,3 +137,32 @@ document.addEventListener('click', (e) => {
 
 	open(entryDialog);
 });
+
+/**
+ * Follow one person across the page: pointing at any of their bars, Upcoming
+ * rows or "+N more" rows lights up all of them and dims everyone else.
+ *
+ * Matched on `data-who`, an opaque key per person rather than their address,
+ * which the calendar keeps out of its HTML. Keyboard focus does the same as
+ * hovering, so it is not a mouse-only feature. Only on devices that can hover:
+ * on a phone a tap is already an action, and the grid there is dots anyway.
+ */
+if (window.matchMedia('(hover: hover)').matches) {
+	let following = '';
+	const follow = (key: string) => {
+		if (key === following) return;
+		following = key;
+		document.body.classList.toggle('who-dim', key !== '');
+		for (const el of document.querySelectorAll('.who-lit')) el.classList.remove('who-lit');
+		// The key is base-36 digits, so it is safe inside the selector as is.
+		if (key) for (const el of document.querySelectorAll(`[data-who="${key}"]`)) el.classList.add('who-lit');
+	};
+	const keyFrom = (target: EventTarget | null) =>
+		(target as HTMLElement | null)?.closest<HTMLElement>('[data-who]')?.dataset.who ?? '';
+
+	document.addEventListener('pointerover', (e) => follow(keyFrom(e.target)));
+	document.addEventListener('focusin', (e) => follow(keyFrom(e.target)));
+	document.addEventListener('focusout', () => follow(''));
+	// Leaving the window must not strand the page dimmed.
+	document.documentElement.addEventListener('pointerleave', () => follow(''));
+}

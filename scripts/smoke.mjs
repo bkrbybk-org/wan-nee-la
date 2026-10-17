@@ -1163,6 +1163,7 @@ async function main() {
 	// A three-day booking is one bar across three columns, not three chips, with
 	// the person's badge on it. In the Upcoming list it is one row, not three.
 	const barMon = clearFutureMonday(7);
+	d1(`INSERT INTO users (email, display_name, is_admin, active, created_at) VALUES ('bar-person@example.com', 'Barbara Personwonglong', 0, 1, '2026-01-01')`);
 	d1(
 		`INSERT INTO leave_requests (id, user_email, leave_type_id, start_date, end_date, start_half, end_half, days_total, note, note_private, status, created_at)
 		 VALUES ('smoke-bar-1', 'bar-person@example.com', 1, '${barMon}', '${addDays(barMon, 2)}', 'full', 'full', 3, NULL, 1, 'confirmed', '${barMon}')`,
@@ -1182,7 +1183,23 @@ async function main() {
 	eq('upcoming: a three-day booking is one row, not three', (upcoming.match(/data-entry="smoke-bar-1"/g) ?? []).length, 1);
 	check('upcoming: and says how long', /3 days/.test(upcoming), 'no day count');
 	check('upcoming: with the badge', upcoming.includes('class="badge"'), 'no badge');
+
+	// U5: the bar shows "First L.", the tooltip and popup the full name.
+	const barTag = bars[0] ?? '';
+	check('bars: show a short name', barHtml.slice(barAt, barAt + 900).includes('Barbara P.'), 'full name in the bar');
+	check('bars: keep the full name in the tooltip', /title="Barbara Personwonglong/.test(barTag), barTag);
+	check('bars: and for the popup', /data-name="Barbara Personwonglong"/.test(barTag), barTag);
+	check('upcoming: keeps the full name', upcoming.includes('Barbara Personwonglong'), 'shortened in the list');
+
+	// U2: one key per person ties their bar to their Upcoming row, and it is not
+	// their address — the calendar keeps those out of its HTML.
+	const barKey = /data-who="([^"]+)"/.exec(barTag)?.[1];
+	const rowKey = /data-who="([^"]+)"[^>]*data-entry="smoke-bar-1"|data-entry="smoke-bar-1"[^>]*data-who="([^"]+)"/.exec(upcoming);
+	check('follow: each bar names its person', Boolean(barKey), barTag);
+	eq('follow: the same key on their Upcoming row', rowKey?.[1] ?? rowKey?.[2], barKey);
+	check('follow: the key is not the address', !/data-who="[^"]*@/.test(barHtml) && !barHtml.includes('bar-person'), 'address in the page');
 	d1(`DELETE FROM leave_requests WHERE id = 'smoke-bar-1'`);
+	d1(`DELETE FROM users WHERE email = 'bar-person@example.com'`);
 
 	// Nothing booked in the window: one line, not two cards each saying nothing.
 	const quietHtml = await (await fetch(`${BASE}/`)).text();
