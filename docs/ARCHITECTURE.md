@@ -279,6 +279,10 @@ The trade-off: a screen reader meets a week's bars inside its first day cell. Ea
 
 **Who is who.** The stripe and tint still mean the leave type; a badge with the person's initials says whose (`src/views/person.ts`). Colours are handed out in sign-up order — every user row, deactivated included, since rows are never deleted — so nobody shares one until there are more than nine people, and nobody's changes when someone joins. A hash of the email was tried first and put three of eight people on one colour. All nine carry white at WCAG AA in both themes and avoid the leave types' colours; `scripts/palette.mjs` checks both.
 
+**Bars show "First L."** — "Chatchai W." rather than a surname cut off by an ellipsis in every cell. The tooltip, the bar's label, the popup and the Upcoming list keep the full name.
+
+**Following one person.** Pointing at any of someone's bars, Upcoming rows or "+N more" rows lights all of them and dims everyone else (`src/client/calendar.ts`); keyboard focus does the same. They are matched on `data-who`, a one-way hash of the address (`personKey`) — the page can tell two entries belong to one person without carrying the address, which the calendar keeps out of its HTML. Only on devices that can hover.
+
 **Holidays** are hatched, not tinted: the tertiary teal they used sat beside planned medical's green and read as the same thing. Leave types own colour; a holiday owns a texture.
 
 **"+N more"** opens a native popover (`popovertarget`), not a script-built dialog: no JavaScript is needed to open or dismiss it, the browser handles Escape, click-outside and returning focus, and the top layer means the cell's clipping cannot cut it off. Its rows carry the same `data-entry` attributes as chips, so a click opens the same detail popup — but they are not `.chip`, which drag-to-move would otherwise pick up.

@@ -8,7 +8,7 @@ Updated: 2026-09-13
 
 ## Status
 
-Deployed and serving. Version `f1a81d46-7214-40ca-816d-c2c2a1d731c6`, deployed 2026-10-16 with `npm run ship`, D1 `<database-id>` in APAC, behind Cloudflare Access on `<hostname>`. Production checks passed: the new version serves all traffic, `/health` and `/` both 302 to Access, production D1 answers, and migration 0011 is applied with every type still offered. That deploy also carried the 09:00 weekday schedule — production had still been on the old daily `0 1 * * *` cron until then.
+Deployed and serving. Version `6902d306-7036-4b46-a014-0e56b60fc8e6`, deployed 2026-10-17 with `npm run ship`, D1 `<database-id>` in APAC, behind Cloudflare Access on `<hostname>`. Production checks passed: the new version serves all traffic, `/health` and `/` both 302 to Access, production D1 answers, and migration 0011 is applied with every type still offered. That deploy also carried the 09:00 weekday schedule — production had still been on the old daily `0 1 * * *` cron until then.
 
 **In real use.** Ten active users, 20 confirmed bookings, 26 holidays, four leave types, 31 rows in the audit trail. That changes what matters here: the shared surfaces now have a real audience, so note visibility, the audit trail and the privacy rules on `/u/:email` are load-bearing rather than theoretical.
 
@@ -98,7 +98,7 @@ Two consequences worth remembering:
 
 ## What is built
 
-**Calendar** — a month grid at every width, saying different things at each. On a laptop each booking is one bar across the days it covers, with a badge of the person's initials in a colour of their own — the stripe still means the leave type — and holidays are hatched rather than tinted. The page fits the window: the body stops scrolling and the grid's rows share whatever height is left, so the last week is never below the fold. On a phone the same cell is ~48px, so each person away is a coloured dot and the whole cell is one tap target that jumps to that day in the list underneath. Click an empty day to book it, click an entry to open a detail popup, drag an entry to move it (desktop). A day with more people than fit shows "+N more", which opens the whole day's list. Everything is a real link first; the dialogs are an upgrade, and the calendar works with scripting off. A month/year picker sits beside the heading, because stepping is fine for next week and useless for next January. The prev/next buttons sit ahead of the month name, so they do not move as the name changes length.
+**Calendar** — a month grid at every width, saying different things at each. On a laptop each booking is one bar across the days it covers, labelled "First L.", with a badge of the person's initials in a colour of their own — the stripe still means the leave type — and holidays are hatched rather than tinted. Pointing at anyone's bar or row lights up all of theirs across the month and the Upcoming list. The page fits the window: the body stops scrolling and the grid's rows share whatever height is left, so the last week is never below the fold. On a phone the same cell is ~48px, so each person away is a coloured dot and the whole cell is one tap target that jumps to that day in the list underneath. Click an empty day to book it, click an entry to open a detail popup, drag an entry to move it (desktop). A day with more people than fit shows "+N more", which opens the whole day's list. Everything is a real link first; the dialogs are an upgrade, and the calendar works with scripting off. A month/year picker sits beside the heading, because stepping is fine for next week and useless for next January. The prev/next buttons sit ahead of the month name, so they do not move as the name changes length.
 
 **Upcoming list** — everything from today to 90 days out, one row per booking under the day it starts ("19 – 30 Oct · 9 days"; anything already under way sits under Today, "until 19 Oct"), with sticky headings, with a caption saying it is anchored to today. Shown from 768px: a sidebar once the window is at least 1024×700, stacked under the grid otherwise — it used to vanish entirely on any screen under 700px tall. Wherever it shows it replaces the who-summary card, which said the same thing in a worse shape. Fetched separately from the grid rather than filtered out of it, so paging back to April does not change the answer to "who is away soon".
 
@@ -142,17 +142,17 @@ Two consequences worth remembering:
 
 ## Verification
 
-**718 automated assertions**, all green. CI runs them, and lint, on every push and pull request.
+**732 automated assertions**, all green. CI runs them, and lint, on every push and pull request.
 
 | Suite | Assertions | Covers |
 | --- | --- | --- |
 | `test-dates.mjs` | 114 | Bangkok boundary, half-days, weekends, holidays, month grids |
-| `test-leave.mjs` | 139 | Booking rules, balances and the per-year allowance fallback, retired types, the admin leave-type form, calendar placement, note visibility, the rejected-booking draft codec |
+| `test-leave.mjs` | 146 | Booking rules, balances and the per-year allowance fallback, retired types, the admin leave-type form, calendar placement, note visibility, the rejected-booking draft codec |
 | `test-line.mjs` | 42 | Webhook signature, group-id extraction, daily and week-ahead digest text |
 | `test-push.mjs` | 29 | RFC 8291 encryption against the spec's worked example, VAPID token and signature, the `วันนี้ … ลา` title |
 | `test-holidays.mjs` | 30 | Parsing a pasted holiday list, and its bounds |
 | `test-i18n.mjs` | 27 | Lookup, placeholders, plurals, and the catalogue's own health |
-| `smoke.mjs` | 337 | The HTTP layer — see below |
+| `smoke.mjs` | 344 | The HTTP layer — see below |
 | `check-openapi.mjs` | — | Each of the 34 routes is either documented in `openapi.yaml` or deliberately listed as not, and the API Shield 3.0.3 copy still builds from it |
 
 The smoke suite boots a real worker against a scratch database and exercises what pure functions cannot reach: the CSRF guard, ownership checks on edit and cancel, booking rules over real requests, the open-redirect guards on `returnTo` **and on the `Referer` header**, note visibility across two identities, the audit trail's contents, the security headers, digest decisions, the webhook signature, push subscription ownership, admin authorisation, undo and its re-validation, next-year and cross-year quota, a LINE channel switched off by its flag, adding, retiring and deleting leave types, and history pruning through the real scheduled handler.
@@ -169,7 +169,7 @@ It is built against its own worst failure mode — passing while testing nothing
 
 ## Open items
 
-**No known bugs.** The push keypair mismatch (#40) was repaired on 2026-09-21. 718 assertions are green and `npm audit` is clean. The 2026-08-25 audit and the 2026-09-13 review both found and fixed what they turned up — the second a quota overdraw when moving a booking across New Year (#36) — and each fix is covered by a test or, where a test could not reach it, recorded in [ISSUES.md](ISSUES.md).
+**No known bugs.** The push keypair mismatch (#40) was repaired on 2026-09-21. 732 assertions are green and `npm audit` is clean. The 2026-08-25 audit and the 2026-09-13 review both found and fixed what they turned up — the second a quota overdraw when moving a booking across New Year (#36) — and each fix is covered by a test or, where a test could not reach it, recorded in [ISSUES.md](ISSUES.md).
 
 What follows is decisions, unfinished configuration, accepted trade-offs and debt — not defects.
 
@@ -253,6 +253,7 @@ Features — iCal, CSV export, team grouping, coverage scoped to a team — are 
 
 ## Change log
 
+- **2026-10-17** — Bars show "Chatchai W." instead of a surname cut off in every cell; tooltips, popups and the Upcoming list keep full names. Pointing at anyone's bar, Upcoming row or "+N more" row lights up all of theirs and dims everyone else, matched on a one-way key so the page still carries no addresses.
 - **2026-10-16** — The calendar says who, not only what. On a laptop each booking is one bar across the days it covers, squared off where it crosses a week edge, so a fortnight away is one line rather than ten chips. Each bar carries the person's initials on a colour of their own, handed out in sign-up order (a hash of the email was tried first and put three of eight people on one colour). Holidays are hatched instead of teal, which had read as planned medical leave. The Upcoming list shows each booking once, with its range and length, instead of once per day. Drag-to-move now moves by the distance dragged from the day grabbed, not from the bar's first day. Phones are unchanged. Spotted on the way, not fixed: on a 375px phone the "Today" button is clipped at the right edge of the month header.
 - **2026-10-15** — **The first scheduled notification was delivered**: the 09:00 digest recorded `sent` for one person away. The day before, the owner replaced the VAPID keypair and set a real contact address; Chrome, iPhone and Safari subscribed, and test sends were accepted by both Google's and Apple's push services. That closes ISSUES #23 and #31, the last unverified claims in the repo. A browser holding a subscription from the *previous* key now notices and re-subscribes itself on the next page load instead of reading "On" while every push to it is refused.
 - **2026-10-14** — Browser notifications moved from a card on `/me` to a bell beside the light/dark toggle, on every page. Like the theme, they are a per-browser setting rather than a fact about someone's leave. The icon shows the state without opening anything: ringing when on, plain when off, struck through when the browser has blocked them or cannot do them. It opens a native popover from the corner, holding the same controls the card had, and is hidden without JavaScript, since subscribing is script. The push key reaches the shared header through a context set where each page is rendered (`src/views/site.tsx`), not as a prop through seven pages that never use it.
