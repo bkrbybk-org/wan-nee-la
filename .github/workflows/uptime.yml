@@ -29,7 +29,8 @@ permissions:
 
 jobs:
   health:
-    runs-on: ubuntu-latest
+    # Pinned like ci.yml's jobs.
+    runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:
       - name: Check /health

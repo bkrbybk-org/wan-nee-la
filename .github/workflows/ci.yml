@@ -12,6 +12,11 @@ name: CI
 # moved 75 of aquasecurity/trivy-action's tags to a credential stealer, and a
 # tag is a mutable pointer that a scanner job would have handed a runner token.
 # GitHub's own actions stay on major tags, which is what they document.
+#
+# The runner image is pinned for the same reason: `ubuntu-latest` moved to
+# Ubuntu 26 from 2026-10-19, and a new image is a change worth making on
+# purpose, in its own commit, rather than discovering as a red build on an
+# unrelated one.
 on:
   push:
     branches: [main]
@@ -23,7 +28,7 @@ permissions:
 jobs:
   check:
     name: typecheck, tests, build
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     env:
       # Wrangler phones home about usage by default; a CI runner has no user to
       # collect telemetry about.
@@ -93,7 +98,7 @@ jobs:
 
   hygiene:
     name: nothing sensitive committed
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v7
 
@@ -131,7 +136,7 @@ jobs:
 
   scan:
     name: vulnerabilities, secrets, misconfiguration
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     permissions:
       contents: read
       # Only to file findings under Security → Code scanning. The upload step
@@ -186,7 +191,7 @@ jobs:
 
   sonarqube:
     name: SonarQube
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     # The only job here that needs a secret. A pull request from a fork gets
     # none, so it would fail on every outside contribution — skipped there
     # instead, which leaves the fork's other checks meaningful.
