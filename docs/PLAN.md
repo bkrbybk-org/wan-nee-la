@@ -73,7 +73,7 @@ Nothing here is urgent. Ordered by cost-to-benefit.
 | ~~4.8~~ | ~~Bump Hono~~ | — | **Done** (2026-09-18): `^4.13.8`. Wrangler went to `^4.135.0` in the same pass, to clear a HIGH advisory in its bundled `sharp` that the CI Trivy gate would have failed on. |
 | ~~4.9~~ | ~~Make the smoke assertion floor self-maintaining~~ | — | **Done** (2026-09-18): the hand-kept count is gone. Every line that calls `check(` or `eq(` must run, and a miss is reported by line number. |
 | ~~4.10~~ | ~~Run `npm run lint` in CI~~ | — | **Done** (2026-09-18), beside Typecheck (ISSUES #38). |
-| 4.11 | Show the push title in the admin preview | **Sonnet** | `/admin` → Preview renders the digest body, not the `วันนี้ … ลา` title a phone actually shows. |
+| ~~4.11~~ | ~~Show the push title in the admin preview~~ | — | **Done** (2026-10-18): the preview leads with "Notification title: …", the daily `วันนี้ … ลา` or the week-ahead title. |
 | ~~4.12~~ | ~~One command for the release order~~ | — | **Done** (2026-09-18): `npm run ship` — local checks, then deploy, then production checks, stopping at the first failure. Docs, commit and push stay manual on purpose. |
 | 4.14 | Keep the API Shield schema current automatically | **Owner** | **Half done** (2026-09-21): `npm run shield:upload` uploads `dist/openapi-shield.json` through the API, with `--activate` and `--prune`. It needs a token with the API Gateway permission, which is the owner's to mint; until that exists the upload is still a dashboard errand. Wiring it into `ship` should wait until the token does. |
 | 4.13 | Warn on config drift before deploying | **Sonnet** | `wrangler deploy` overwrites Worker vars and only warns (ISSUES #40). `ship` could compare `wrangler.local.jsonc` against the live version's vars first and refuse on a difference. |
@@ -100,9 +100,10 @@ None of these are needed for the app to do its job. Rough value order.
 
 ## Suggested order
 
-1. **2.3** — `HEALTH_URL` plus a Bypass rule or service token, so the monitor starts watching.
-2. **2.4** — retire Personal leave from `/admin`, if that is still wanted.
-3. **4.13** — make `ship` refuse on config drift, so #40 cannot happen twice.
-4. **3.4** — a rate-limiting rule on `/api/v1/*`.
-5. **1.2 / 1.3** — LINE, only if browser notifications turn out not to be enough.
-6. Features, as they are actually wanted.
+1. **4.14** — upload the current Shield schema: `holidays` and `balances` are not validated at the edge yet (`npm run shield:probe`, 2026-10-18).
+2. **2.3** — `HEALTH_URL` plus a Bypass rule or service token, so the monitor starts watching.
+3. **2.4** — retire Personal leave from `/admin`, if that is still wanted.
+4. **4.13** — make `ship` refuse on config drift, so #40 cannot happen twice.
+5. **3.4** — a rate-limiting rule on `/api/v1/*`.
+6. **1.2 / 1.3** — LINE, only if browser notifications turn out not to be enough.
+7. Features, as they are actually wanted.

@@ -8,7 +8,7 @@ Updated: 2026-10-18
 
 ## Status
 
-Deployed and serving. Version `b1b37cde-8446-4f66-83d3-81a39b181704`, deployed 2026-10-18 with `npm run ship`, D1 `<database-id>` in APAC, behind Cloudflare Access on `<hostname>`. Production checks passed: the new version serves all traffic, `/health` and `/` both 302 to Access, production D1 answers, and migration 0011 is applied with every type still offered. That deploy also carried the 09:00 weekday schedule — production had still been on the old daily `0 1 * * *` cron until then.
+Deployed and serving. Version `854bf6c6-a0c6-4620-812a-f051d191a43e`, deployed 2026-10-18 with `npm run ship`, D1 `<database-id>` in APAC, behind Cloudflare Access on `<hostname>`. Production checks passed: the new version serves all traffic, `/health` and `/` both 302 to Access, production D1 answers, and migration 0011 is applied with every type still offered. That deploy also carried the 09:00 weekday schedule — production had still been on the old daily `0 1 * * *` cron until then.
 
 **In real use.** Ten active users, 20 confirmed bookings, 26 holidays, four leave types, 31 rows in the audit trail. That changes what matters here: the shared surfaces now have a real audience, so note visibility, the audit trail and the privacy rules on `/u/:email` are load-bearing rather than theoretical.
 
@@ -142,24 +142,24 @@ Two consequences worth remembering:
 
 ## Verification
 
-**736 automated assertions**, all green. CI runs them, and lint, on every push and pull request.
+**742 automated assertions**, all green. CI runs them, and lint, on every push and pull request.
 
 | Suite | Assertions | Covers |
 | --- | --- | --- |
 | `test-dates.mjs` | 114 | Bangkok boundary, half-days, weekends, holidays, month grids |
 | `test-leave.mjs` | 146 | Booking rules, balances and the per-year allowance fallback, retired types, the admin leave-type form, calendar placement, note visibility, the rejected-booking draft codec |
 | `test-line.mjs` | 42 | Webhook signature, group-id extraction, daily and week-ahead digest text |
-| `test-push.mjs` | 29 | RFC 8291 encryption against the spec's worked example, VAPID token and signature, the `วันนี้ … ลา` title |
+| `test-push.mjs` | 31 | RFC 8291 encryption against the spec's worked example, VAPID token and signature, the `วันนี้ … ลา` and week-ahead titles |
 | `test-holidays.mjs` | 30 | Parsing a pasted holiday list, and its bounds |
 | `test-i18n.mjs` | 27 | Lookup, placeholders, plurals, and the catalogue's own health |
-| `smoke.mjs` | 348 | The HTTP layer — see below |
+| `smoke.mjs` | 352 | The HTTP layer — see below |
 | `check-openapi.mjs` | — | Each of the 34 routes is either documented in `openapi.yaml` or deliberately listed as not, and the API Shield 3.0.3 copy still builds from it |
 
 The smoke suite boots a real worker against a scratch database and exercises what pure functions cannot reach: the CSRF guard, ownership checks on edit and cancel, booking rules over real requests, the open-redirect guards on `returnTo` **and on the `Referer` header**, note visibility across two identities, the audit trail's contents, the security headers, digest decisions, the webhook signature, push subscription ownership, admin authorisation, undo and its re-validation, next-year and cross-year quota, a LINE channel switched off by its flag, adding, retiring and deleting leave types, and history pruning through the real scheduled handler.
 
 It is built against its own worst failure mode — passing while testing nothing. The server is health-checked before any assertion; each boot proves it is signed in as the expected identity; and every assertion written in the file must actually run, so a section that throws early fails the run with the missed lines named. Confirmed by sabotage: removing the ownership check turns 5 assertions red, restoring the leaked email field turns 1 red, and pointing a boot at the wrong identity fails the harness. Its Mon–Fri fixture picks a week with no seeded public holiday, after it drifted onto one and failed for a reason that was the calendar's rather than the code's (#37).
 
-**API Shield** is enforced in front of Access and checked from outside with `npm run shield:probe`: on 2026-09-19 all 12 schema-breaking requests were refused at the edge and all 7 compliant ones passed. The same day the app was feature-tested in production, signed in, behind that rule — booking, the live preview, edit, undo, cancel, every page, language, push test — with nothing blocked (#42, #43 were found and fixed on the way). Probed again on 2026-10-18, after the move to `/api/v1/…`: all 12 violating requests were stopped at the edge and every compliant one reached Access, so the schema was re-uploaded for the new paths. The probe has no cases yet for `by-date`, `holidays` or `balances`.
+**API Shield** is enforced in front of Access and checked from outside with `npm run shield:probe`: on 2026-09-19 all 12 schema-breaking requests were refused at the edge and all 7 compliant ones passed. The same day the app was feature-tested in production, signed in, behind that rule — booking, the live preview, edit, undo, cancel, every page, language, push test — with nothing blocked (#42, #43 were found and fixed on the way). Probed again on 2026-10-18, after the move to `/api/v1/…`: all 12 violating requests were stopped at the edge and every compliant one reached Access, so the schema was re-uploaded for the new paths. The probe then gained cases for `by-date`, `holidays` and `balances` (16 violating, 12 compliant): `by-date` is enforced, but **`holidays` and `balances` are not** — the uploaded schema predates them. A re-upload closes it (README, "Cloudflare API Shield").
 
 **CI** also builds the client bundle and the Worker (`--dry-run`, no credentials), and fails if `.dev.vars`, `wrangler.local.jsonc` or the built bundle are ever tracked, or if a credential-shaped string is committed. It needs no secrets, so it runs on pull requests from forks.
 
@@ -169,7 +169,7 @@ It is built against its own worst failure mode — passing while testing nothing
 
 ## Open items
 
-**No known bugs.** The push keypair mismatch (#40) was repaired on 2026-09-21. 736 assertions are green and `npm audit` is clean. The 2026-08-25 audit and the 2026-09-13 review both found and fixed what they turned up — the second a quota overdraw when moving a booking across New Year (#36) — and each fix is covered by a test or, where a test could not reach it, recorded in [ISSUES.md](ISSUES.md).
+**No known bugs.** The push keypair mismatch (#40) was repaired on 2026-09-21. 742 assertions are green and `npm audit` is clean. The 2026-08-25 audit and the 2026-09-13 review both found and fixed what they turned up — the second a quota overdraw when moving a booking across New Year (#36) — and each fix is covered by a test or, where a test could not reach it, recorded in [ISSUES.md](ISSUES.md).
 
 What follows is decisions, unfinished configuration, accepted trade-offs and debt — not defects.
 
@@ -200,10 +200,10 @@ What follows is decisions, unfinished configuration, accepted trade-offs and deb
 
 Nothing here is urgent; all of it is confirmed present. Owners and ordering in [PLAN.md](PLAN.md) section 4.
 
-- `/admin` → Preview shows the digest body, not the push title a phone actually receives (PLAN 4.11).
 - `npm run db:init` cannot be run twice (#24): migration `0003` is a bare `ADD COLUMN`, so a real failure is indistinguishable from a no-op.
 - A deploy overwrites Worker vars without stopping (#40); `ship` could refuse on drift instead (PLAN 4.13).
 - Nothing rate-limits the feeds (PLAN 3.4). Authentication stops strangers, not a signed-in caller looping over the roster.
+- The uploaded API Shield schema is behind: `holidays` and `balances` are not validated at the edge (`npm run shield:probe`, 2026-10-18). One upload of `dist/openapi-shield.json` fixes it.
 - The API Shield schema is uploaded by hand. Changing what one of the ten JSON operations accepts means `npm run openapi:shield` and a re-upload in the same change, or real requests get a 403. Nothing checks that the uploaded copy is current.
 - Deploy is manual, by choice. Deploy-on-merge would put a Cloudflare API token and the infrastructure ids into a public repo's settings.
 
@@ -215,11 +215,11 @@ Dependencies are clean: `npm audit` reports zero vulnerabilities after bumping H
 
 [PLAN.md](PLAN.md) is the full backlog, with an owner and a reason per item. The short version:
 
-1. **Owner** — `HEALTH_URL` plus a Bypass rule or service token, so the uptime monitor starts (#18).
-2. **Owner** — retire Personal leave from `/admin`, if still wanted (#39).
-3. Make `ship` refuse on config drift (PLAN 4.13).
-4. **Owner** — a rate-limiting rule on `/api/v1/*` (PLAN 3.4).
-5. Fix the clipped "Today" button on a 375px phone, and give `shield:probe` cases for `by-date`, `holidays` and `balances`.
+1. **Owner** — re-upload the API Shield schema, so `holidays` and `balances` are validated at the edge.
+2. **Owner** — `HEALTH_URL` plus a Bypass rule or service token, so the uptime monitor starts (#18).
+3. **Owner** — retire Personal leave from `/admin`, if still wanted (#39).
+4. Make `ship` refuse on config drift (PLAN 4.13).
+5. **Owner** — a rate-limiting rule on `/api/v1/*` (PLAN 3.4).
 6. LINE (#2), only if browser notifications turn out not to be enough.
 
 Features — iCal, CSV export, team grouping, coverage scoped to a team — are in PLAN.md section 5. None are needed for the app to do its job.
@@ -254,6 +254,7 @@ Features — iCal, CSV export, team grouping, coverage scoped to a team — are 
 
 ## Change log
 
+- **2026-10-18** — On a phone the month heading reads "Sep 2026" rather than "September 2026", which had pushed the Today button off the right edge of a 375px screen; it now fits down to 360px, in Thai too. `/admin` → Preview leads with the notification title a phone actually shows (PLAN 4.11). `shield:probe` covers `by-date`, `holidays` and `balances`, and found the last two unvalidated — the uploaded schema predates them. CI runners pinned to `ubuntu-24.04` ahead of `ubuntu-latest` moving to Ubuntu 26.
 - **2026-10-18** — Docs cross-checked against the code. `/docs` no longer labels the Push operations "Not verified yet", since push has delivered in production since 2026-10-14; LINE keeps its "Not enabled yet". `shield:probe` confirmed the Shield schema covers the `/api/v1/…` paths (12/12 violations blocked at the edge). LINE's cost re-estimated for weekday-only posting (~520 a month for 20 people) with the Thai plan figures in ISSUES #2.
 - **2026-10-17** — Past days fade on the calendar, and so does leave that has finished; leave still running today stays at full strength. A cue only — booking into the past still works. The smoke harness's retry for a dev-server connection closed while idle now covers `ECONNRESET` as well as `UND_ERR_SOCKET`, the two ways undici reports it (ISSUES #44).
 - **2026-10-17** — Bars show "Chatchai W." instead of a surname cut off in every cell; tooltips, popups and the Upcoming list keep full names. Pointing at anyone's bar, Upcoming row or "+N more" row lights up all of theirs and dims everyone else, matched on a one-way key so the page still carries no addresses.

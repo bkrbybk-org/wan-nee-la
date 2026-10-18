@@ -278,8 +278,8 @@ switch to **Block** once the log is quiet.
 npm run shield:probe
 ```
 
-sends ~20 anonymous requests to production, a schema-compliant and a
-schema-breaking one per operation, and prints each one's status and Ray ID.
+sends ~30 anonymous requests to production, at least one schema-compliant
+and one schema-breaking request per operation, and prints each one's status and Ray ID.
 Nothing it sends can change data. Compliant requests should get Access's 302;
 with a blocking rule in place, breaking ones get a 403 from the edge instead.
 On Log, both look the same from outside — look the Ray IDs up in Security →
