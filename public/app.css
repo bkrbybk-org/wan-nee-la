@@ -588,7 +588,8 @@ a { color: var(--md-primary); }
 }
 .month-jump-form .tf { flex: 0 0 128px; }
 .month-jump-form .btn { align-self: center; }
-.month-head .today-link { margin-left: auto; }
+.month-head .today-link { margin-left: auto; flex-shrink: 0; }
+.month-head .m-short { display: none; }
 h3.sub { margin: 20px 0 8px; color: var(--md-on-surface-variant); }
 
 /* At 375px the default h1 size wraps "August 2026" onto two lines and breaks
@@ -598,6 +599,14 @@ h3.sub { margin: 20px 0 8px; color: var(--md-on-surface-variant); }
    is the point of their being there. */
 @media (max-width: 767px) {
 	.month-head h1 { font-size: 22px; line-height: 28px; white-space: nowrap; }
+
+	/* Even then "September 2026" is 166px, and three icon buttons, Today and
+	   the gaps leave it about 100 on a 375px screen — Today was squeezed to
+	   26px and ran off the edge. The short month ("Sep", "ก.ย.") and tighter
+	   gaps fit down to a 360px phone. */
+	.month-head { gap: 4px; }
+	.month-head .m-long { display: none; }
+	.month-head .m-short { display: inline; }
 
 	/* The jump popup is wider than a phone, and it hangs from a control that
 	   sits partway across the header — anchored to that control it starts around

@@ -286,6 +286,11 @@ export function monthName(month: number, lang: DateLang = 'en'): string {
 	return MONTH_NAMES[lang][month - 1] ?? '';
 }
 
+/** "Sep", "ก.ย." — for a heading that has to fit beside its controls on a phone. */
+export function monthShort(month: number, lang: DateLang = 'en'): string {
+	return MONTH_SHORT[lang][month - 1] ?? '';
+}
+
 /**
  * "15 Aug" — compact enough for a calendar chip.
  *

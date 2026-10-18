@@ -40,6 +40,8 @@ export interface DigestOutcome {
 	status: DigestStatus;
 	people: number;
 	text?: string;
+	/** The push notification's title — what a lock screen actually shows. */
+	title?: string;
 	error?: string;
 	channels: ChannelOutcome[];
 }
@@ -132,6 +134,14 @@ export function buildPushTitle(entries: readonly LeaveEntry[]): string {
 	const rest = names.length - TITLE_NAMES;
 	const who = rest > 0 ? `${names.slice(0, TITLE_NAMES).join(', ')} และอีก ${rest} คน` : names.join(', ');
 	return `วันนี้ ${who} ลา`;
+}
+
+/**
+ * The week-ahead notification's title. It keeps its own wording: "วันนี้ … ลา"
+ * is about today, and this one is not.
+ */
+export function buildWeekTitle(people: number): string {
+	return `Away this week · ${people} ${people === 1 ? 'person' : 'people'}`;
 }
 
 /**
@@ -255,7 +265,8 @@ export async function runDigest(
 	if (entries.length === 0) return { date, status: 'skipped_empty', people: 0, channels: [] };
 
 	const text = buildDigest(date, entries);
-	if (opts.dryRun) return { date, status: 'dry_run', people: entries.length, text, channels: [] };
+	const title = buildPushTitle(entries);
+	if (opts.dryRun) return { date, status: 'dry_run', people: entries.length, text, title, channels: [] };
 
 	const people = entries.length;
 	const force = Boolean(opts.force);
@@ -265,10 +276,10 @@ export async function runDigest(
 	// same page. Neither can throw — each returns its own outcome.
 	const channels: ChannelOutcome[] = [
 		await runLine(env, date, 'daily', text, people, force),
-		await runPush(env, date, 'daily', text, buildPushTitle(entries), people, force),
+		await runPush(env, date, 'daily', text, title, people, force),
 	];
 
-	return { date, people, text, channels, ...rollUp(channels) };
+	return { date, people, text, title, channels, ...rollUp(channels) };
 }
 
 /**
@@ -317,15 +328,14 @@ export async function runWeekAhead(
 
 	const text = buildWeekAhead(date, to, entries, weekHolidays);
 	const people = away.size;
-	if (opts.dryRun) return { date, status: 'dry_run', people, text, channels: [] };
+	const title = buildWeekTitle(people);
+	if (opts.dryRun) return { date, status: 'dry_run', people, text, title, channels: [] };
 
 	const force = Boolean(opts.force);
 	const channels: ChannelOutcome[] = [
 		await runLine(env, date, 'week', text, people, force),
-		// The week-ahead post keeps its own wording: "วันนี้ … ลา" is about today,
-		// and this one is not.
-		await runPush(env, date, 'week', text, `Away this week · ${people} ${people === 1 ? 'person' : 'people'}`, people, force),
+		await runPush(env, date, 'week', text, title, people, force),
 	];
 
-	return { date, people, text, channels, ...rollUp(channels) };
+	return { date, people, text, title, channels, ...rollUp(channels) };
 }

@@ -616,6 +616,18 @@ async function main() {
 	res = await post('/admin/notify/preview', { date: MON });
 	check('digest preview: would post', /Would post about/.test(flashOf(res)?.message ?? ''), flashOf(res)?.message);
 	check('digest preview: includes the person', /admin/i.test(flashOf(res)?.message ?? ''), 'name missing from preview');
+	check(
+		'digest preview: shows the push title a phone gets',
+		/Notification title: วันนี้ .+ ลา/.test(flashOf(res)?.message ?? ''),
+		flashOf(res)?.message,
+	);
+
+	res = await post('/admin/notify/preview', { date: MON, kind: 'week' });
+	check(
+		'week-ahead preview: shows its own push title',
+		/Notification title: Away this week · \d+ (person|people)/.test(flashOf(res)?.message ?? ''),
+		flashOf(res)?.message,
+	);
 
 	res = await post('/admin/notify/preview', { date: SAT });
 	check('digest: weekend not posted', /would not post/i.test(flashOf(res)?.message ?? ''), flashOf(res)?.message);
@@ -1207,6 +1219,12 @@ async function main() {
 	const afterToday = futureCells.filter((c) => !/\bpast\b/.test(c)).length;
 	check('past: next month\'s own days are not faded', afterToday >= 28, `${afterToday} of ${futureCells.length}`);
 	d1(`DELETE FROM leave_requests WHERE id IN ('smoke-past-1', 'smoke-run-1')`);
+
+	// --- the month heading carries a short form for phones ------------------
+	const sepHtml = await (await fetch(`${BASE}/?y=2026&m=9`)).text();
+	const heading = /<h1>([\s\S]*?)<\/h1>/.exec(sepHtml.slice(sepHtml.indexOf('class="month-head"')))?.[1] ?? '';
+	check('month head: the full name for a wide screen', /<span class="m-long">September<\/span>/.test(heading), heading);
+	check('month head: the short name for a phone', /<span class="m-short">Sep<\/span>/.test(heading), heading);
 
 	// U5: the bar shows "First L.", the tooltip and popup the full name.
 	const barTag = bars[0] ?? '';

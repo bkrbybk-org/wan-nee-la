@@ -1469,9 +1469,14 @@ app.post('/admin/notify/preview', async (c) => {
 			? say(c, 'flash.wouldPost', { count: outcome.people, n: outcome.people })
 			: say(c, 'flash.wouldNotPost', { reason: say(c, `status.${outcome.status}`) });
 
+	// The push title leads, because it is the one line a phone shows on the lock
+	// screen; the body below it is what LINE posts and what a notification
+	// shows when expanded.
+	//
 	// The preview text itself is stashed in the flash rather than the URL —
 	// query strings carrying prose get blocked by the WAF (docs/ISSUES.md #15).
-	return redirectWithFlash('/admin', 'ok', outcome.text ? `${summary}\n\n${outcome.text}` : summary);
+	const title = outcome.title ? `\n\n${say(c, 'flash.pushTitle', { title: outcome.title })}` : '';
+	return redirectWithFlash('/admin', 'ok', outcome.text ? `${summary}${title}\n\n${outcome.text}` : summary);
 });
 
 /** Send the digest now. Used to verify a fresh LINE setup, and to retry a failure. */

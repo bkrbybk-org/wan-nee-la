@@ -284,6 +284,7 @@ export const STRINGS = {
 	'flash.quotasBulk': { en: 'Set quota for {n} active user.|Set quota for {n} active users.', th: 'ตั้งโควตาให้ผู้ใช้งาน {n} คนแล้ว' },
 	'flash.wouldPost': { en: 'Would post about {n} person.|Would post about {n} people.', th: 'จะแจ้งเตือนเกี่ยวกับ {n} คน' },
 	'flash.wouldNotPost': { en: 'Would not post: {reason}.', th: 'จะไม่แจ้งเตือน: {reason}' },
+	'flash.pushTitle': { en: 'Notification title: {title}', th: 'หัวข้อการแจ้งเตือน: {title}' },
 	'flash.sentTo': { en: 'Sent to {channels} about {n} person.|Sent to {channels} about {n} people.', th: 'ส่งไปยัง {channels} เกี่ยวกับ {n} คน' },
 	'flash.sendFailed': { en: 'Send failed — {error}', th: 'ส่งไม่สำเร็จ — {error}' },
 	'flash.nothingSent': { en: 'Nothing sent: {reason}.', th: 'ไม่ได้ส่ง: {reason}' },

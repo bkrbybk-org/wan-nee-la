@@ -5,6 +5,7 @@ import {
 	formatDays,
 	monthGrid,
 	monthName,
+	monthShort,
 	parseWeekStart,
 	shiftMonth,
 	shortDate,
@@ -509,7 +510,13 @@ function CalendarBody(props: CalendarProps) {
 				    a URL that can be bookmarked or shared, and the browser's own
 				    back button undoes it. */}
 				<h1>
-					{monthName(month, lang)} <span class="muted">{year}</span>
+					{/* Both forms are sent and CSS picks one. "September 2026" is
+					    166px at a phone's heading size, and beside three icon
+					    buttons and Today it pushed Today off the right edge of a
+					    375px screen. Only one is ever displayed, so a screen reader
+					    hears one name, not two. */}
+					<span class="m-long">{monthName(month, lang)}</span>
+					<span class="m-short">{monthShort(month, lang)}</span> <span class="muted">{year}</span>
 				</h1>
 				{/* The heading stays a heading. Wrapping it in the summary made the
 				    control ambiguous to assistive technology — the disclosure was

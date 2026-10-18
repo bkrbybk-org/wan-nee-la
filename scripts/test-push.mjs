@@ -9,7 +9,7 @@
 //
 // Run: npm run test:push
 import { b64urlToBytes, bytesToB64url, encryptPayload, vapidAuthorization } from '../src/notify/push.ts';
-import { buildPushTitle } from '../src/notify/digest.ts';
+import { buildPushTitle, buildWeekTitle } from '../src/notify/digest.ts';
 
 let failures = 0;
 const check = (name, cond, detail) => {
@@ -166,6 +166,9 @@ eq(
 // first — but a title that reads "วันนี้  ลา" would be the visible symptom if
 // that guard ever moved, so it is worth stating what empty produces.
 check('title: an empty day names nobody', !buildPushTitle([]).includes('และอีก'), buildPushTitle([]));
+
+eq('week title: one person', buildWeekTitle(1), 'Away this week · 1 person');
+eq('week title: several', buildWeekTitle(4), 'Away this week · 4 people');
 
 console.log(failures === 0 ? '\nAll push tests passed.' : `\n${failures} failure(s).`);
 process.exit(failures === 0 ? 0 : 1);

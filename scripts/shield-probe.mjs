@@ -61,6 +61,17 @@ const CASES = [
 	['feed: valid range', '/api/v1/leave?from=2026-09-01&to=2026-09-30', {}, true],
 	['feed: from is not a date', '/api/v1/leave?from=yesterday&to=2026-09-30', {}, false],
 	['feed: to has a time in it', '/api/v1/leave?from=2026-09-01&to=2026-09-30T00:00', {}, false],
+	['feed: one person', '/api/v1/leave?from=2026-09-01&to=2026-09-30&user=probe@example.com', {}, true],
+
+	['by-date: valid range', '/api/v1/leave/by-date?from=2026-09-01&to=2026-09-30', {}, true],
+	['by-date: from is not a date', '/api/v1/leave/by-date?from=last-week', {}, false],
+
+	['holidays: valid range', '/api/v1/holidays?from=2026-01-01&to=2026-12-31', {}, true],
+	['holidays: to is not a date', '/api/v1/holidays?from=2026-01-01&to=31/12/2026', {}, false],
+
+	['balances: valid year', '/api/v1/balances?year=2026', {}, true],
+	['balances: year not an integer', '/api/v1/balances?year=this', {}, false],
+	['balances: year out of range', '/api/v1/balances?year=1999', {}, false],
 
 	['preview: valid', '/api/v1/leave/preview?leaveTypeId=1&start=2026-09-22&end=2026-09-23&startHalf=full&endHalf=full', {}, true],
 	['preview: required start missing', '/api/v1/leave/preview?leaveTypeId=1&end=2026-09-23', {}, false],
