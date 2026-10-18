@@ -897,6 +897,15 @@ form.inline:has(.tf-support) { margin-bottom: 28px; }
 	);
 }
 .cell.out { opacity: 0.5; }
+/* Days already gone: a washed-out ground and a quieter date, so today and what
+   is ahead carry the weight. Not opacity on the cell, which would also fade the
+   week's bars that live in its first cell — a bar fades on its own, and only
+   once it has finished entirely (.bar.past). Still clickable: booking into the
+   past is allowed. */
+.cell.past { background-color: color-mix(in srgb, var(--cell-bg) 40%, transparent); }
+.cell.past .daynum { color: var(--md-on-surface-variant); opacity: 0.7; }
+.cell.past .holiday-tag { opacity: 0.7; }
+.cell.past .chips { opacity: 0.5; }
 /* The week's first cell carries the bars for the whole week (see .week-bars),
    so it may not clip them, and dimming it would dim every bar in the row. Its
    own contents are dimmed instead, and its background halved by hand. */
@@ -1543,7 +1552,7 @@ form.inline:has(.tf-support) { margin-bottom: 28px; }
 	   and the bar runs to the cell's edge, so it reads as carrying on. */
 	.bar.cont-before { border-left: 0; border-top-left-radius: 0; border-bottom-left-radius: 0; margin-left: 0; padding-left: 6px; }
 	.bar.cont-after { border-top-right-radius: 0; border-bottom-right-radius: 0; margin-right: 0; }
-	.bar.out { opacity: 0.5; }
+	.bar.out, .bar.past { opacity: 0.5; }
 	/* Following one person (calendar.ts): everyone else steps back, and theirs
 	   gain a ring. Opacity, not colour, so the leave-type tint still reads. */
 	.bar, .upcoming-item, .day-more-item { transition: opacity var(--md-dur-short) var(--md-ease); }

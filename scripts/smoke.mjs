@@ -68,7 +68,9 @@ globalThis.fetch = async (url, init) => {
 	try {
 		return await rawFetch(url, init);
 	} catch (err) {
-		if (err?.cause?.code === 'UND_ERR_SOCKET') {
+		// The same stale socket surfaces as either code, depending on whether
+		// undici notices the close before or while writing the request.
+		if (err?.cause?.code === 'UND_ERR_SOCKET' || err?.cause?.code === 'ECONNRESET') {
 			staleRetries++;
 			return await rawFetch(url, init);
 		}
@@ -1183,6 +1185,28 @@ async function main() {
 	eq('upcoming: a three-day booking is one row, not three', (upcoming.match(/data-entry="smoke-bar-1"/g) ?? []).length, 1);
 	check('upcoming: and says how long', /3 days/.test(upcoming), 'no day count');
 	check('upcoming: with the badge', upcoming.includes('class="badge"'), 'no badge');
+
+	// --- past days fade; a booking still running does not ------------------
+	const longAgo = addDays(TODAY, -40);
+	d1(
+		`INSERT INTO leave_requests (id, user_email, leave_type_id, start_date, end_date, start_half, end_half, days_total, note, note_private, status, created_at)
+		 VALUES ('smoke-past-1', 'bar-person@example.com', 1, '${longAgo}', '${longAgo}', 'full', 'full', 1, NULL, 1, 'confirmed', '${longAgo}'),
+		        ('smoke-run-1', 'bar-person@example.com', 1, '${addDays(TODAY, -1)}', '${addDays(TODAY, 1)}', 'full', 'full', 3, NULL, 1, 'confirmed', '${TODAY}')`,
+	);
+	const pastHtml = await (await fetch(`${BASE}/?y=${longAgo.slice(0, 4)}&m=${Number(longAgo.slice(5, 7))}`)).text();
+	const pastBar = (pastHtml.match(/<a class="chip bar[^"]*"[^>]*data-entry="smoke-past-1"/) ?? [''])[0];
+	check('past: a finished booking\'s bar fades', /class="chip bar[^"]* past/.test(pastBar), pastBar);
+	const nowHtml = await (await fetch(`${BASE}/`)).text();
+	const todayCell = /<td class="([^"]*)"[^>]*aria-current="date"/.exec(nowHtml)?.[1] ?? '';
+	check('past: today is not faded', todayCell.includes('today') && !/\bpast\b/.test(todayCell), todayCell);
+	const runBars = nowHtml.match(/<a class="chip bar[^"]*"[^>]*data-entry="smoke-run-1"/g) ?? [];
+	check('past: a booking running through today stays at full strength', runBars.some((b) => !/class="chip bar[^"]* past/.test(b)), JSON.stringify(runBars));
+	const nextMonth = new Date(Date.UTC(Number(TODAY.slice(0, 4)), Number(TODAY.slice(5, 7)), 15));
+	const futureHtml = await (await fetch(`${BASE}/?y=${nextMonth.getUTCFullYear()}&m=${nextMonth.getUTCMonth() + 1}`)).text();
+	const futureCells = futureHtml.match(/<td class="cell[^"]*"/g) ?? [];
+	const afterToday = futureCells.filter((c) => !/\bpast\b/.test(c)).length;
+	check('past: next month\'s own days are not faded', afterToday >= 28, `${afterToday} of ${futureCells.length}`);
+	d1(`DELETE FROM leave_requests WHERE id IN ('smoke-past-1', 'smoke-run-1')`);
 
 	// U5: the bar shows "First L.", the tooltip and popup the full name.
 	const barTag = bars[0] ?? '';

@@ -195,11 +195,12 @@ function WeekBars(props: {
 	segs: readonly WeekSegment[];
 	heldBack: readonly number[];
 	monthPrefix: string;
+	today: string;
 	map: Map<string, LeaveEntry[]>;
 	canEdit: (e: LeaveEntry) => boolean;
 	noteFor: (e: LeaveEntry) => string | null;
 }) {
-	const { week, segs, heldBack, monthPrefix, map, canEdit, noteFor } = props;
+	const { week, segs, heldBack, monthPrefix, today, map, canEdit, noteFor } = props;
 	const lang = useLang();
 	const colorOf = useColorOf();
 	return (
@@ -218,6 +219,9 @@ function WeekBars(props: {
 					s.continuesBefore ? 'cont-before' : '',
 					s.continuesAfter ? 'cont-after' : '',
 					outside ? 'out' : '',
+					// Finished entirely. A bar still running today stays at full
+					// strength — it is not in the past, only its start is.
+					days[days.length - 1] < today ? 'past' : '',
 				]
 					.filter(Boolean)
 					.join(' ');
@@ -599,6 +603,9 @@ function CalendarBody(props: CalendarProps) {
 											weekend ? 'weekend' : '',
 											holiday ? 'holiday' : '',
 											date === today ? 'today' : '',
+											// Faded, not locked: leave can still be booked into the
+											// past — sick leave usually is — so this is a cue only.
+											date < today ? 'past' : '',
 										]
 											.filter(Boolean)
 											.join(' ');
@@ -665,6 +672,7 @@ function CalendarBody(props: CalendarProps) {
 														segs={shown}
 														heldBack={heldBack}
 														monthPrefix={monthPrefix}
+														today={today}
 														map={map}
 														canEdit={canEdit}
 														noteFor={noteFor}
