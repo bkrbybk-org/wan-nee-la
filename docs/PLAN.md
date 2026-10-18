@@ -3,7 +3,7 @@
 The original build plan (phases 0–5) is delivered and has been removed; what it
 produced is described in [PROGRESS.md](PROGRESS.md). This is the forward plan,
 rewritten 2026-08-16 after a security review and a technical-debt sweep, and
-brought back in line with the code on 2026-09-13, 2026-09-18 and 2026-09-19.
+brought back in line with the code on 2026-09-13, 2026-09-18, 2026-09-19 and 2026-10-18.
 
 ## How work is assigned
 
@@ -26,7 +26,7 @@ Nothing here needs code.
 | --- | --- | --- |
 | ~~1.1~~ | ~~Sign in through a browser~~ | **Done.** Ten active users; the first became the admin. |
 | 1.2 | Switch on LINE, if wanted | Off by default behind `LINE_ENABLED` since 2026-09-06. Channel, bot in the group, Access **Bypass** rule on `/line/webhook`, two `wrangler secret put` calls, then `"LINE_ENABLED": "1"` and a redeploy. Steps in the [README](../README.md#turning-on-the-line-post). |
-| 1.3 | Check the LINE message allowance | Billing is per group member. ~600 messages/month for a 20-person group, and the free tier varies by country ([ISSUES.md](ISSUES.md) #2). Moot while 1.2 stays off. |
+| 1.3 | Check the LINE message allowance | Billing is per group member. Up to ~520 messages/month for a 20-person group; the Thai free plan is about 300 ([ISSUES.md](ISSUES.md) #2). Moot while 1.2 stays off. |
 | ~~1.4~~ | ~~Prove a push arrives~~ ([ISSUES.md](ISSUES.md) #23, #31) | **Done** (2026-10-14/15): a fresh keypair and a real `VAPID_SUBJECT`; subscriptions through Google and Apple; **Send a test** accepted, and the 09:00 digest on 2026-10-15 recorded `sent`. What remains is people: each colleague turns the bell on in their own browser (on iPhone, from the Home Screen app — #21). |
 
 ---
@@ -100,9 +100,9 @@ None of these are needed for the app to do its job. Rough value order.
 
 ## Suggested order
 
-1. **1.4** — re-pair the push keys (ISSUES #40), then **Send a test**. Closes #23 and #31, the last unverified claims in the repo.
-2. **2.3** — `HEALTH_URL` plus a Bypass rule or service token, so the monitor starts watching.
-3. **2.4** — retire Personal leave from `/admin`, if that is still wanted.
-4. **4.13** — make `ship` refuse on config drift, so #40 cannot happen twice.
+1. **2.3** — `HEALTH_URL` plus a Bypass rule or service token, so the monitor starts watching.
+2. **2.4** — retire Personal leave from `/admin`, if that is still wanted.
+3. **4.13** — make `ship` refuse on config drift, so #40 cannot happen twice.
+4. **3.4** — a rate-limiting rule on `/api/v1/*`.
 5. **1.2 / 1.3** — LINE, only if browser notifications turn out not to be enough.
 6. Features, as they are actually wanted.

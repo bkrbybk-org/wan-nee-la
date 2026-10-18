@@ -33,11 +33,11 @@ LINE counts a push to a group as one message *per person in the chat*. A push wi
 
 So a daily 09:00 post to a group of N people costs **N × (days with leave)** per month, not 30.
 
-| Group size | Worst case (30 posts/mo) |
+| Group size | Worst case (~26 posts/mo: 22 weekdays + 4 Mondays) |
 | --- | --- |
-| 10 | 300 |
-| 20 | 600 |
-| 40 | 1,200 |
+| 10 | 260 |
+| 20 | 520 |
+| 40 | 1,040 |
 
 Free allowance depends on the OA subscription plan and **varies by country** — Thailand's plan tiers differ from Japan's. Must be checked in the LINE OA Manager for the actual account (task 0.4).
 
@@ -49,6 +49,8 @@ Mitigations already in the design:
 If the allowance still doesn't fit: fall back to a Cloudflare Email Service digest, or upgrade the OA plan. Decide after 0.4.
 
 Source: [Messaging API pricing](https://developers.line.biz/en/docs/messaging-api/pricing/)
+
+**2026-10-18, checked again for Thailand** (secondary sources; confirm in the OA Manager): the free plan is about 300 messages a month, Basic about 1,280 THB for 15,000, Pro about 1,780 THB for 35,000, before VAT. A group of ten only just fits the free plan; anything larger needs a paid one. It has to be a LINE **Official Account** with the Messaging API — a personal account cannot be automated — with "Allow bot to join group chats" switched on in the LINE Developers Console, and a group holds only one Official Account. Replies are free; this app only pushes.
 
 **2026-09-06:** moot for now. The channel sits behind `LINE_ENABLED`, off by default and fail-closed, so an absent variable can never start it sending. Browser push carries the digest for free.
 
@@ -336,7 +338,7 @@ The encryption is checked against RFC 8291's own worked example byte for byte, a
 
 It cannot be tested from a terminal: it needs a real browser subscription, which needs a real person granting permission. The automation browser used during development has notifications denied at the profile level.
 
-`/docs` marks the three Push operations "Not verified yet": the keys were re-paired on 2026-09-21 (#40), and what remains is a real subscription and a real send.
+`/docs` marked the three Push operations "Not verified yet" until 2026-10-18, when the markers came off: delivery was proven on 2026-10-14/15.
 
 **As of 2026-09-13** `VAPID_PRIVATE_KEY` is set in production, together with a matching public key set directly on the Worker rather than in `wrangler.local.jsonc`. **The 2026-09-18 deploy overwrote that public key** with the older one the config file still held, so the pair no longer matches and a push would be refused (#40). No browser had subscribed yet, so nobody lost anything; `push_subscriptions` and `notification_runs` are both still empty. A local run with a throwaway keypair confirmed the rest of the path — card offered, subscription stored, run claimed, delivery attempted and recorded — so the remaining unknown is exactly a real push service and a real device.
 
@@ -546,7 +548,7 @@ Resolved 2026-09-19 without downgrading the spec people read: `npm run openapi:s
 
 ## #42 — `/docs` was blank: the zone refuses every `*.yaml` path `resolved`
 
-Found 2026-09-19 while feature-testing production. `/docs` loaded `/openapi.yaml`, and the zone answers any `*.yaml` or `*.yml` path with a 403 at the edge — `/foo.yaml` included, signed in or not, before Access. That is a zone security rule matching the extension, not API Shield, which only checks the seven operations in the uploaded schema. Rather than weaken a sensible rule, the spec is also committed as `public/openapi.json` (`npm run build:spec`), and `npm test` fails if it no longer matches the YAML. `/docs` reads the JSON.
+Found 2026-09-19 while feature-testing production. `/docs` loaded `/openapi.yaml`, and the zone answers any `*.yaml` or `*.yml` path with a 403 at the edge — `/foo.yaml` included, signed in or not, before Access. That is a zone security rule matching the extension, not API Shield, which only checks the operations in the uploaded schema. Rather than weaken a sensible rule, the spec is also committed as `public/openapi.json` (`npm run build:spec`), and `npm test` fails if it no longer matches the YAML. `/docs` reads the JSON.
 
 The same page had a second fault that predated this: the spec's `servers` entry is a `{hostname}` template defaulting to example.com, so "Try it out" would have sent requests there. The page now fetches the spec itself and sets the server to its own origin. Verified in production with a real "Try it out" of `/health`.
 

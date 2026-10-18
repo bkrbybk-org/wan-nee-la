@@ -43,7 +43,7 @@ An Access service token carries `common_name`, not `email`, so it is nobody's em
 
 Two zone-level layers run at the edge **before** Access, so they see anonymous traffic too (both verified 2026-09-19):
 
-- **API Shield schema validation.** The eight JSON operations are uploaded as an OpenAPI 3.0.3 schema derived from `public/openapi.yaml` (`npm run openapi:shield`), and a WAF custom rule blocks on `cf.schema_validation.uploaded.violated`. The other 24 routes are not in the schema and are not checked; there is no fallthrough rule, and there must not be one. A change to what one of those seven operations *accepts* needs the schema regenerated and re-uploaded in the same change, or real requests start getting 403s. `npm run shield:probe` checks enforcement from outside.
+- **API Shield schema validation.** The ten JSON operations are uploaded as an OpenAPI 3.0.3 schema derived from `public/openapi.yaml` (`npm run openapi:shield`), and a WAF custom rule blocks on `cf.schema_validation.uploaded.violated`. The other 24 routes are not in the schema and are not checked; there is no fallthrough rule, and there must not be one. A change to what one of those operations *accepts* needs the schema regenerated and re-uploaded in the same change, or real requests start getting 403s. `npm run shield:probe` checks enforcement from outside.
 - **A rule refusing `*.yaml` and `*.yml`.** Which is why `/docs` reads `/openapi.json`, not the YAML (ISSUES #42).
 
 ## Data model (D1)
@@ -282,6 +282,8 @@ The trade-off: a screen reader meets a week's bars inside its first day cell. Ea
 **Bars show "First L."** — "Chatchai W." rather than a surname cut off by an ellipsis in every cell. The tooltip, the bar's label, the popup and the Upcoming list keep the full name.
 
 **Following one person.** Pointing at any of someone's bars, Upcoming rows or "+N more" rows lights all of them and dims everyone else (`src/client/calendar.ts`); keyboard focus does the same. They are matched on `data-who`, a one-way hash of the address (`personKey`) — the page can tell two entries belong to one person without carrying the address, which the calendar keeps out of its HTML. Only on devices that can hover.
+
+**Past days fade** — a washed-out ground and a quieter date, not opacity on the cell, which would also fade the week's bars living in its first cell. A bar fades on its own, and only once it has finished entirely: one still running today is not in the past, only its start is. Fading is a cue, not a lock — leave can be booked into the past, and sick leave usually is.
 
 **Holidays** are hatched, not tinted: the tertiary teal they used sat beside planned medical's green and read as the same thing. Leave types own colour; a holiday owns a texture.
 

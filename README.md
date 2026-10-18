@@ -150,7 +150,7 @@ Optional — the app is fully functional without it, and the channel is **off by
 6. Drop the "Not enabled yet" wording from the LINE tag and operation in `public/openapi.yaml`, then `npm run build:spec`. `/docs` says the channel is off until you do.
 6. Use **Preview** on `/admin`, then **Send now**.
 
-LINE bills a group push **per member**, so a 20-person group posted to daily is ~600 messages a month. The job skips weekends, public holidays, and days with nobody on leave. See [docs/ISSUES.md](docs/ISSUES.md) #2.
+LINE bills a group push **per member**, so a 20-person group is up to ~520 messages a month (about 22 weekday posts plus four Monday week-ahead posts, × 20). The job skips weekends, public holidays, and days with nobody on leave. See [docs/ISSUES.md](docs/ISSUES.md) #2.
 
 ## Turning on browser notifications
 
@@ -241,7 +241,7 @@ string`. Upload the derived copy instead:
 npm run openapi:shield
 ```
 
-That writes `dist/openapi-shield.json`: OpenAPI 3.0.3, the eight JSON
+That writes `dist/openapi-shield.json`: OpenAPI 3.0.3, the ten JSON
 operations, request schemas only (API Shield does not validate responses), and
 `servers` set to your real hostname from `wrangler.local.jsonc`. It names the
 hostname, so it stays in the gitignored `dist/`. `npm test` builds it from the

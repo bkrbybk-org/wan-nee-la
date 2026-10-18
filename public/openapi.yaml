@@ -59,13 +59,11 @@ tags:
     description: Reading the shared calendar, and costing a booking before making one.
   - name: Push
     description: |
-      **Not verified yet.** Web Push subscriptions for the 09:00 weekday digest.
-      The keypair was re-paired on 2026-09-21, so the public key browsers
-      subscribe with matches the private key the Worker signs with again. What
-      has still never happened is a real push service accepting a message and a
-      device showing it: nobody has subscribed, so the digest has sent nothing.
-      Subscribing from the bell in the header and pressing **Send a test** is
-      what settles it.
+      Web Push subscriptions for the 09:00 weekday digest. Delivered in
+      production since 2026-10-14: Chrome, Safari and an iPhone Home Screen
+      app subscribed, Google's and Apple's push services accepted test sends,
+      and the 2026-10-15 digest was the first scheduled one sent. Each person
+      turns it on from the bell in the header, per browser.
   - name: LINE
     description: |
       **Not enabled yet.** The one route Access cannot protect. The channel is
@@ -482,7 +480,7 @@ paths:
     post:
       operationId: pushSubscribe
       tags: [Push]
-      summary: 'Not enabled yet: register this browser for the morning digest'
+      summary: Register this browser for the morning digest
       description: |
         Stored against the caller's own identity. One person may have several
         browsers subscribed; each is a separate row keyed by its endpoint.
@@ -511,7 +509,7 @@ paths:
     post:
       operationId: pushUnsubscribe
       tags: [Push]
-      summary: 'Not enabled yet: stop pushing to one browser'
+      summary: Stop pushing to one browser
       description: |
         Scoped to the owner. A push endpoint is not a secret — it travels to
         the push service on every send — so knowing someone else's must not let
@@ -549,10 +547,10 @@ paths:
     post:
       operationId: pushTest
       tags: [Push]
-      summary: "Not enabled yet: send a test notification to the caller's own browsers"
+      summary: Send a test notification to the caller's own browsers
       description: |
         Without this, the only way to learn whether push works is to wait until
-        08:00 the next working day — which is how a broken setup stays broken.
+        09:00 the next working day — which is how a broken setup stays broken.
 
         Sends to every browser the caller has subscribed, and prunes any the
         push service reports as gone. A test is exactly when a stale
