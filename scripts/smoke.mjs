@@ -1197,6 +1197,7 @@ async function main() {
 	eq('upcoming: a three-day booking is one row, not three', (upcoming.match(/data-entry="smoke-bar-1"/g) ?? []).length, 1);
 	check('upcoming: and says how long', /3 days/.test(upcoming), 'no day count');
 	check('upcoming: with the badge', upcoming.includes('class="badge"'), 'no badge');
+	check('day card: a multi-day booking says how long it runs', /class="agenda-span"> · [^<]*–/.test(barHtml), 'no span on the day row');
 
 	// --- past days fade; a booking still running does not ------------------
 	const longAgo = addDays(TODAY, -40);
@@ -1243,26 +1244,23 @@ async function main() {
 	d1(`DELETE FROM leave_requests WHERE id = 'smoke-bar-1'`);
 	d1(`DELETE FROM users WHERE email = 'bar-person@example.com'`);
 
-	// Nothing booked in the window: one line, not two cards each saying nothing.
+	// The phone's day card: the row the page opens on, today's in this month.
+	const selectedRow = (html) => /<div class="agenda-row[^"]*\bselected\b[^"]*"[\s\S]*?<\/div><\/div>/.exec(html)?.[0] ?? '';
+
+	// Nothing booked today: the card says so rather than vanishing.
 	const quietHtml = await (await fetch(`${BASE}/`)).text();
-	check(
-		'a quiet week collapses to a single line',
-		quietHtml.includes('Nobody is out today or in the next 7 days'),
-		'combined empty state missing',
-	);
-	check('and drops the two headings', !quietHtml.includes('Out today'), 'empty cards still rendered');
+	check('day card: a quiet today says nobody is away', selectedRow(quietHtml).includes('Nobody is away.'), selectedRow(quietHtml));
 
 	insertLeave('smoke-today', ADMIN, TODAY);
 	const outTodayHtml = await (await fetch(`${BASE}/`)).text();
-	check('summary shows on the current month', outTodayHtml.includes('Out today'), 'summary missing');
-	check('and names who is out', outTodayHtml.includes('Admin'), 'name missing from summary');
-	check('the combined line is gone', !outTodayHtml.includes('Nobody is out today or in'), 'quiet line still rendered');
+	check('day card: names who is out today', selectedRow(outTodayHtml).includes('Admin'), selectedRow(outTodayHtml));
+	check('and no longer says nobody', !selectedRow(outTodayHtml).includes('Nobody is away.'), 'empty line still rendered');
 
-	// Someone else, inside the forward window but not today.
+	// Someone else, a couple of days on: the Upcoming list carries them.
 	insertLeave('smoke-soon', OTHER, SOON);
 	const forwardHtml = await (await fetch(`${BASE}/`)).text();
-	check('summary looks forward, not at a mostly-past week', forwardHtml.includes('Next 7 days'), 'forward window missing');
-	check('and names who is out later', forwardHtml.includes('Other'), 'forward name missing');
+	const forwardUpcoming = forwardHtml.slice(forwardHtml.indexOf('class="cal-upcoming"'));
+	check('upcoming: names who is out later', forwardUpcoming.includes('Other'), 'forward name missing');
 
 	d1("DELETE FROM leave_requests WHERE id IN ('smoke-today', 'smoke-soon')");
 
@@ -1276,8 +1274,8 @@ async function main() {
 	const gridHtml = await (await fetch(`${BASE}/`)).text();
 	check('a busy day links into the day list', gridHtml.includes(`href="#d-${TODAY}"`), 'day link missing');
 	check('and the list carries the matching anchor', gridHtml.includes(`id="d-${TODAY}"`), 'anchor missing');
-	// A day with nothing on it has no day link at all, so the cell's booking
-	// link is what a tap finds.
+	// A day with nothing on it is never linked into the list, where its row is
+	// hidden without the script; a tap without the script books it instead.
 	const emptyDay = addDays(TODAY, 300);
 	check(
 		'an empty day has no day link',
@@ -1285,6 +1283,21 @@ async function main() {
 		'empty day linked into the list',
 	);
 	check('and still offers booking', gridHtml.includes(`/book?date=${TODAY}`), 'booking link missing');
+
+	// One day at a time: the list carries a row for every day of the month,
+	// opens on today, and says how long each absence runs.
+	const monthDays = new Date(Date.UTC(Number(TODAY.slice(0, 4)), Number(TODAY.slice(5, 7)), 0)).getUTCDate();
+	eq('day card: a row for every day of the month', (gridHtml.match(/class="agenda-row[^"]*" id="d-/g) ?? []).length, monthDays);
+	check('day card: opens on today', new RegExp(`class="agenda-row[^"]*\\bselected\\b[^"]*" id="d-${TODAY}"`).test(gridHtml), 'today not selected');
+	check('day card: and the grid marks the same day', /<td class="cell[^"]*\bselected\b[^"]*" aria-current="date"/.test(gridHtml), 'cell not marked');
+	const emptyRow = [...gridHtml.matchAll(/class="agenda-row([^"]*)" id="d-([\d-]+)"/g)].find((m) => /\bempty\b/.test(m[1]));
+	check('day card: a quiet day says nobody is away', Boolean(emptyRow) && gridHtml.includes('Nobody is away.'), 'no empty-day row');
+	check(
+		'day card: every in-month cell is a tap target',
+		emptyRow ? gridHtml.includes(`href="/book?date=${emptyRow[2]}" data-day="${emptyRow[2]}"`) : false,
+		'quiet day has no cell link',
+	);
+	check('the who-is-out card is gone, the Upcoming list carries it', !gridHtml.includes('who-summary') && gridHtml.includes('cal-upcoming'), 'old card still rendered');
 	d1("DELETE FROM leave_requests WHERE id = 'smoke-grid'");
 
 	// --- display name -------------------------------------------------------
@@ -1422,10 +1435,10 @@ async function main() {
 	);
 	d1("DELETE FROM leave_requests WHERE id = 'smoke-soon-2'");
 
-	// Browsing a month that cannot contain today: the summary must be absent
-	// rather than rendering a misleading "nobody is out today".
+	// Browsing a month that cannot contain today: the card opens on that
+	// month's first busy day, or its first day when nobody is away at all.
 	const farMonth = await (await fetch(`${BASE}/?y=2030&m=6`)).text();
-	check('summary hidden when browsing another month', !farMonth.includes('Out today'), 'stale summary rendered');
+	check('day card: another month opens on its own first day', /class="agenda-row[^"]*\bselected\b[^"]*" id="d-2030-06-01"/.test(farMonth), 'wrong day selected');
 
 	// -----------------------------------------------------------------------
 	// Session 4 — a machine. An Access service token has no email and so no

@@ -62,15 +62,11 @@ export const STRINGS = {
 	'cal.dayCount': { en: '{n} day|{n} days', th: '{n} วัน' },
 	'cal.seeAll': { en: 'See the {n} person away on {date}|See all {n} people away on {date}', th: 'ดูทั้ง {n} คนที่ลาวันที่ {date}' },
 	'cal.whoIsOut': { en: 'Who is out', th: 'ใครลาบ้าง' },
-	'cal.outToday': { en: 'Out today', th: 'ลาวันนี้' },
-	'cal.nobodyToday': { en: 'Nobody is out today.', th: 'วันนี้ไม่มีใครลา' },
-	'cal.next7': { en: 'Next 7 days', th: '7 วันข้างหน้า' },
-	'cal.nobodyWeek': { en: 'Nobody else is out in the next 7 days.', th: 'ไม่มีคนอื่นลาใน 7 วันข้างหน้า' },
 	// Used when today's list is empty too, where "nobody *else*" has nothing to
 	// be else to.
-	'cal.nobodyAtAll': { en: 'Nobody is out today or in the next 7 days.', th: 'วันนี้และอีก 7 วันข้างหน้าไม่มีใครลา' },
 	'cal.byDay': { en: 'Leave by day', th: 'วันลาแยกตามวัน' },
 	'cal.emptyMonth': { en: 'Nobody is on leave this month.', th: 'เดือนนี้ไม่มีใครลา' },
+	'cal.nobodyOn': { en: 'Nobody is away.', th: 'ไม่มีใครลา' },
 	'cal.entryLabel': { en: '{name} — {type}{part}, {date}', th: '{name} — {type}{part}, {date}' },
 	'cal.markAm': { en: ' ½am', th: ' ½เช้า' },
 	'cal.markPm': { en: ' ½pm', th: ' ½บ่าย' },

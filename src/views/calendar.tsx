@@ -1,5 +1,4 @@
 import {
-	addDays,
 	dayOfWeek,
 	describeRange,
 	formatDays,
@@ -270,6 +269,12 @@ function rangeLabel(e: LeaveEntry, lang: Lang): string {
 	});
 }
 
+/** "18–21 Oct", or "30 Oct – 2 Nov" across a month end. */
+function spanLabel(start: string, end: string, lang: Lang): string {
+	if (start.slice(0, 7) === end.slice(0, 7)) return `${Number(start.slice(8, 10))}–${shortDate(end, lang)}`;
+	return `${shortDate(start, lang)} – ${shortDate(end, lang)}`;
+}
+
 /**
  * "+2 more", and the list it opens.
  *
@@ -443,45 +448,19 @@ function CalendarBody(props: CalendarProps) {
 	// attributes cannot disagree about what this viewer may read.
 	const noteFor = (e: LeaveEntry) => visibleNote(e, user);
 
-	// `entries` only covers the displayed month's grid, padded to whole weeks.
-	// When today isn't in that grid (browsing another month) there is no data
-	// to summarise, so the whole block is hidden rather than showing a false
-	// "nobody out" for a day we never fetched.
-	const showSummary = grid.includes(today);
-	const todayEntries = showSummary ? map.get(today) ?? [] : [];
-	const todayEmails = new Set(todayEntries.map((e) => e.user_email));
-
-	// The next seven days, not the calendar week.
-	//
-	// A Mon-Sun week is the obvious reading of "this week", but it is mostly in
-	// the past by Thursday and entirely useless on a Sunday — the moment someone
-	// is most likely to be checking what the coming week looks like. A rolling
-	// window answers the planning question on every day of the week.
-	//
-	// The route deliberately queries seven days past the end of the grid so this
-	// window is always fully covered, including when today falls in the month's
-	// last row.
-	const weekDates = showSummary ? Array.from({ length: 7 }, (_, i) => addDays(today, i + 1)) : [];
-
-	type WeekPerson = { id: string; name: string; type: string; color: string; days: string[] };
-	const weekMap = new Map<string, WeekPerson>();
-	for (const d of weekDates) {
-		if (d === today) continue;
-		for (const e of map.get(d) ?? []) {
-			if (todayEmails.has(e.user_email)) continue;
-			const existing = weekMap.get(e.id);
-			if (existing) existing.days.push(d);
-			else weekMap.set(e.id, { id: e.id, name: e.display_name, type: typeLabel(e, lang), color: e.color, days: [d] });
-		}
-	}
-	const weekPeople = [...weekMap.values()];
-
-	// The agenda view only lists days that have something on them — a phone
-	// screen of empty date rows is scrolling for no reason.
+	// The phone's day list. Every day of the month has a row, because with
+	// scripting on the list shows one day at a time — the one tapped in the grid
+	// — and an empty day has to be able to say so. Without scripting the whole
+	// list shows, and CSS hides the empty rows: a screen of blank dates is
+	// scrolling for no reason.
 	const agenda = grid
 		.filter((d) => d.startsWith(monthPrefix))
-		.filter((d) => map.has(d) || holidayMap.has(d))
 		.map((d) => ({ date: d, entries: map.get(d) ?? [], holiday: holidayMap.get(d) }));
+	// The day it opens on: today, when today is in this month; otherwise the
+	// first day anyone is away, so paging to next month lands on something.
+	const selectedDay = agenda.some((r) => r.date === today)
+		? today
+		: (agenda.find((r) => r.entries.length > 0)?.date ?? agenda[0]?.date);
 
 	return (
 		<>
@@ -610,6 +589,7 @@ function CalendarBody(props: CalendarProps) {
 											weekend ? 'weekend' : '',
 											holiday ? 'holiday' : '',
 											date === today ? 'today' : '',
+											date === selectedDay ? 'selected' : '',
 											// Faded, not locked: leave can still be booked into the
 											// past — sick leave usually is — so this is a cue only.
 											date < today ? 'past' : '',
@@ -628,17 +608,18 @@ function CalendarBody(props: CalendarProps) {
 													data-date={date}
 													aria-label={t('cal.bookOn', { date: longDate(date, lang) })}
 												></a>
-												{/* Phones only, and only where there is something to see. A
-												    cell is about 48px wide there — too narrow for names, and
-												    far too narrow to tap one of several. So the whole cell
-												    becomes one target that jumps to this day in the list
-												    below, which is where the names, types and controls live.
-												    An anchor, not a script: it works with JS off and it can
-												    be opened in a new tab like any other link. */}
-												{dayEntries.length > 0 ? (
+												{/* Phones only. A cell is about 48px wide there — too narrow
+												    for names, and far too narrow to tap one of several. So the
+												    whole cell is one target, and the script turns a tap into
+												    "show this day in the card under the grid", empty days
+												    included. Without the script it is still a real link: into
+												    the list for a busy day, to the booking page for an empty
+												    one, which is what the cell offered before. */}
+												{dayEntries.length > 0 || inMonth ? (
 													<a
 														class="cell-day"
-														href={`#d-${date}`}
+														href={dayEntries.length > 0 ? `#d-${date}` : `/book?date=${date}`}
+														data-day={date}
 														aria-label={t('cal.seeDay', { date: longDate(date, lang) })}
 													></a>
 												) : null}
@@ -695,12 +676,17 @@ function CalendarBody(props: CalendarProps) {
 					</table>
 				</section>
 
-				<section class="agenda-view" aria-label={t('cal.byDay')}>
-					{agenda.length === 0 ? (
-						<p class="muted pad">{t('cal.emptyMonth')}</p>
-					) : (
-						agenda.map((row) => (
-							<div class={`agenda-row ${row.date === today ? 'today' : ''}`} id={`d-${row.date}`}>
+				<section class="agenda-view" aria-label={t('cal.byDay')} aria-live="polite" data-agenda>
+					{agenda.every((r) => r.entries.length === 0 && !r.holiday) ? (
+						<p class="muted pad agenda-quiet">{t('cal.emptyMonth')}</p>
+					) : null}
+					{agenda.map((row) => {
+						const empty = row.entries.length === 0 && !row.holiday;
+						const classes = ['agenda-row', row.date === today ? 'today' : '', row.date === selectedDay ? 'selected' : '', empty ? 'empty' : '']
+							.filter(Boolean)
+							.join(' ');
+						return (
+							<div class={classes} id={`d-${row.date}`} data-day={row.date}>
 								<a
 									class="agenda-date"
 									href={`/book?date=${row.date}`}
@@ -713,6 +699,7 @@ function CalendarBody(props: CalendarProps) {
 								</a>
 								<div class="agenda-body">
 									{row.holiday ? <div class="holiday-tag block">{row.holiday}</div> : null}
+									{empty ? <p class="muted agenda-none">{t('cal.nobodyOn')}</p> : null}
 									{row.entries.map((e) => (
 										<a
 											class={`agenda-item ${canEdit(e) ? 'mine' : ''}`}
@@ -725,77 +712,22 @@ function CalendarBody(props: CalendarProps) {
 											<span class="agenda-type">
 												{typeLabel(e, lang)}
 												{halfMark(halfOn(e, row.date), lang)}
+												{/* How long they are away, so one day's card answers
+												    "back when?" without tapping through the week. */}
+												{e.start_date !== e.end_date ? (
+													<span class="agenda-span"> · {spanLabel(e.start_date, e.end_date, lang)}</span>
+												) : null}
 											</span>
 										</a>
 									))}
 								</div>
 							</div>
-						))
-					)}
+						);
+					})}
 				</section>
 				</div>
 
 				<aside class="cal-side" aria-label={t('cal.whoIsOut')}>
-					{/* Both halves empty is the common case in a quiet week, and two
-					    cards saying almost the same nothing is a poor use of the space.
-					    One line covers it — and "nobody *else*" needs somebody to be
-					    else to, which there isn't. */}
-					{showSummary && todayEntries.length === 0 && weekPeople.length === 0 ? (
-					<section class="who-summary quiet" aria-label={t('cal.whoIsOut')}>
-						<p class="muted">{t('cal.nobodyAtAll')}</p>
-					</section>
-				) : null}
-
-				{showSummary && (todayEntries.length > 0 || weekPeople.length > 0) ? (
-					<section class="who-summary" aria-label={t('cal.whoIsOut')}>
-						<div class="who-block">
-							<h2>{t('cal.outToday')}</h2>
-							{todayEntries.length === 0 ? (
-								<p class="muted">{t('cal.nobodyToday')}</p>
-							) : (
-								<ul class="who-list">
-									{todayEntries.map((e) => (
-										<li>
-											<span class="dot" style={`--chip: ${e.color}`} />
-											<span class="who-name">{e.display_name}</span>
-											<span class="muted">
-												{typeLabel(e, lang)}
-												{halfMark(halfOn(e, today), lang)}
-											</span>
-										</li>
-									))}
-								</ul>
-							)}
-						</div>
-						<div class="who-block">
-							<h2>{t('cal.next7')}</h2>
-							{weekPeople.length === 0 ? (
-								<p class="muted">{t('cal.nobodyWeek')}</p>
-							) : (
-								<ul class="who-list">
-									{weekPeople.map((p) => (
-										<li>
-											<span class="dot" style={`--chip: ${p.color}`} />
-											<span class="who-name">{p.name}</span>
-											<span class="muted">
-												{p.type} ({p.days.map((d) => shortDate(d, lang)).join(', ')})
-											</span>
-										</li>
-									))}
-								</ul>
-							)}
-						</div>
-					</section>
-				) : null}
-
-				{/* Both views are rendered; CSS picks one by width. The month grid is
-				    unreadable under ~768px once names are in the cells.
-
-				    A real <table>, not a lattice of divs: a month genuinely is tabular
-				    data, and the table element gives a screen reader the row and column
-				    relationships for free. The ARIA grid role would need an arrow-key
-				    navigation model to be honest, and announcing "grid" without one is
-				    worse than saying nothing. */}
 					<UpcomingList entries={upcoming} today={today} user={user} lang={lang} />
 
 					{/* Both languages, whichever the reader has chosen: the legend is where

@@ -138,6 +138,54 @@ document.addEventListener('click', (e) => {
 	open(entryDialog);
 });
 
+// ---------------------------------------------------------------------------
+// One day at a time, on a phone
+// ---------------------------------------------------------------------------
+
+/**
+ * The day list under a phone's grid becomes one card: the day tapped.
+ *
+ * Without this the list holds every busy day of the month, and the 20th is a
+ * long scroll past the 1st to the 19th. The server already marks the day to
+ * open on (today, or the month's first busy day) and renders a row for every
+ * day, empty ones too; all this does is hide the others and move the mark
+ * when a cell is tapped. The grid stays where it is, so a run of taps reads
+ * the week without scrolling at all.
+ *
+ * The CSS that hides the other rows keys on `.day-mode`, set here, so with
+ * scripting off the list is the whole month as before.
+ */
+const agenda = document.querySelector<HTMLElement>('[data-agenda]');
+if (agenda) {
+	agenda.classList.add('day-mode');
+
+	const rowFor = (date: string) => agenda.querySelector<HTMLElement>(`.agenda-row[data-day="${date}"]`);
+
+	const select = (date: string) => {
+		const row = rowFor(date);
+		if (!row) return false;
+		for (const el of document.querySelectorAll('.agenda-row.selected, .cell.selected')) el.classList.remove('selected');
+		row.classList.add('selected');
+		document.querySelector(`.cell-day[data-day="${date}"]`)?.closest('.cell')?.classList.add('selected');
+		return true;
+	};
+
+	// A shared link to a day ("#d-2026-10-20") opens on that day.
+	const fromHash = /^#d-(\d{4}-\d{2}-\d{2})$/.exec(location.hash)?.[1];
+	if (fromHash) select(fromHash);
+
+	document.addEventListener('click', (e) => {
+		const cell = (e.target as HTMLElement | null)?.closest<HTMLAnchorElement>('.cell-day[data-day]');
+		if (!cell || isModifiedClick(e)) return;
+		// A day from the next or previous month has no row here; let its link
+		// do what it does.
+		if (!select(cell.dataset.day ?? '')) return;
+		e.preventDefault();
+		// Keeps the URL shareable without the jump an anchor would make.
+		history.replaceState(null, '', `#d-${cell.dataset.day}`);
+	});
+}
+
 /**
  * Follow one person across the page: pointing at any of their bars, Upcoming
  * rows or "+N more" rows lights up all of them and dims everyone else.
