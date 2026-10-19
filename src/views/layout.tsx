@@ -179,7 +179,10 @@ function LayoutShell({
 					</div>
 				</header>
 
-				<main class="wrap" id="main">{children}</main>
+				<main class="wrap" id="main">
+					{active === 'calendar' ? <PushNudge /> : null}
+					{children}
+				</main>
 
 				<footer class="foot">
 					<span>wan-nee-la</span>
@@ -344,6 +347,36 @@ function NotificationsBell() {
 				<p class="muted" data-push-ios hidden>{t('push.ios')}</p>
 			</div>
 		</>
+	);
+}
+
+/**
+ * A one-line invitation to turn notifications on, on the calendar only.
+ *
+ * The bell has been in the header since October, and most people never open
+ * it — the free channel only works for whoever finds it. Hidden in the markup:
+ * whether to show it is this browser's question (does it support push, has it
+ * ever been asked, is it already subscribed, was this dismissed), which the
+ * client script answers. Shown only to a browser that has never been asked,
+ * so turning notifications off, or blocking them, is never second-guessed.
+ *
+ * On an iPhone in a Safari tab there is nothing to switch on, so it says how
+ * to install instead, and "How" opens the bell's panel with the steps.
+ */
+function PushNudge() {
+	const t = useT();
+	const key = usePushKey();
+	if (!key) return null;
+	return (
+		<div class="banner nudge" data-push-nudge hidden>
+			<BellIcon class="sm" />
+			<span data-push-nudge-text data-ios-text={t('push.nudgeIos')}>{t('push.nudge')}</span>
+			<span class="banner-action">
+				<button type="button" class="btn primary" data-push-nudge-on>{t('push.on')}</button>
+				<button type="button" class="btn tonal" popovertarget="push-panel" data-push-nudge-how hidden>{t('push.how')}</button>
+				<button type="button" class="btn text" data-push-nudge-later>{t('push.later')}</button>
+			</span>
+		</div>
 	);
 }
 

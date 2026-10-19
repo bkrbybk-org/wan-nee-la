@@ -21,6 +21,9 @@
  *
  * The hostname comes from wrangler.local.jsonc, here or in the main checkout,
  * or from --host. Usage: npm run shield:probe [-- --host example.com]
+ *
+ * Exits 0 only when every violating request was stopped at the edge and no
+ * compliant one was. `npm run ship` runs it after each deploy.
  */
 
 import { spawnSync } from 'node:child_process';
@@ -138,3 +141,8 @@ if (blocked.length === badRows.length) {
 	console.log(`  deployed yet, or it runs after Access. Look the Ray IDs up in Security → Analytics: the ${badRows.length}`);
 	console.log(`  "violate" rows should carry a schema violation, the ${good.length} "pass" rows should not.`);
 }
+
+// Non-zero unless every violation was stopped and nothing compliant was, so
+// `npm run ship` can treat a half-working edge as the failure it is. Every
+// state but the last one on 2026-10-19 looked fine in the dashboard.
+process.exit(blocked.length === badRows.length && goodBlocked.length === 0 ? 0 : 1);

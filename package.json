@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "wrangler dev --config $(test -f wrangler.local.jsonc && echo wrangler.local.jsonc || echo wrangler.jsonc)",
+    "preview": "npm run build:client && npm run build:docs && wrangler dev --config wrangler.jsonc --port 8799 --var DEV_AUTH_BYPASS:1 --var DEV_EMAIL:dev@example.com",
     "deploy": "wrangler deploy --config $(test -f wrangler.local.jsonc && echo wrangler.local.jsonc || echo wrangler.jsonc)",
     "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.client.json",
     "cf-typegen": "wrangler types --config $(test -f wrangler.local.jsonc && echo wrangler.local.jsonc || echo wrangler.jsonc)",

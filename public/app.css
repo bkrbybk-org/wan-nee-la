@@ -644,6 +644,12 @@ h3.sub { margin: 20px 0 8px; color: var(--md-on-surface-variant); }
    action must keep its message hard against the left edge. */
 .banner-action { margin-left: auto; display: flex; align-items: center; }
 .banner.ok { background: var(--md-tertiary-container); color: var(--md-on-tertiary-container); }
+/* The notifications invitation. Same colours as any banner; it only has to
+   lay out an icon, a sentence and two buttons, wrapping on a phone. */
+.banner.nudge { align-items: center; flex-wrap: wrap; white-space: normal; padding-block: 8px; }
+.banner.nudge > span:not(.banner-action) { flex: 1 1 200px; }
+.banner.nudge .banner-action { gap: 4px; }
+.banner.nudge[hidden] { display: none; }
 
 /* ---------- text fields ---------- */
 

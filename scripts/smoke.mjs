@@ -1495,6 +1495,12 @@ async function main() {
 	check('bell: the panel carries the public key', calendarHtml.includes('data-vapid-key="smoke-public-key"'), 'no key');
 	const meHtml = await (await fetch(`${BASE}/me`)).text();
 	eq('bell: exactly one panel on /me, so the old card is gone', (meHtml.match(/data-push-card/g) ?? []).length, 1);
+
+	// The invitation: calendar only, hidden until the script decides this
+	// browser should see it, with the iPhone wording handed over as data.
+	check('nudge: on the calendar, hidden until the script has run', /<div class="banner nudge"[^>]*data-push-nudge[^>]*hidden/.test(calendarHtml), 'missing or visible without JS');
+	check('nudge: carries both wordings', calendarHtml.includes('Get a notification at 09:00') && /data-ios-text="[^"]*Home Screen/.test(calendarHtml), 'wording missing');
+	check('nudge: not on /me, where the bell is a click away anyway', !meHtml.includes('data-push-nudge'), 'nudge on /me');
 }
 
 let exitCode = 0;

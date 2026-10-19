@@ -10,10 +10,13 @@
  * this script only proves the code works where it runs.
  *
  *   1. Local   typecheck, lint, unit tests, colour contrast, route smoke tests.
- *   2. Deploy  any migrations named with --migrate, applied to production D1
+ *   2. Deploy  refuse if the live Worker's vars differ from the config file,
+ *              since a deploy overwrites them (ISSUES #40); then any
+ *              migrations named with --migrate, applied to production D1
  *              first, then `npm run deploy`.
  *   3. Prod    the new version is the one serving, Access still fronts the
- *              hostname, and production D1 answers a read.
+ *              hostname, production D1 answers a read, and API Shield still
+ *              blocks every schema violation at the edge (`shield:probe`).
  *
  * The real config, `wrangler.local.jsonc`, is gitignored and lives only in the
  * main checkout. Run from a git worktree, this copies it in for the deploy and
@@ -23,6 +26,10 @@
  *   npm run ship
  *   npm run ship -- --migrate migrations/0011_leave_type_active.sql
  *   npm run ship -- --local-only        stage 1 alone
+ *   npm run ship -- --check-drift       compare live vars with the config, nothing else
+ *   npm run ship -- --accept-var-changes
+ *                                       deploy even though vars differ — for a
+ *                                       change made in the config on purpose
  *
  * Migrations are named, never inferred: D1 here has no record of which files
  * have been applied, and an ALTER TABLE run twice fails. Naming the file is the
@@ -35,11 +42,14 @@ import { join } from 'node:path';
 
 const CONFIG = 'wrangler.local.jsonc';
 const args = process.argv.slice(2);
+const FLAGS = ['--local-only', '--check-drift', '--accept-var-changes'];
 const localOnly = args.includes('--local-only');
+const checkDriftOnly = args.includes('--check-drift');
+const acceptVarChanges = args.includes('--accept-var-changes');
 const migrations = [];
 for (let i = 0; i < args.length; i++) {
 	if (args[i] === '--migrate') migrations.push(args[++i]);
-	else if (args[i] !== '--local-only') fail(`unknown argument: ${args[i]}`);
+	else if (!FLAGS.includes(args[i])) fail(`unknown argument: ${args[i]}`);
 }
 for (const m of migrations) {
 	if (!m || !existsSync(m)) fail(`no such migration: ${m}`);
@@ -93,6 +103,69 @@ function parseJsonc(text) {
 	return JSON.parse(out.replace(/,(\s*[}\]])/g, '$1'));
 }
 
+/** Copy the real config in from the main checkout if this checkout lacks it. */
+function borrowConfig() {
+	if (existsSync(CONFIG)) return;
+	// The main checkout is always the first entry `git worktree list` prints.
+	const main = capture('git', ['worktree', 'list', '--porcelain'], 'git worktree list').split('\n')[0].replace(/^worktree /, '');
+	const source = join(main, CONFIG);
+	if (!existsSync(source)) fail(`${CONFIG} is in neither this checkout nor the main one (${main})`);
+	copyFileSync(source, CONFIG);
+	console.log(`borrowed ${CONFIG} from the main checkout`);
+	process.on('exit', () => rmSync(CONFIG, { force: true }));
+	process.on('SIGINT', () => process.exit(130));
+}
+
+/** The version id taking all traffic right now. */
+function servingVersion() {
+	const deployments = JSON.parse(capture('npx', ['wrangler', 'deployments', 'list', '--json', '--config', CONFIG], 'wrangler deployments list'));
+	const latest = deployments.at(-1) ?? deployments[0];
+	return latest?.versions?.find((v) => v.percentage === 100)?.version_id;
+}
+
+/**
+ * Plain-text vars the deploy would change on the live Worker.
+ *
+ * `wrangler deploy` replaces every var with the config file's and only warns,
+ * so a value set on the Worker some other way — the dashboard, `wrangler
+ * versions` — is silently lost. That is how the push keypair came apart in
+ * September (ISSUES #40). Secrets are not compared: a deploy keeps them.
+ *
+ * Names only in what this prints, never values: the log is pasted into chats
+ * and issues, and a var is a var only by convention.
+ */
+function varDrift(config) {
+	const version = servingVersion();
+	if (!version) fail('could not tell which version is serving, so the vars cannot be compared');
+	const view = JSON.parse(capture('npx', ['wrangler', 'versions', 'view', version, '--json', '--config', CONFIG], 'wrangler versions view'));
+	const live = new Map((view.resources?.bindings ?? []).filter((b) => b.type === 'plain_text').map((b) => [b.name, String(b.text ?? '')]));
+	const want = new Map(Object.entries(config.vars ?? {}).map(([k, v]) => [k, String(v)]));
+	const removed = [...live.keys()].filter((k) => !want.has(k));
+	const changed = [...want.keys()].filter((k) => live.has(k) && live.get(k) !== want.get(k));
+	const added = [...want.keys()].filter((k) => !live.has(k));
+	return { version, removed, changed, added };
+}
+
+/** Report drift; true when the deploy may go ahead. */
+function reportDrift({ version, removed, changed, added }) {
+	console.log(`live version ${version}`);
+	if (added.length) console.log(`  new in the config, added by this deploy: ${added.join(', ')}`);
+	if (removed.length) console.log(`  set on the Worker but not in ${CONFIG} — this deploy would DELETE: ${removed.join(', ')}`);
+	if (changed.length) console.log(`  different on the Worker — this deploy would OVERWRITE: ${changed.join(', ')}`);
+	if (!removed.length && !changed.length) {
+		console.log('✓ the config matches the live vars');
+		return true;
+	}
+	return false;
+}
+
+if (checkDriftOnly) {
+	stage('var drift');
+	borrowConfig();
+	const ok = reportDrift(varDrift(parseJsonc(readFileSync(CONFIG, 'utf8'))));
+	process.exit(ok ? 0 : 1);
+}
+
 // ---------------------------------------------------------------------------
 // 1. Local
 // ---------------------------------------------------------------------------
@@ -122,26 +195,23 @@ if (localOnly) process.exit(0);
 
 stage('2/3 deploy');
 
-// The main checkout is always the first entry `git worktree list` prints.
-let borrowed = false;
-if (!existsSync(CONFIG)) {
-	const main = capture('git', ['worktree', 'list', '--porcelain'], 'git worktree list').split('\n')[0].replace(/^worktree /, '');
-	const source = join(main, CONFIG);
-	if (!existsSync(source)) fail(`${CONFIG} is in neither this checkout nor the main one (${main})`);
-	copyFileSync(source, CONFIG);
-	borrowed = true;
-	console.log(`borrowed ${CONFIG} from the main checkout`);
-}
-const giveBack = () => {
-	if (borrowed) rmSync(CONFIG, { force: true });
-};
-process.on('exit', giveBack);
-process.on('SIGINT', () => process.exit(130));
+borrowConfig();
 
 const config = parseJsonc(readFileSync(CONFIG, 'utf8'));
 const host = config.routes?.[0]?.pattern?.replace(/\/.*$/, '');
 const dbName = config.d1_databases?.[0]?.database_name;
 if (!host || !dbName) fail(`${CONFIG} names no route or no D1 database`);
+
+// Before anything touches production, migrations included.
+if (!reportDrift(varDrift(config))) {
+	if (!acceptVarChanges) {
+		fail(
+			`the deploy would change vars on the live Worker. If the value on the Worker is the right one, put it in ${CONFIG}` +
+				' (in the main checkout); if the config is right and the change is deliberate, re-run with -- --accept-var-changes',
+		);
+	}
+	console.log('--accept-var-changes: deploying anyway');
+}
 
 for (const file of migrations) {
 	run('npx', ['wrangler', 'd1', 'execute', dbName, '--remote', '--config', CONFIG, '--file', file], `migration ${file}`);
@@ -169,9 +239,7 @@ const bad = (msg) => {
 
 // The version now taking 100% of traffic has to be the one just uploaded.
 // Another session deploying in the same minute is the case this catches.
-const deployments = JSON.parse(capture('npx', ['wrangler', 'deployments', 'list', '--json', '--config', CONFIG], 'wrangler deployments list'));
-const latest = deployments.at(-1) ?? deployments[0];
-const serving = latest?.versions?.find((v) => v.percentage === 100)?.version_id;
+const serving = servingVersion();
 if (serving === version) ok('the new version serves all traffic');
 else bad(`the version serving traffic is ${serving ?? 'unknown'}, not ${version}`);
 
@@ -204,6 +272,18 @@ const rows = JSON.parse(
 const types = rows?.[0]?.results?.[0]?.n;
 if (typeof types === 'number' && types > 0) ok(`production D1 answers (${types} leave types)`);
 else bad('production D1 returned no leave types');
+
+// The edge, which a deploy cannot change but a dashboard edit can — and on
+// 2026-10-19 two edits in a row switched enforcement off without anything in
+// the dashboard looking wrong. Anonymous and read-only; see the script.
+console.log('\n$ npm run shield:probe');
+const shield = spawnSync('node', ['scripts/shield-probe.mjs', '--host', host], { encoding: 'utf8' });
+const verdict = (shield.stdout ?? '').trim().split('\n').filter((l) => /^[✓✗~-] /.test(l) || /^ {4}/.test(l));
+if (shield.status === 0) ok('API Shield blocks every schema violation at the edge');
+else {
+	for (const line of verdict) console.log(`  ${line}`);
+	bad('API Shield is not blocking every schema violation — run `npm run shield:probe` for the table');
+}
 
 if (problems > 0) fail(`${problems} production check(s) failed — version ${version} is live; roll back with \`npx wrangler rollback\` if it is at fault`);
 console.log(`\n✓ shipped ${version}. Next: update the docs, then commit and push.`);

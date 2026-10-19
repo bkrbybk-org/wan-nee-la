@@ -83,6 +83,50 @@ if (card && bell) {
 		status.textContent = message;
 	}
 
+	// The invitation on the calendar (layout.tsx, PushNudge). "Not now" holds
+	// for 30 days, in this browser only — it is a per-device question anyway.
+	const nudgeEl = document.querySelector<HTMLElement>('[data-push-nudge]');
+	const NUDGE_LATER = 'wnl-push-nudge-later';
+	const NUDGE_QUIET_MS = 30 * 24 * 60 * 60 * 1000;
+
+	function nudgeSnoozed(): boolean {
+		try {
+			const at = Number(localStorage.getItem(NUDGE_LATER));
+			return at > 0 && Date.now() - at < NUDGE_QUIET_MS;
+		} catch {
+			return false;
+		}
+	}
+
+	/** Show the invitation as a one-tap "Turn on", as install steps, or not at all. */
+	function nudge(kind: 'enable' | 'ios' | null) {
+		if (!nudgeEl) return;
+		if (kind === null || nudgeSnoozed()) {
+			nudgeEl.hidden = true;
+			return;
+		}
+		const text = nudgeEl.querySelector<HTMLElement>('[data-push-nudge-text]')!;
+		if (kind === 'ios') text.textContent = text.dataset.iosText ?? text.textContent;
+		nudgeEl.querySelector<HTMLElement>('[data-push-nudge-on]')!.hidden = kind !== 'enable';
+		nudgeEl.querySelector<HTMLElement>('[data-push-nudge-how]')!.hidden = kind !== 'ios';
+		nudgeEl.hidden = false;
+	}
+
+	if (nudgeEl) {
+		// The panel's own button does the work, so there is one path to
+		// subscribing. Clicking it from inside this click keeps the user
+		// gesture the permission prompt needs.
+		nudgeEl.querySelector('[data-push-nudge-on]')!.addEventListener('click', () => enableBtn.click());
+		nudgeEl.querySelector('[data-push-nudge-later]')!.addEventListener('click', () => {
+			try {
+				localStorage.setItem(NUDGE_LATER, String(Date.now()));
+			} catch {
+				// Storage blocked: it still goes away for this page view.
+			}
+			nudgeEl.hidden = true;
+		});
+	}
+
 	function buttons(state: { enable?: boolean; disable?: boolean; test?: boolean }) {
 		enableBtn.hidden = !state.enable;
 		disableBtn.hidden = !state.disable;
@@ -100,9 +144,11 @@ if (card && bell) {
 				iosNote.hidden = false;
 				show(S.tabOnly);
 				mark('blocked', S.tabOnly);
+				nudge('ios');
 			} else {
 				show(S.unsupported);
 				mark('blocked', S.unsupported);
+				nudge(null);
 			}
 			return;
 		}
@@ -111,6 +157,7 @@ if (card && bell) {
 			buttons({});
 			show(S.blocked);
 			mark('blocked', S.blocked);
+			nudge(null);
 			return;
 		}
 
@@ -142,10 +189,14 @@ if (card && bell) {
 			show(S.on);
 			mark('on', S.on);
 			buttons({ disable: true, test: true });
+			nudge(null);
 		} else {
 			show(S.off);
 			mark('off', S.off);
 			buttons({ enable: true });
+			// Only a browser never asked. "granted" with no subscription means
+			// someone turned it off here on purpose; that is not to be nagged.
+			nudge(Notification.permission === 'default' ? 'enable' : null);
 		}
 	}
 
