@@ -14,7 +14,12 @@ import {
 import { LangProvider, useT } from '../i18n/context.tsx';
 import { usePushKey } from './site.tsx';
 import { initials } from './person.ts';
+import { logoSvg } from './logo.ts';
 import { toLang, type StringKey } from '../i18n/strings.ts';
+
+/** The app's mark in the header, and as the browser-tab icon. Built once. */
+const BRAND_MARK = logoSvg();
+const FAVICON = `data:image/svg+xml,${encodeURIComponent(BRAND_MARK)}`;
 
 /**
  * Theme switching, inlined into <head> on purpose.
@@ -131,7 +136,12 @@ function LayoutShell({
 				<meta name="theme-color" content="#131314" media="(prefers-color-scheme: dark)" />
 				<title>{title} · wan-nee-la</title>
 				<link rel="stylesheet" href="/app.css" />
-				<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><text y='14' font-size='14'>🌴</text></svg>" />
+				{/* The mark from logo.ts. The PNG is for browsers that ignore an SVG
+				    icon; those that take SVG pick the later, sharper one. Inline
+				    as a data: URL, which the CSP's img-src already allows, so the
+				    tab icon costs no request behind Access. */}
+				<link rel="icon" href="/icon-32.png" sizes="32x32" type="image/png" />
+				<link rel="icon" href={FAVICON} type="image/svg+xml" />
 				{/* `use-credentials` is not optional here: the manifest is same-origin
 				    but behind Cloudflare Access, and without it the browser fetches
 				    it anonymously, gets the login redirect, and quietly treats the
@@ -152,7 +162,7 @@ function LayoutShell({
 				    destinations, within thumb reach. */}
 				<header class="topbar">
 					<a class="brand" href="/">
-						<span class="brand-mark" aria-hidden="true">🌴</span>
+						<span class="brand-mark" aria-hidden="true" dangerouslySetInnerHTML={{ __html: BRAND_MARK }} />
 						<span class="brand-name">wan-nee-la</span>
 					</a>
 					<nav class="nav" aria-label={t('nav.sections')}>

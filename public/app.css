@@ -296,7 +296,9 @@ a { color: var(--md-primary); }
 	line-height: 28px;
 	font-weight: 400;
 }
-.brand-mark { font-size: 22px; line-height: 1; }
+/* The mark from src/views/logo.ts, inlined as SVG. */
+.brand-mark { display: inline-flex; line-height: 0; }
+.brand-mark svg { width: 28px; height: 28px; }
 .brand-name { display: none; }
 
 /* Desktop navigation: M3 primary tabs, with the active indicator under the

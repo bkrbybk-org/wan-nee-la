@@ -1227,6 +1227,12 @@ async function main() {
 	check('month head: the full name for a wide screen', /<span class="m-long">September<\/span>/.test(heading), heading);
 	check('month head: the short name for a phone', /<span class="m-short">Sep<\/span>/.test(heading), heading);
 
+	// --- the mark: one drawing, from src/views/logo.ts, everywhere ----------
+	check('logo: the header draws the mark, not an emoji', /<span class="brand-mark"[^>]*><svg[^>]*viewBox="0 0 96 96"/.test(sepHtml) && !sepHtml.includes('🌴'), 'header mark missing');
+	check('logo: the tab icon is the same SVG, inline', /<link rel="icon" href="data:image\/svg\+xml,%3Csvg[^"]*" type="image\/svg\+xml"/.test(sepHtml), 'svg favicon missing');
+	const png32 = await fetch(`${BASE}/icon-32.png`);
+	check('logo: with a PNG for browsers that ignore SVG icons', png32.status === 200 && png32.headers.get('content-type') === 'image/png', `${png32.status} ${png32.headers.get('content-type')}`);
+
 	// U5: the bar shows "First L.", the tooltip and popup the full name.
 	const barTag = bars[0] ?? '';
 	check('bars: show a short name', barHtml.slice(barAt, barAt + 900).includes('Barbara P.'), 'full name in the bar');
