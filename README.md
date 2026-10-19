@@ -269,6 +269,14 @@ openapi:shield` and upload the file again — until you do, those operations are
 simply not validated. Moving to `/api/v1/…` on 2026-09-21 left the whole API
 unvalidated until the re-upload, which `npm run shield:probe` shows plainly.
 
+After a dashboard upload, check **API Shield → Schema validation** filtered to
+this schema: all ten endpoints listed, a **new** endpoint added to Endpoint
+Management (the upload offers it, and skipping that leaves it unvalidated), and
+each one's action **Block** — the page's default action is Log, and an endpoint
+left on the default blocks nothing. Then run the probe. On 2026-10-19 it took
+three rounds to get all 16 violations blocked, and each intermediate state
+looked fine in the dashboard.
+
 An uploaded schema only *detects*: it sets
 `cf.schema_validation.uploaded.violated` and blocks nothing. Enforcement is a
 WAF custom rule on that field, scoped to this hostname — start it on **Log**,

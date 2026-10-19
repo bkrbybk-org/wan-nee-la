@@ -100,10 +100,9 @@ None of these are needed for the app to do its job. Rough value order.
 
 ## Suggested order
 
-1. **4.14** — upload the current Shield schema: `holidays` and `balances` are not validated at the edge yet (`npm run shield:probe`, 2026-10-18).
-2. **2.3** — `HEALTH_URL` plus a Bypass rule or service token, so the monitor starts watching.
-3. **2.4** — retire Personal leave from `/admin`, if that is still wanted.
-4. **4.13** — make `ship` refuse on config drift, so #40 cannot happen twice.
-5. **3.4** — a rate-limiting rule on `/api/v1/*`.
-6. **1.2 / 1.3** — LINE, only if browser notifications turn out not to be enough.
-7. Features, as they are actually wanted.
+1. **2.3** — `HEALTH_URL` plus a Bypass rule or service token, so the monitor starts watching.
+2. **2.4** — retire Personal leave from `/admin`, if that is still wanted.
+3. **4.13** — make `ship` refuse on config drift, so #40 cannot happen twice.
+4. **3.4** — a rate-limiting rule on `/api/v1/*`.
+5. **1.2 / 1.3** — LINE, only if browser notifications turn out not to be enough.
+6. Features, as they are actually wanted.
