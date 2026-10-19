@@ -8,7 +8,7 @@ Updated: 2026-10-18
 
 ## Status
 
-Deployed and serving. Version `a73ce51e-4a93-4451-a83d-2d990534ab98`, deployed 2026-10-19 with `npm run ship`, D1 `<database-id>` in APAC, behind Cloudflare Access on `<hostname>`. Production checks passed: the new version serves all traffic, `/health` and `/` both 302 to Access, production D1 answers, and migration 0011 is applied with every type still offered. That deploy also carried the 09:00 weekday schedule — production had still been on the old daily `0 1 * * *` cron until then.
+Deployed and serving. Version `bc116de2-9053-4589-b52d-71a92d611408`, deployed 2026-10-19 with `npm run ship`, D1 `<database-id>` in APAC, behind Cloudflare Access on `<hostname>`. Production checks passed: the new version serves all traffic, `/health` and `/` both 302 to Access, production D1 answers, and migration 0011 is applied with every type still offered. That deploy also carried the 09:00 weekday schedule — production had still been on the old daily `0 1 * * *` cron until then.
 
 **In real use.** Ten active users, 20 confirmed bookings, 26 holidays, four leave types, 31 rows in the audit trail. That changes what matters here: the shared surfaces now have a real audience, so note visibility, the audit trail and the privacy rules on `/u/:email` are load-bearing rather than theoretical.
 
@@ -142,7 +142,7 @@ Two consequences worth remembering:
 
 ## Verification
 
-**749 automated assertions**, all green. CI runs them, and lint, on every push and pull request.
+**752 automated assertions**, all green. CI runs them, and lint, on every push and pull request.
 
 | Suite | Assertions | Covers |
 | --- | --- | --- |
@@ -152,7 +152,7 @@ Two consequences worth remembering:
 | `test-push.mjs` | 31 | RFC 8291 encryption against the spec's worked example, VAPID token and signature, the `วันนี้ … ลา` and week-ahead titles |
 | `test-holidays.mjs` | 30 | Parsing a pasted holiday list, and its bounds |
 | `test-i18n.mjs` | 27 | Lookup, placeholders, plurals, and the catalogue's own health |
-| `smoke.mjs` | 359 | The HTTP layer — see below |
+| `smoke.mjs` | 362 | The HTTP layer — see below |
 | `check-openapi.mjs` | — | Each of the 34 routes is either documented in `openapi.yaml` or deliberately listed as not, and the API Shield 3.0.3 copy still builds from it |
 
 The smoke suite boots a real worker against a scratch database and exercises what pure functions cannot reach: the CSRF guard, ownership checks on edit and cancel, booking rules over real requests, the open-redirect guards on `returnTo` **and on the `Referer` header**, note visibility across two identities, the audit trail's contents, the security headers, digest decisions, the webhook signature, push subscription ownership, admin authorisation, undo and its re-validation, next-year and cross-year quota, a LINE channel switched off by its flag, adding, retiring and deleting leave types, and history pruning through the real scheduled handler.
@@ -169,7 +169,7 @@ It is built against its own worst failure mode — passing while testing nothing
 
 ## Open items
 
-**No known bugs.** The push keypair mismatch (#40) was repaired on 2026-09-21. 749 assertions are green and `npm audit` is clean. The 2026-08-25 audit and the 2026-09-13 review both found and fixed what they turned up — the second a quota overdraw when moving a booking across New Year (#36) — and each fix is covered by a test or, where a test could not reach it, recorded in [ISSUES.md](ISSUES.md).
+**No known bugs.** The push keypair mismatch (#40) was repaired on 2026-09-21. 752 assertions are green and `npm audit` is clean. The 2026-08-25 audit and the 2026-09-13 review both found and fixed what they turned up — the second a quota overdraw when moving a booking across New Year (#36) — and each fix is covered by a test or, where a test could not reach it, recorded in [ISSUES.md](ISSUES.md).
 
 What follows is decisions, unfinished configuration, accepted trade-offs and debt — not defects.
 
@@ -252,6 +252,7 @@ Features — iCal, CSV export, team grouping, coverage scoped to a team — are 
 
 ## Change log
 
+- **2026-10-19** — A new mark: a calendar page with a palm on it, on the app's blue. One drawing in `src/views/logo.ts` now feeds the header, the browser-tab icon, the home-screen icons and the notification badge, where there had been a 🌴 emoji that every operating system drew differently and a plain calendar on the home screen. `npm run icons` learned to fill curves to draw it. An iPhone that already has the app on its Home Screen keeps the old icon until it is removed and added again; Android refreshes installed icons from the manifest by itself, in its own time. The LINE message text keeps its 🌴.
 - **2026-10-19** — On a phone the list under the grid is one day's card, not the month: it opens on today, and tapping a day swaps it in place, so reading the 20th takes one tap instead of a scroll past the 1st to the 19th. Each row says how long that absence runs ("Annual · 18–21 Oct"), an empty day says nobody is away, and a ring marks the day shown. The phone's "Out today / Next 7 days" card is gone; the Upcoming list now shows at every width and covers it. With scripting off the list is the whole month's busy days, as before.
 - **2026-10-19** — The calendar invites a browser that has never been asked to turn notifications on, in one tap; on an iPhone Safari tab it says to add the site to the Home Screen instead, and "Not now" holds for 30 days. Someone who turned them off or blocked them is never asked again. `npm run ship` now refuses to deploy over vars that differ on the live Worker (PLAN 4.13, ISSUES #40) and runs `shield:probe` after each deploy, which now exits non-zero unless every violation is blocked. `npm run preview` and `.claude/launch.json` start a local preview with one command.
 - **2026-10-19** — API Shield fully enforced again: the schema re-uploaded, `holidays` and `balances` added to Endpoint Management, every endpoint set to Block. `shield:probe` shows all 16 violating requests stopped at the edge and all 12 compliant ones reaching Access. The README now lists what to check in the dashboard after an upload.

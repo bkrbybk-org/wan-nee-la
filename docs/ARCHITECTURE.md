@@ -242,6 +242,7 @@ The rest of the system:
 | Touch ripple | `src/client/ripple.ts`, delegated from `document`; decoration only, and skipped under `prefers-reduced-motion` |
 | Filled text fields with floating labels | `src/views/fields.tsx` + `.tf*` rules |
 | Icons | `src/views/icons.tsx` — drawn by hand on the 24px grid rather than pulling Material Symbols, which would mean a request to `fonts.googleapis.com` on every page for eight glyphs |
+| App mark | `src/views/logo.ts` — a calendar page with a palm, on the primary blue. One description of shapes, read by everything: the header and the browser-tab icon render it as inline SVG, and `npm run icons` rasterises the same shapes into the home-screen PNGs, a 32px tab-icon fallback and the notification badge (the page as a white silhouette with the palm cut out, since Android draws badges from alpha alone). The rasteriser is in the script, with no image library, so paths stay to absolute M, C and Z. Replaced, on 2026-10-19, a 🌴 emoji that every OS drew differently and a home-screen calendar that matched nothing else. |
 
 Two deliberate deviations. `<input type="date">` and `<select>` never match `:placeholder-shown` — they always display something — so their labels are pinned up (`tf-fixed`) instead of flickering. And the month grid keeps `<table>` semantics rather than taking `role="grid"`: an ARIA grid promises an arrow-key navigation model, and announcing one without it is worse than saying nothing.
 
