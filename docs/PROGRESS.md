@@ -8,7 +8,7 @@ Updated: 2026-10-18
 
 ## Status
 
-Deployed and serving. Version `82ea8fa5-57ac-4c85-b0ff-575932af66c4`, deployed 2026-10-19 with `npm run ship`, D1 `<database-id>` in APAC, behind Cloudflare Access on `<hostname>`. Production checks passed: the new version serves all traffic, `/health` and `/` both 302 to Access, production D1 answers, and migration 0011 is applied with every type still offered. That deploy also carried the 09:00 weekday schedule — production had still been on the old daily `0 1 * * *` cron until then.
+Deployed and serving. Version `a73ce51e-4a93-4451-a83d-2d990534ab98`, deployed 2026-10-19 with `npm run ship`, D1 `<database-id>` in APAC, behind Cloudflare Access on `<hostname>`. Production checks passed: the new version serves all traffic, `/health` and `/` both 302 to Access, production D1 answers, and migration 0011 is applied with every type still offered. That deploy also carried the 09:00 weekday schedule — production had still been on the old daily `0 1 * * *` cron until then.
 
 **In real use.** Ten active users, 20 confirmed bookings, 26 holidays, four leave types, 31 rows in the audit trail. That changes what matters here: the shared surfaces now have a real audience, so note visibility, the audit trail and the privacy rules on `/u/:email` are load-bearing rather than theoretical.
 
@@ -69,7 +69,7 @@ Two consequences worth remembering:
 | --- | --- | --- |
 | GET | `/health` | Above the app's auth. Version, D1 ping, config flags; 503 when D1 is down. Still behind Access — the uptime workflow needs a Bypass rule or a service token (ISSUES.md #18). |
 | POST | `/line/webhook` | Above auth. Signature-verified; only writes the group id. |
-| GET | `/` | Calendar. Month grid at every width — names on a laptop, dots on a phone. Upcoming list from 768px; day list below the grid on a phone. Month/year jump. |
+| GET | `/` | Calendar. Month grid at every width — names on a laptop, dots on a phone. Upcoming list at every width; on a phone, one day's card under the grid, swapped by tapping a day. Month/year jump. |
 | GET | `/book?date=` | Booking page — the no-JS destination for calendar day cells. |
 | GET | `/docs` | API reference over `/openapi.json` (the zone blocks `*.yaml`). A Worker route rather than an asset, so it carries the CSP. |
 | GET | `/api/v1/leave?from=&to=&user=` | JSON feed. No email addresses in the response; `user` narrows it to one person. |
@@ -98,9 +98,9 @@ Two consequences worth remembering:
 
 ## What is built
 
-**Calendar** — a month grid at every width, saying different things at each. On a laptop each booking is one bar across the days it covers, labelled "First L.", with a badge of the person's initials in a colour of their own — the stripe still means the leave type — and holidays are hatched rather than tinted. Pointing at anyone's bar or row lights up all of theirs across the month and the Upcoming list. Days already gone fade, and so does leave that has finished; leave still running stays at full strength. The page fits the window: the body stops scrolling and the grid's rows share whatever height is left, so the last week is never below the fold. On a phone the same cell is ~48px, so each person away is a coloured dot and the whole cell is one tap target that jumps to that day in the list underneath. Click an empty day to book it, click an entry to open a detail popup, drag an entry to move it (desktop). A day with more people than fit shows "+N more", which opens the whole day's list. Everything is a real link first; the dialogs are an upgrade, and the calendar works with scripting off. A month/year picker sits beside the heading, because stepping is fine for next week and useless for next January. The prev/next buttons sit ahead of the month name, so they do not move as the name changes length.
+**Calendar** — a month grid at every width, saying different things at each. On a laptop each booking is one bar across the days it covers, labelled "First L.", with a badge of the person's initials in a colour of their own — the stripe still means the leave type — and holidays are hatched rather than tinted. Pointing at anyone's bar or row lights up all of theirs across the month and the Upcoming list. Days already gone fade, and so does leave that has finished; leave still running stays at full strength. The page fits the window: the body stops scrolling and the grid's rows share whatever height is left, so the last week is never below the fold. On a phone the same cell is ~48px, so each person away is a coloured dot and the whole cell is one tap target. Under the grid is one day's card, today to start with; tapping another day swaps the card in place, so seeing who is out on the 20th takes one tap and no scrolling, and each row says how long that absence runs ("Annual · 18–21 Oct"). Click an empty day to book it, click an entry to open a detail popup, drag an entry to move it (desktop). A day with more people than fit shows "+N more", which opens the whole day's list. Everything is a real link first; the dialogs are an upgrade, and the calendar works with scripting off. A month/year picker sits beside the heading, because stepping is fine for next week and useless for next January. The prev/next buttons sit ahead of the month name, so they do not move as the name changes length.
 
-**Upcoming list** — everything from today to 90 days out, one row per booking under the day it starts ("19 – 30 Oct · 9 days"; anything already under way sits under Today, "until 19 Oct"), with sticky headings, with a caption saying it is anchored to today. Shown from 768px: a sidebar once the window is at least 1024×700, stacked under the grid otherwise — it used to vanish entirely on any screen under 700px tall. Wherever it shows it replaces the who-summary card, which said the same thing in a worse shape. Fetched separately from the grid rather than filtered out of it, so paging back to April does not change the answer to "who is away soon".
+**Upcoming list** — everything from today to 90 days out, one row per booking under the day it starts ("19 – 30 Oct · 9 days"; anything already under way sits under Today, "until 19 Oct"), with sticky headings, with a caption saying it is anchored to today. Shown at every width: a sidebar once the window is at least 1024×700, stacked under the grid otherwise, and on a phone under the day card. It replaced the who-summary card ("Out today" / "Next 7 days"), which said the same thing in a worse shape. Fetched separately from the grid rather than filtered out of it, so paging back to April does not change the answer to "who is away soon".
 
 **Booking** — half-day granularity, live day-count preview from the server, overlap detection, quota enforcement, weekend and holiday rejection, a 90-day backdate window and a far-future guard. Edit and remove on every confirmed booking, past ones included. A refused booking comes back to the form holding what was typed, with the offending field marked; a drag-to-move does not, since it lands on a month view whose form nobody opened. A cancel or an edit can be undone for ten minutes, and the note survives either way — a cancel never deleted the row, and an edit's note is read from the row rather than from the audit snapshot, which records only whether a note existed.
 
@@ -142,7 +142,7 @@ Two consequences worth remembering:
 
 ## Verification
 
-**745 automated assertions**, all green. CI runs them, and lint, on every push and pull request.
+**749 automated assertions**, all green. CI runs them, and lint, on every push and pull request.
 
 | Suite | Assertions | Covers |
 | --- | --- | --- |
@@ -152,7 +152,7 @@ Two consequences worth remembering:
 | `test-push.mjs` | 31 | RFC 8291 encryption against the spec's worked example, VAPID token and signature, the `วันนี้ … ลา` and week-ahead titles |
 | `test-holidays.mjs` | 30 | Parsing a pasted holiday list, and its bounds |
 | `test-i18n.mjs` | 27 | Lookup, placeholders, plurals, and the catalogue's own health |
-| `smoke.mjs` | 355 | The HTTP layer — see below |
+| `smoke.mjs` | 359 | The HTTP layer — see below |
 | `check-openapi.mjs` | — | Each of the 34 routes is either documented in `openapi.yaml` or deliberately listed as not, and the API Shield 3.0.3 copy still builds from it |
 
 The smoke suite boots a real worker against a scratch database and exercises what pure functions cannot reach: the CSRF guard, ownership checks on edit and cancel, booking rules over real requests, the open-redirect guards on `returnTo` **and on the `Referer` header**, note visibility across two identities, the audit trail's contents, the security headers, digest decisions, the webhook signature, push subscription ownership, admin authorisation, undo and its re-validation, next-year and cross-year quota, a LINE channel switched off by its flag, adding, retiring and deleting leave types, and history pruning through the real scheduled handler.
@@ -169,7 +169,7 @@ It is built against its own worst failure mode — passing while testing nothing
 
 ## Open items
 
-**No known bugs.** The push keypair mismatch (#40) was repaired on 2026-09-21. 745 assertions are green and `npm audit` is clean. The 2026-08-25 audit and the 2026-09-13 review both found and fixed what they turned up — the second a quota overdraw when moving a booking across New Year (#36) — and each fix is covered by a test or, where a test could not reach it, recorded in [ISSUES.md](ISSUES.md).
+**No known bugs.** The push keypair mismatch (#40) was repaired on 2026-09-21. 749 assertions are green and `npm audit` is clean. The 2026-08-25 audit and the 2026-09-13 review both found and fixed what they turned up — the second a quota overdraw when moving a booking across New Year (#36) — and each fix is covered by a test or, where a test could not reach it, recorded in [ISSUES.md](ISSUES.md).
 
 What follows is decisions, unfinished configuration, accepted trade-offs and debt — not defects.
 
@@ -232,7 +232,8 @@ Features — iCal, CSV export, team grouping, coverage scoped to a team — are 
 - Deactivated users disappear from the calendar, feed and digest; their history stays for admins. Those three surfaces answer "who of us is out", and a former employee is not.
 - The digest is plain text, not a Flex bubble: a Flex payload is a second thing that can be rejected at 09:00 with nobody watching, and costs the same under per-member billing.
 - Flash messages travel in a cookie, never the query string — free prose in a URL was blocked by the WAF (#15).
-- "Next 7 days" rather than a Monday–Sunday week: a calendar week is mostly in the past by Thursday and useless on a Sunday.
+- "Next 7 days" rather than a Monday–Sunday week: a calendar week is mostly in the past by Thursday and useless on a Sunday. (The card that carried it was removed on 2026-10-19; the Upcoming list's rolling 90 days kept the same reasoning.)
+- On a phone, one day at a time under the grid rather than the whole month as a list (2026-10-19): the owner had to scroll past the 1st to the 19th to read the 20th. Chosen over starting the list at today, which a busy week still pushes down, and over one row per booking, which makes "who is out on the 20th" a matter of reading ranges.
 - First day of week is per user in D1, not `localStorage` like the theme: the month grid is server-rendered, so the preference has to reach the Worker, and per user it follows someone between devices.
 - Node 24 (`.nvmrc`) — the test scripts import `.ts` directly via type stripping.
 - Notes are private by default, per note. The problem was never that notes were shared; it was that the field gave no sign of it. Notes written before the choice existed were made private, because restricting a visible note is recoverable and publishing a confidential one is not.
@@ -251,6 +252,7 @@ Features — iCal, CSV export, team grouping, coverage scoped to a team — are 
 
 ## Change log
 
+- **2026-10-19** — On a phone the list under the grid is one day's card, not the month: it opens on today, and tapping a day swaps it in place, so reading the 20th takes one tap instead of a scroll past the 1st to the 19th. Each row says how long that absence runs ("Annual · 18–21 Oct"), an empty day says nobody is away, and a ring marks the day shown. The phone's "Out today / Next 7 days" card is gone; the Upcoming list now shows at every width and covers it. With scripting off the list is the whole month's busy days, as before.
 - **2026-10-19** — The calendar invites a browser that has never been asked to turn notifications on, in one tap; on an iPhone Safari tab it says to add the site to the Home Screen instead, and "Not now" holds for 30 days. Someone who turned them off or blocked them is never asked again. `npm run ship` now refuses to deploy over vars that differ on the live Worker (PLAN 4.13, ISSUES #40) and runs `shield:probe` after each deploy, which now exits non-zero unless every violation is blocked. `npm run preview` and `.claude/launch.json` start a local preview with one command.
 - **2026-10-19** — API Shield fully enforced again: the schema re-uploaded, `holidays` and `balances` added to Endpoint Management, every endpoint set to Block. `shield:probe` shows all 16 violating requests stopped at the edge and all 12 compliant ones reaching Access. The README now lists what to check in the dashboard after an upload.
 - **2026-10-18** — On a phone the month heading reads "Sep 2026" rather than "September 2026", which had pushed the Today button off the right edge of a 375px screen; it now fits down to 360px, in Thai too. `/admin` → Preview leads with the notification title a phone actually shows (PLAN 4.11). `shield:probe` covers `by-date`, `holidays` and `balances`, and found the last two unvalidated — the uploaded schema predates them. CI runners pinned to `ubuntu-24.04` ahead of `ubuntu-latest` moving to Ubuntu 26.
