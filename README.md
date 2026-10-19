@@ -57,6 +57,13 @@ npm run dev
 
 The first account to sign in becomes the admin.
 
+`npm run preview` is the same with nothing to set up but the database: it
+builds the client bundle and the Swagger files, then serves the template config
+on port 8799, signed in as `dev@example.com`. It is what `.claude/launch.json`
+starts, for previewing a change in Claude Code's browser pane. It ignores
+`wrangler.local.jsonc`, so a worktree without the real config previews the same
+as the main checkout.
+
 ## Checks
 
 ```bash
@@ -109,7 +116,8 @@ npm run ship
 
 which runs every local check, deploys only if they all pass, then checks
 production — the new version is the one serving, Access still fronts `/health`
-and `/`, and production D1 answers a read. It stops at the first failure. Run
+and `/`, production D1 answers a read, and API Shield still blocks every
+schema violation (`shield:probe`). It stops at the first failure. Run
 from a git worktree, it borrows `wrangler.local.jsonc` from the main checkout
 for the deploy and removes it afterwards. A migration is named, never inferred,
 since D1 here keeps no record of which files have run:
@@ -121,8 +129,12 @@ npm run ship -- --migrate migrations/0011_leave_type_active.sql
 **Every deploy replaces the Worker's vars with the ones in
 `wrangler.local.jsonc`.** A var changed in the dashboard, or by a deploy from
 another copy of the config, is silently overwritten (docs/ISSUES.md #40). Keep
-that file the one source of truth, and read the "differs from the remote
-configuration" warning a deploy prints.
+that file the one source of truth. `npm run ship` compares it with the live
+Worker before deploying and refuses if a var would be overwritten or deleted,
+naming the vars but never printing their values. If the config is the one that
+is right — a change you made on purpose — pass `-- --accept-var-changes`.
+`npm run ship -- --check-drift` runs that comparison alone. A plain `npm run
+deploy` still only warns.
 
 Then, in order:
 

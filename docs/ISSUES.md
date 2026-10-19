@@ -532,7 +532,7 @@ Fix, owner-side because it edits the real config: put the public key from versio
 
 What this does *not* prove is that the two halves match — only the deployment that set them both knows that, and no push has ever been sent. Subscribing from `/me` and pressing **Send a test** is the proof, and it also closes #23 and #31.
 
-The lasting lesson is in the README: `wrangler.local.jsonc` is the only place a var may be changed, and a deploy's "differs from the remote configuration" warning is worth reading rather than scrolling past. PLAN 4.13 would make `ship` refuse on drift rather than warn.
+The lasting lesson is in the README: `wrangler.local.jsonc` is the only place a var may be changed, and a deploy's "differs from the remote configuration" warning is worth reading rather than scrolling past. Since 2026-10-19 `npm run ship` refuses on drift rather than warning (PLAN 4.13): it reads the serving version's vars with `wrangler versions view`, and stops before any migration or deploy if one would be overwritten or deleted, unless `--accept-var-changes` says the change is deliberate.
 
 ---
 

@@ -347,6 +347,8 @@ Three consequences worth knowing:
 - **Subscriptions are per browser, not per person.** The endpoint is the primary key. Re-subscribing reassigns ownership to whoever is signed in, which is what makes a shared machine safe after someone signs out.
 - **Dead endpoints are pruned on send.** 404 and 410 mean gone for good and the row is deleted; anything else may be transient and is retried tomorrow.
 
+**Asking people.** The bell in the app bar is the switch. The calendar also carries an invitation (`PushNudge` in `views/layout.tsx`), rendered hidden; `client/push.ts` shows it only to a browser whose permission is still `default`, i.e. one that has never been asked. "Turn on" clicks the panel's own button, so there is one path to subscribing. On an iPhone Safari tab it gives the Home Screen step instead. "Not now" is remembered in `localStorage` for 30 days. A browser that is subscribed, turned off, or blocked never sees it.
+
 The service worker (`public/sw.js`) deliberately caches nothing. Every page here is behind Access and rendered per user; a cached page served to the wrong person, or after their access was revoked, is a far worse failure than a page that will not load offline.
 
 ## Notes, and who can read them

@@ -76,7 +76,7 @@ Nothing here is urgent. Ordered by cost-to-benefit.
 | ~~4.11~~ | ~~Show the push title in the admin preview~~ | — | **Done** (2026-10-18): the preview leads with "Notification title: …", the daily `วันนี้ … ลา` or the week-ahead title. |
 | ~~4.12~~ | ~~One command for the release order~~ | — | **Done** (2026-09-18): `npm run ship` — local checks, then deploy, then production checks, stopping at the first failure. Docs, commit and push stay manual on purpose. |
 | 4.14 | Keep the API Shield schema current automatically | **Owner** | **Half done** (2026-09-21): `npm run shield:upload` uploads `dist/openapi-shield.json` through the API, with `--activate` and `--prune`. It needs a token with the API Gateway permission, which is the owner's to mint; until that exists the upload is still a dashboard errand. Wiring it into `ship` should wait until the token does. |
-| 4.13 | Warn on config drift before deploying | **Sonnet** | `wrangler deploy` overwrites Worker vars and only warns (ISSUES #40). `ship` could compare `wrangler.local.jsonc` against the live version's vars first and refuse on a difference. |
+| ~~4.13~~ | ~~Warn on config drift before deploying~~ | — | **Done** (2026-10-19): `ship` compares the config's vars with the serving version's and refuses before deploying if one would be overwritten or deleted; `--accept-var-changes` for a deliberate change, `--check-drift` to run it alone. `ship` also runs `shield:probe` after the deploy. |
 
 ---
 
@@ -102,7 +102,6 @@ None of these are needed for the app to do its job. Rough value order.
 
 1. **2.3** — `HEALTH_URL` plus a Bypass rule or service token, so the monitor starts watching.
 2. **2.4** — retire Personal leave from `/admin`, if that is still wanted.
-3. **4.13** — make `ship` refuse on config drift, so #40 cannot happen twice.
-4. **3.4** — a rate-limiting rule on `/api/v1/*`.
-5. **1.2 / 1.3** — LINE, only if browser notifications turn out not to be enough.
-6. Features, as they are actually wanted.
+3. **3.4** — a rate-limiting rule on `/api/v1/*`.
+4. **1.2 / 1.3** — LINE, only if browser notifications turn out not to be enough.
+5. Features, as they are actually wanted.
