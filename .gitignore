@@ -11,3 +11,6 @@ public/docs/swagger-ui-bundle.js
 public/docs/swagger-ui.css
 .claude/worktrees/
 wrangler.local.jsonc
+
+# Screenshot output from npm run test:browser (VISUAL_OUT); the references are in scripts/visual/.
+visual-out/

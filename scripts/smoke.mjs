@@ -1645,6 +1645,7 @@ async function main() {
 	// -----------------------------------------------------------------------
 	const noKeysPage = await (await fetch(`${BASE}/health`)).json();
 	check('bell: the earlier sessions ran without push keys', noKeysPage.db === true, 'health unreadable');
+	const noKeysAdminHtml = await (await fetch(`${BASE}/admin`)).text();
 
 	await stopServer();
 	await startServer(ADMIN, { pushKeys: true });
@@ -1674,6 +1675,70 @@ async function main() {
 	check('nudge: on the calendar, hidden until the script has run', /<div class="banner nudge"[^>]*data-push-nudge[^>]*hidden/.test(calendarHtml), 'missing or visible without JS');
 	check('nudge: carries both wordings', calendarHtml.includes('Get a notification at 09:00') && /data-ios-text="[^"]*Home Screen/.test(calendarHtml), 'wording missing');
 	check('nudge: not on /me, where the bell is a click away anyway', !meHtml.includes('data-push-nudge'), 'nudge on /me');
+
+	// --- who has notifications on, for an admin -------------------------------
+	// One subscription is left from session 1, re-subscribed by OTHER.
+	const pushAdminHtml = await (await fetch(`${BASE}/admin`)).text();
+	const rowOf = (html, email) => {
+		const at = html.indexOf(`<span class="muted mono">${email}</span>`);
+		return at < 0 ? '' : html.slice(at, html.indexOf('</tr>', at));
+	};
+	check('admin push: a person with a subscription shows as on, with a count', /push-state on[^]*Notifications on · 1 browser/.test(rowOf(pushAdminHtml, OTHER)), rowOf(pushAdminHtml, OTHER).slice(0, 300));
+	check('admin push: a person without one shows as off', /push-state muted[^]*Notifications off/.test(rowOf(pushAdminHtml, ADMIN)), rowOf(pushAdminHtml, ADMIN).slice(0, 300));
+	check('admin push: no endpoint reaches the page', !pushAdminHtml.includes('push.example.net'), 'endpoint in /admin');
+	check('admin push: absent where push is not configured', !noKeysAdminHtml.includes('push-state'), 'push column without keys');
+
+	// --- the audit trail, filtered and paged ------------------------------------
+	const trailOf = (html) => {
+		const at = html.indexOf('id="audit"');
+		const section = html.slice(at, html.indexOf('</section>', at));
+		return { section, items: section.split('<li class="leave-row">').slice(1) };
+	};
+	let audits = trailOf(await (await fetch(`${BASE}/admin?audit_who=${encodeURIComponent(OTHER)}`)).text());
+	check('audit filter: by person keeps only their rows', audits.items.length > 0 && audits.items.every((li) => li.includes(OTHER)), `${audits.items.length} rows`);
+	check('audit filter: the person stays chosen', audits.section.includes(`<option value="${OTHER}" selected`), 'not selected');
+	audits = trailOf(await (await fetch(`${BASE}/admin?audit_action=cancelled`)).text());
+	check('audit filter: by action keeps only that action', audits.items.length > 0 && audits.items.every((li) => li.includes('>cancelled</span>')), `${audits.items.length} rows`);
+	res = await fetch(`${BASE}/admin?audit_action=drop%20table&audit_who=nobody&audit_page=-4`);
+	audits = trailOf(await res.text());
+	check('audit filter: nonsense is ignored, not refused', res.status === 200 && audits.items.length > 0, `${res.status}, ${audits.items.length} rows`);
+
+	const PAGER = 'pager@example.com';
+	sqlite.exec('BEGIN');
+	for (let i = 0; i < 35; i++) {
+		d1(`INSERT INTO leave_audit (leave_id, actor_email, subject_email, action, at) VALUES ('smoke-pager', '${PAGER}', '${PAGER}', 'edited', '2026-01-01T09:00:00+07:00')`);
+	}
+	sqlite.exec('COMMIT');
+	audits = trailOf(await (await fetch(`${BASE}/admin?audit_who=${encodeURIComponent(PAGER)}`)).text());
+	eq('audit pages: thirty to a page', audits.items.length, 30);
+	check('audit pages: an Older link to page 2, keeping the filter', audits.section.includes(`href="/admin?audit_who=${encodeURIComponent(PAGER)}&amp;audit_page=2#audit"`), audits.section.slice(-600));
+	check('audit pages: no Newer link on page 1', !audits.section.includes('rel="prev"'), 'Newer on page 1');
+	audits = trailOf(await (await fetch(`${BASE}/admin?audit_who=${encodeURIComponent(PAGER)}&audit_page=2`)).text());
+	eq('audit pages: the rest on page 2', audits.items.length, 5);
+	check('audit pages: page 2 links back, and not on', audits.section.includes('rel="prev"') && !audits.section.includes('rel="next"'), 'links wrong');
+	d1("DELETE FROM leave_audit WHERE leave_id = 'smoke-pager'");
+
+	// --- an unhandled error ---------------------------------------------------
+	// Taken away from under the running server, so real routes throw the way a
+	// D1 outage or a missed migration would.
+	d1('ALTER TABLE leave_requests RENAME TO leave_requests_gone');
+	try {
+		res = await fetch(`${BASE}/api/v1/leave?from=${MON}&to=${FRI}`);
+		eq('error: an API route answers 500', res.status, 500);
+		check('error: in the one JSON error shape', typeof (await res.json()).error?.message === 'string', 'no error.message');
+		eq('error: and keeps the security headers', res.headers.get('x-content-type-options'), 'nosniff');
+		res = await fetch(`${BASE}/u/${encodeURIComponent(OTHER)}`);
+		eq('error: a page answers 500', res.status, 500);
+		check('error: as a page, not a bare string', (await res.text()).includes('Something went wrong'), 'no error page');
+		await new Promise((r) => setTimeout(r, 500));
+		const logged = serverLog.split('\n').filter((l) => l.includes('"unhandled-error"'));
+		check('error: logged as one JSON line per failure', logged.length >= 2, `${logged.length} lines`);
+		check('error: naming the route pattern', logged.some((l) => l.includes('"route":"/api/v1/leave"')) && logged.some((l) => l.includes('"route":"/u/:email"')), logged.join('\n').slice(0, 600));
+		check('error: the address in the path is never logged', logged.every((l) => !l.includes(OTHER) && !l.includes('other%40')), 'address in the error log');
+	} finally {
+		d1('ALTER TABLE leave_requests_gone RENAME TO leave_requests');
+	}
+	eq('error: and the app recovers once the table is back', (await fetch(`${BASE}/api/v1/leave?from=${MON}&to=${FRI}`)).status, 200);
 }
 
 let exitCode = 0;

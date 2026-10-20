@@ -15,6 +15,7 @@
  */
 
 import { readFileSync } from 'node:fs';
+import { parse, stringify } from 'yaml';
 
 const src = readFileSync(new URL('../src/index.tsx', import.meta.url), 'utf8');
 const spec = readFileSync(new URL('../public/openapi.yaml', import.meta.url), 'utf8');
@@ -130,6 +131,34 @@ try {
 	}
 } catch (err) {
 	console.error(`FAIL the API Shield copy cannot be built: ${err.message}`);
+	bad++;
+}
+
+// The fingerprint `ship` uses to say the uploaded schema is stale has to move
+// when validation changes and stay put when only prose does — otherwise it
+// either cries wolf on every doc edit or misses the change that matters. Not a
+// check that the upload is current: that is `ship`'s warning, since a spec
+// change lands here before anyone can upload it.
+try {
+	const { fingerprint } = await import('./openapi-shield.mjs');
+	const doc = parse(spec);
+	const base = fingerprint(spec);
+	const prose = structuredClone(doc);
+	prose.info.description = `${prose.info.description ?? ''} (edited)`;
+	for (const item of Object.values(prose.paths)) for (const op of Object.values(item)) if (op && typeof op === 'object') op.description = 'reworded';
+	const param = structuredClone(doc);
+	const anyGet = Object.values(param.paths).find((item) => item.get)?.get;
+	anyGet.parameters = [...(anyGet.parameters ?? []), { name: 'zz', in: 'query', schema: { type: 'string' } }];
+	if (fingerprint(stringify(prose)) !== base) {
+		console.error('FAIL the Shield fingerprint changes when only descriptions do');
+		bad++;
+	}
+	if (fingerprint(stringify(param)) === base) {
+		console.error('FAIL the Shield fingerprint does not notice a new query parameter');
+		bad++;
+	}
+} catch (err) {
+	console.error(`FAIL the Shield fingerprint cannot be checked: ${err.message}`);
 	bad++;
 }
 

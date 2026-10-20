@@ -30,8 +30,19 @@
  * Usage:
  *   npm run openapi:shield                    → dist/openapi-shield.json
  *   npm run openapi:shield -- --host api.example.com
+ *   npm run openapi:shield -- --mark-uploaded   after uploading it by hand
+ *
+ * Each run also prints the schema's *fingerprint* — a hash of only what API
+ * Shield validates — and compares it with the one recorded in
+ * scripts/shield-uploaded.json, the last schema known to be uploaded. A change
+ * to a description leaves it alone; a new parameter, path or body field changes
+ * it, and `npm run ship` then warns that the edge is checking an old schema.
+ * `shield:upload` records it on success; a dashboard upload needs
+ * --mark-uploaded. The fingerprint is computed with a placeholder hostname, so
+ * the committed file names nothing real.
  */
 
+import { createHash } from 'node:crypto';
 import { spawnSync } from 'node:child_process';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -65,6 +76,48 @@ export function toShield(specText, host) {
 	const problems = audit(spec);
 	if (problems.length > 0) throw new Error(`not API Shield-ready:\n  ${problems.join('\n  ')}`);
 	return spec;
+}
+
+/** Keys that change what a person reads, not what API Shield accepts. */
+const PROSE = new Set(['description', 'summary', 'example', 'examples', 'tags', 'title', 'operationId', 'externalDocs']);
+
+/**
+ * A short hash of what the edge validates: paths, methods, parameters, request
+ * bodies and the schemas they reach. Responses, servers, info and prose are
+ * left out, and keys are sorted, so only a change that alters validation moves it.
+ */
+export function fingerprint(specText) {
+	return fingerprintOf(toShield(specText, 'api.example.com'));
+}
+
+/** The same, for a document already converted — such as the file shield:upload sends. */
+export function fingerprintOf(spec) {
+	const strip = (node) => {
+		if (Array.isArray(node)) return node.map(strip);
+		if (typeof node !== 'object' || node === null) return node;
+		const out = {};
+		for (const key of Object.keys(node).sort()) {
+			if (PROSE.has(key) || key === 'responses' || key.startsWith('x-')) continue;
+			out[key] = strip(node[key]);
+		}
+		return out;
+	};
+	const canonical = JSON.stringify({ paths: strip(spec.paths), components: strip(spec.components ?? {}) });
+	return createHash('sha256').update(canonical).digest('hex').slice(0, 16);
+}
+
+export const UPLOADED_RECORD = 'scripts/shield-uploaded.json';
+
+/** The fingerprint last recorded as uploaded, or null. */
+export function recordedFingerprint() {
+	if (!existsSync(UPLOADED_RECORD)) return null;
+	return JSON.parse(readFileSync(UPLOADED_RECORD, 'utf8')).fingerprint ?? null;
+}
+
+/** Record `print` as the schema the edge now holds. */
+export function recordUploaded(print, how) {
+	const note = 'The API Shield schema last known to be uploaded, as a fingerprint of what it validates. Written by shield:upload, or by openapi:shield --mark-uploaded after a dashboard upload. See scripts/openapi-shield.mjs.';
+	writeFileSync(UPLOADED_RECORD, `${JSON.stringify({ fingerprint: print, recorded: new Date().toISOString().slice(0, 10), how, note }, null, '\t')}\n`);
 }
 
 /**
@@ -191,4 +244,14 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
 	writeFileSync('dist/openapi-shield.json', `${JSON.stringify(spec, null, 2)}\n`);
 	const ops = Object.values(spec.paths).reduce((n, item) => n + Object.keys(item).filter((k) => k !== 'parameters').length, 0);
 	console.log(`dist/openapi-shield.json — OpenAPI 3.0.3, ${ops} operations. Gitignored: it names the real hostname.`);
+
+	const print = fingerprint(readFileSync('public/openapi.yaml', 'utf8'));
+	if (process.argv.includes('--mark-uploaded')) {
+		recordUploaded(print, 'dashboard');
+		console.log(`recorded fingerprint ${print} as uploaded in ${UPLOADED_RECORD} — commit it`);
+	} else if (recordedFingerprint() === print) {
+		console.log(`fingerprint ${print} — the same as the schema recorded as uploaded`);
+	} else {
+		console.log(`fingerprint ${print} — DIFFERENT from the one recorded as uploaded (${recordedFingerprint() ?? 'none'}). Upload it, then commit ${UPLOADED_RECORD}.`);
+	}
 }

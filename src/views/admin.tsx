@@ -1,11 +1,12 @@
 import { describeRange, formatDays } from '../domain/dates.ts';
 import { allottedFor } from '../domain/leave.ts';
 import type { Holiday, LeaveType, Quota, User } from '../types.ts';
-import type { AuditRow, LeaveSnapshot, NotificationRun } from '../repo/db.ts';
+import { AUDIT_ACTIONS } from '../repo/db.ts';
+import type { AuditFilter, AuditRow, LeaveSnapshot, NotificationRun } from '../repo/db.ts';
 import type { HolidayGap, HolidayParse, ImportPlan } from '../domain/holidays.ts';
 import { FlashBanner, HolidaysDueBanner, Layout } from './layout.tsx';
 import { SelectField, TextField } from './fields.tsx';
-import { DeleteIcon } from './icons.tsx';
+import { BellIcon, BellRingIcon, DeleteIcon } from './icons.tsx';
 import { useLang, useT } from '../i18n/context.tsx';
 import { t as translate, toLang } from '../i18n/strings.ts';
 
@@ -24,6 +25,11 @@ interface AdminProps {
 	line: { enabled: boolean; configured: boolean; groupId: string | null; ready: boolean };
 	log: NotificationRun[];
 	audit: AuditRow[];
+	/** An older page of the trail exists. */
+	auditMore: boolean;
+	auditFilter: AuditFilter;
+	/** Browsers with notifications on, per person; null when push is not configured here. */
+	pushCounts: Map<string, number> | null;
 	version?: string;
 	error?: string;
 	notice?: string;
@@ -38,7 +44,7 @@ export function AdminPage(props: AdminProps) {
 }
 
 function AdminBody(props: AdminProps) {
-	const { year, users, types, usage, quotas, holidays, holidaysDue, today, line, log, audit, error, notice } = props;
+	const { year, users, types, usage, quotas, holidays, holidaysDue, today, line, log, audit, auditMore, auditFilter, pushCounts, error, notice } = props;
 	// Quotas are only edited for types that can still be booked. A retired type's
 	// rows stay in the table; they just stop being something to maintain.
 	const offered = types.filter((type) => type.active);
@@ -103,6 +109,7 @@ function AdminBody(props: AdminProps) {
 											<div class="person">
 												<a href={`/u/${encodeURIComponent(u.email)}`}><strong>{u.display_name}</strong></a>
 												<span class="muted mono">{u.email}</span>
+												{pushCounts ? <PushState n={pushCounts.get(u.email) ?? 0} /> : null}
 											</div>
 											<label class="checkline">
 												<input type="checkbox" name="isAdmin" value="1" checked={!!u.is_admin} /> {t('admin.isAdmin')}
@@ -320,11 +327,31 @@ function AdminBody(props: AdminProps) {
 					</ul>
 				)}
 			</section>
-			<section class="card">
+			<section class="card" id="audit">
 				<h2>{t('admin.recentChanges')}</h2>
 				<p class="muted">{t('admin.auditHelp')}</p>
+				{/* A GET form, so a filtered trail is a link an admin can keep or send. */}
+				<form method="get" action="/admin#audit" class="quota-form audit-filter">
+					{year !== Number(today.slice(0, 4)) ? <input type="hidden" name="y" value={String(year)} /> : null}
+					<SelectField id="audit-who" name="audit_who" label={t('admin.auditWho')}>
+						<option value="">{t('admin.auditAnyone')}</option>
+						{users.map((u) => (
+							<option value={u.email} selected={u.email === auditFilter.who}>{u.display_name}</option>
+						))}
+					</SelectField>
+					<SelectField id="audit-action" name="audit_action" label={t('admin.auditAction')}>
+						<option value="">{t('admin.auditAnyAction')}</option>
+						{AUDIT_ACTIONS.map((a) => (
+							<option value={a} selected={a === auditFilter.action}>{t(`audit.${a}`)}</option>
+						))}
+					</SelectField>
+					<button type="submit" class="btn tonal">{t('admin.auditFilter')}</button>
+					{auditFilter.who || auditFilter.action ? (
+						<a class="btn text" href={auditHref(year, today, {})}>{t('admin.auditClear')}</a>
+					) : null}
+				</form>
 				{audit.length === 0 ? (
-					<p class="muted">{t('admin.nothingYet')}</p>
+					<p class="muted">{auditFilter.who || auditFilter.action || auditFilter.page > 1 ? t('admin.auditNone') : t('admin.nothingYet')}</p>
 				) : (
 					<ul class="leave-list">
 						{audit.map((row) => (
@@ -332,8 +359,57 @@ function AdminBody(props: AdminProps) {
 						))}
 					</ul>
 				)}
+				{auditFilter.page > 1 || auditMore ? (
+					<nav class="audit-pages" aria-label={t('admin.recentChanges')}>
+						{auditFilter.page > 1 ? (
+							<a class="btn text" rel="prev" href={auditHref(year, today, { ...auditFilter, page: auditFilter.page - 1 })}>
+								{t('admin.auditNewer')}
+							</a>
+						) : (
+							<span />
+						)}
+						<span class="muted">{t('admin.auditPage', { n: auditFilter.page })}</span>
+						{auditMore ? (
+							<a class="btn text" rel="next" href={auditHref(year, today, { ...auditFilter, page: auditFilter.page + 1 })}>
+								{t('admin.auditOlder')}
+							</a>
+						) : (
+							<span />
+						)}
+					</nav>
+				) : null}
 			</section>
 		</>
+	);
+}
+
+/** `/admin` with the trail's filter in the query, landing on the trail. Defaults are left out of the URL. */
+function auditHref(year: number, today: string, f: Partial<AuditFilter>): string {
+	const q = new URLSearchParams();
+	if (year !== Number(today.slice(0, 4))) q.set('y', String(year));
+	if (f.who) q.set('audit_who', f.who);
+	if (f.action) q.set('audit_action', f.action);
+	if (f.page && f.page > 1) q.set('audit_page', String(f.page));
+	const qs = q.toString();
+	return `/admin${qs ? `?${qs}` : ''}#audit`;
+}
+
+/**
+ * Whether someone gets the 09:00 notification. A count of browsers, nothing
+ * about them — which push service or device is not a roster fact.
+ */
+function PushState({ n }: { n: number }) {
+	const t = useT();
+	return n > 0 ? (
+		<span class="push-state on">
+			<BellRingIcon />
+			{t('admin.pushOn', { n })}
+		</span>
+	) : (
+		<span class="push-state muted">
+			<BellIcon />
+			{t('admin.pushOff')}
+		</span>
 	);
 }
 

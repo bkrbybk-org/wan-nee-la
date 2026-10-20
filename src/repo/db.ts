@@ -647,9 +647,35 @@ function auditStatement(
 		);
 }
 
-export async function recentAudit(db: D1Database, limit = 30): Promise<AuditRow[]> {
-	const res = await db.prepare('SELECT * FROM leave_audit ORDER BY id DESC LIMIT ?').bind(limit).all<AuditRow>();
-	return res.results ?? [];
+export const AUDIT_ACTIONS: readonly AuditAction[] = ['created', 'edited', 'cancelled', 'restored'];
+
+export interface AuditFilter {
+	/** Rows where this address is the actor or the subject — "what happened around this person". */
+	who?: string;
+	action?: AuditAction;
+	/** 1-based. */
+	page: number;
+}
+
+/**
+ * One page of the trail, newest first, plus whether an older page exists.
+ *
+ * Asks for one row more than a page to learn that, rather than counting the
+ * table: the admin page needs "is there an Older link", not a total. Ordered by
+ * id, which cannot tie, so a page boundary never drops or repeats a row.
+ */
+export async function listAudit(db: D1Database, filter: AuditFilter, pageSize = 30): Promise<{ rows: AuditRow[]; more: boolean }> {
+	const res = await db
+		.prepare(
+			`SELECT * FROM leave_audit
+			  WHERE (?1 IS NULL OR actor_email = ?1 OR subject_email = ?1)
+			    AND (?2 IS NULL OR action = ?2)
+			  ORDER BY id DESC LIMIT ?3 OFFSET ?4`,
+		)
+		.bind(filter.who ?? null, filter.action ?? null, pageSize + 1, (filter.page - 1) * pageSize)
+		.all<AuditRow>();
+	const rows = res.results ?? [];
+	return { rows: rows.slice(0, pageSize), more: rows.length > pageSize };
 }
 
 // ---------------------------------------------------------------------------
@@ -951,6 +977,18 @@ export async function activeSubscriptions(db: D1Database): Promise<StoredSubscri
 		)
 		.all<StoredSubscription>();
 	return res.results ?? [];
+}
+
+/**
+ * How many browsers each person has notifications on in — for `/admin`, so an
+ * admin knows whom to ask. Counts only: an endpoint names a push service and
+ * a device, which is nobody's business on a roster page.
+ */
+export async function subscriptionCounts(db: D1Database): Promise<Map<string, number>> {
+	const res = await db
+		.prepare('SELECT user_email, COUNT(*) AS n FROM push_subscriptions GROUP BY user_email')
+		.all<{ user_email: string; n: number }>();
+	return new Map((res.results ?? []).map((r) => [r.user_email, r.n]));
 }
 
 export async function markSubscriptionSeen(db: D1Database, endpoint: string): Promise<void> {

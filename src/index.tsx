@@ -1328,16 +1328,26 @@ app.get('/admin', async (c) => {
 	const user = c.get('user');
 	const today = c.get('today');
 	const year = clampInt(c.req.query('y'), Number(today.slice(0, 4)), 2000, 2100);
+	// The trail's filter. Anything unrecognised is dropped rather than refused:
+	// it is a view, and the unfiltered trail is a fine answer to a bad link.
+	const whoRaw = c.req.query('audit_who')?.trim().toLowerCase();
+	const actionRaw = c.req.query('audit_action');
+	const auditFilter: db.AuditFilter = {
+		who: whoRaw && isEmail(whoRaw) ? whoRaw : undefined,
+		action: db.AUDIT_ACTIONS.find((a) => a === actionRaw),
+		page: clampInt(c.req.query('audit_page'), 1, 1, 1000),
+	};
 
-	const [users, types, usage, holidays, groupId, log, audit, holidaysDue] = await Promise.all([
+	const [users, types, usage, holidays, groupId, log, audit, holidaysDue, pushCounts] = await Promise.all([
 		db.listUsers(c.env.DB),
 		leaveTypesOf(c),
 		db.leaveTypeUsage(c.env.DB),
 		db.listHolidays(c.env.DB, `${year}-01-01`, `${year + 1}-12-31`),
 		resolveGroupId(c.env),
 		db.recentNotifications(c.env.DB),
-		db.recentAudit(c.env.DB),
+		db.listAudit(c.env.DB, auditFilter),
 		holidayReminder(c),
+		pushConfigured(c.env) ? db.subscriptionCounts(c.env.DB) : Promise.resolve(null),
 	]);
 
 	const quotas = await db.listQuotasForYear(c.env.DB, year);
@@ -1355,7 +1365,10 @@ app.get('/admin', async (c) => {
 			quotas={quotas}
 			holidays={holidays}
 			holidaysDue={holidaysDue}
-			audit={audit}
+			audit={audit.rows}
+			auditMore={audit.more}
+			auditFilter={auditFilter}
+			pushCounts={pushCounts}
 			today={today}
 			line={{ enabled, configured, groupId, ready: enabled && configured && Boolean(groupId) }}
 			log={log}
@@ -1694,6 +1707,35 @@ app.post('/admin/holiday/delete', async (c) => {
 	if (!isValidDate(date)) return redirectWithFlash('/admin', 'err', say(c, 'flash.badDate'));
 	await db.removeHoliday(c.env.DB, date);
 	return redirectWithFlash('/admin', 'ok', say(c, 'flash.holidayRemoved', { date }));
+});
+
+/**
+ * Anything a route throws.
+ *
+ * One JSON line per failure, for Workers Logs (`observability` in the config)
+ * to keep: what broke, where, and in which version — so a 500 nobody was
+ * watching still leaves a trace. The *route pattern* is logged, never the path:
+ * `/u/:email` would otherwise write an address into the log on every failure
+ * there. No query, no body, no identity. A D1 error message names the SQL, not
+ * the values bound to it.
+ *
+ * The caller gets the app's own shapes rather than Hono's bare "Internal Server
+ * Error": the one JSON error shape on `/api/…`, a page everywhere else.
+ */
+app.onError((err, c) => {
+	console.error(
+		JSON.stringify({
+			event: 'unhandled-error',
+			method: c.req.method,
+			route: c.req.routePath,
+			error: err.name,
+			message: err.message.slice(0, 500),
+			stack: err.stack?.split('\n').slice(1, 6).join('\n'),
+			version: c.env.CF_VERSION_METADATA?.id,
+		}),
+	);
+	if (c.req.path.startsWith('/api/')) return jsonError(c, 'Something went wrong on the server. Try again shortly.', 500);
+	return c.html(<ErrorPage title="Something went wrong" detail="The server hit an error. Try again shortly; if it keeps happening, tell an admin." />, 500);
 });
 
 app.notFound((c) => {

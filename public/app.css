@@ -1396,6 +1396,12 @@ form.inline:has(.tf-support) { margin-bottom: 28px; }
 .grid-table td { padding: 12px 8px; border-bottom: 1px solid var(--md-outline-variant); vertical-align: top; }
 .grid-table tr.inactive { opacity: 0.55; }
 .person { display: flex; flex-direction: column; gap: 2px; margin-bottom: 4px; }
+.push-state { display: inline-flex; align-items: center; gap: 4px; font-size: 12px; line-height: 16px; }
+.push-state .icon { width: 16px; height: 16px; }
+.push-state.on { color: var(--md-primary); }
+.audit-filter { margin-bottom: 8px; }
+.audit-filter .tf { min-width: 180px; }
+.audit-pages { display: flex; justify-content: space-between; align-items: center; margin-top: 8px; }
 .quota-form { display: flex; flex-wrap: wrap; gap: 12px; align-items: flex-start; }
 /* The fields are 56px tall and the button 32-40px; centring the button against
    them reads as one row rather than a button that slipped to the top. */

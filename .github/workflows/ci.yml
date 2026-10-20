@@ -94,7 +94,23 @@ jobs:
         # notification invitation, the entry popup, drag-to-move — in headless
         # Chrome, driven over the DevTools protocol. The runner image ships
         # Chrome; nothing is installed for this.
+        #
+        # It also compares screenshots against scripts/visual/linux/. Every shot
+        # and any diff is kept as an artifact: that is where a new Linux
+        # reference comes from (download, look, commit), and where a failure
+        # shows what moved.
         run: npm run test:browser
+        env:
+          VISUAL_OUT: visual-out
+
+      - name: Keep the screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: visual-${{ github.sha }}
+          path: visual-out/
+          if-no-files-found: ignore
+          retention-days: 14
 
       - name: Build the Worker
         # Catches bundling errors tsc cannot see — a bad import, a module that

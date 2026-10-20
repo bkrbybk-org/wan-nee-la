@@ -14,14 +14,26 @@
  * Chrome is found at $CHROME_PATH, the macOS install location, or on PATH as
  * google-chrome / chromium. GitHub's Ubuntu runners have it. With no Chrome the
  * run fails rather than passing having tested nothing.
+ *
+ * It also compares screenshots, which the assertions cannot replace: they
+ * measure what they were written to measure, and a CSS slip that turns every
+ * chip grey passes all of them. The shots are of March 2030 — a month with
+ * fixed bookings, no holidays and no today — with the parts that depend on the
+ * date (the Upcoming list, the banners, the footer) blanked, so the same code
+ * draws the same picture any day of the year. Fonts differ between operating
+ * systems, so each platform keeps its own references, in
+ * scripts/visual/<platform>/. A shot with no reference yet is recorded as one;
+ * `UPDATE_VISUAL=1` re-records them after a deliberate change, and
+ * `VISUAL_OUT=<dir>` keeps every shot and diff (CI uploads it).
  */
 
 import { spawn, spawnSync } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
-import { existsSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
+import { decodePng, diffPng, encodePng } from './png.mjs';
 
 const PORT = 8800 + Math.floor(Math.random() * 900);
 const BASE = `http://127.0.0.1:${PORT}`;
@@ -193,6 +205,26 @@ async function main() {
 	const DRAG_ID = randomUUID();
 	book(DRAG_ID, ADMIN, tue, tue);
 
+	// March 2030 for the screenshots: a month no other fixture touches, with
+	// no holidays and no today in it, so it renders the same on any date. A
+	// spread of types, a half day, a multi-day bar and four people on the 7th.
+	const VIS = [
+		['vis-1', 'mai@example.com', 'annual', '2030-03-04', '2030-03-08', 'full', 'full'],
+		['vis-2', 'nok@example.com', 'sick', '2030-03-06', '2030-03-07', 'full', 'full'],
+		['vis-3', 'pim@example.com', 'annual', '2030-03-07', '2030-03-07', 'full', 'full'],
+		['vis-4', 'anan@example.com', 'medical', '2030-03-07', '2030-03-07', 'am', 'am'],
+		['vis-5', ADMIN, 'annual', '2030-03-18', '2030-03-22', 'full', 'full'],
+		['vis-6', 'nok@example.com', 'annual', '2030-03-27', '2030-04-02', 'full', 'full'],
+	];
+	for (const [id, email, code, start, end, sh, eh] of VIS) {
+		sqlite
+			.prepare(
+				`INSERT INTO leave_requests (id, user_email, leave_type_id, start_date, end_date, start_half, end_half, days_total, note, note_private, status, created_at)
+				 VALUES (?, ?, (SELECT id FROM leave_types WHERE code = ?), ?, ?, ?, ?, 1, NULL, 1, 'confirmed', '2026-01-01')`,
+			)
+			.run(id, email, code, start, end, sh, eh);
+	}
+
 	chrome = spawn(chromePath, [
 		'--headless=new', '--remote-debugging-port=0', `--user-data-dir=${PROFILE}`,
 		'--no-first-run', '--no-default-browser-check', '--disable-gpu', '--no-sandbox', 'about:blank',
@@ -254,6 +286,44 @@ async function main() {
 		if (!process.env.BROWSER_SHOTS) return;
 		const { data } = await send('Page.captureScreenshot', { format: 'png' });
 		writeFileSync(join(process.env.BROWSER_SHOTS, `${name}.png`), Buffer.from(data, 'base64'));
+	};
+
+	// Screenshot comparison. See the header for what is blanked and why.
+	const VISUAL_DIR = join('scripts', 'visual', process.platform);
+	const STILL = [
+		'*, *::before, *::after { transition: none !important; animation: none !important; caret-color: transparent !important; }',
+		// Present or not by the date or the browser's history, not by the code.
+		'.banner { display: none !important; }',
+		'.cal-upcoming, .foot { visibility: hidden !important; }',
+	].join('\n');
+	const looksRight = async (name) => {
+		await evaluate(`(() => { const s = document.createElement('style'); s.textContent = ${JSON.stringify(STILL)}; document.head.append(s); document.activeElement?.blur(); scrollTo(0, 0); })()`);
+		await send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: 0, y: 0 });
+		await sleep(300);
+		const { data } = await send('Page.captureScreenshot', { format: 'png' });
+		const png = Buffer.from(data, 'base64');
+		const ref = join(VISUAL_DIR, `${name}.png`);
+		const out = process.env.VISUAL_OUT;
+		if (out) {
+			mkdirSync(out, { recursive: true });
+			writeFileSync(join(out, `${name}.png`), png);
+		}
+		if (process.env.UPDATE_VISUAL || !existsSync(ref)) {
+			mkdirSync(VISUAL_DIR, { recursive: true });
+			writeFileSync(ref, png);
+			check(`looks: ${name} — reference ${process.env.UPDATE_VISUAL ? 're-recorded' : 'recorded, none yet for ' + process.platform}`, true);
+			return;
+		}
+		const { ratio, sizeMismatch, image } = diffPng(decodePng(readFileSync(ref)), decodePng(png));
+		let where = '';
+		if (ratio > 0.001) {
+			const dir = out ?? mkdtempSync(join(tmpdir(), 'wnl-visual-'));
+			mkdirSync(dir, { recursive: true });
+			writeFileSync(join(dir, `${name}.actual.png`), png);
+			if (image) writeFileSync(join(dir, `${name}.diff.png`), encodePng(image));
+			where = `, actual and diff in ${dir}`;
+		}
+		check(`looks: ${name} matches its reference`, ratio <= 0.001, sizeMismatch ?? `${(ratio * 100).toFixed(2)}% of pixels differ${where}`);
 	};
 
 	await send('Page.enable');
@@ -443,6 +513,27 @@ async function main() {
 	);
 	check('by month: and a table a screen reader can read', await evaluate("document.querySelector('.month-use table tbody tr') !== null"), 'no table');
 	await shot('me-by-month');
+
+	// --- how it looks ----------------------------------------------------------
+	// One pixel per CSS pixel: the comparison needs no more, and the references
+	// stay small enough to commit.
+	await send('Emulation.setDeviceMetricsOverride', { width: 375, height: 812, deviceScaleFactor: 1, mobile: true });
+	await send('Emulation.setTouchEmulationEnabled', { enabled: true, maxTouchPoints: 5 });
+	// The system theme, pinned: headless Chrome otherwise follows the host's,
+	// and a laptop in dark mode would record a "light" reference that is dark.
+	const scheme = (value) => send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-color-scheme', value }] });
+	await scheme('light');
+	await open('/?y=2030&m=3');
+	await looksRight('phone-month');
+	await scheme('dark');
+	await open('/?y=2030&m=3');
+	await looksRight('phone-month-dark');
+	await scheme('light');
+	await send('Emulation.setTouchEmulationEnabled', { enabled: false });
+	await send('Emulation.setDeviceMetricsOverride', { width: 1280, height: 900, deviceScaleFactor: 1, mobile: false });
+	await open('/?y=2030&m=3');
+	await looksRight('laptop-month');
+	await send('Emulation.setEmulatedMedia', { features: [] });
 
 	// --- in Thai ---------------------------------------------------------------
 	await evaluate("fetch('/me/lang', { method: 'POST', body: new URLSearchParams({ lang: 'th' }) }).then((r) => r.status)");

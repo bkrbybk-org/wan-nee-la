@@ -12,9 +12,11 @@
  *   1. Local   typecheck, lint, unit tests, colour contrast, route smoke tests,
  *              browser tests.
  *   2. Deploy  refuse if the live Worker's vars differ from the config file,
- *              since a deploy overwrites them (ISSUES #40); then any
- *              migrations named with --migrate, applied to production D1
- *              first, then `npm run deploy`.
+ *              since a deploy overwrites them (ISSUES #40); refuse if
+ *              production D1 has migrations pending and --migrate was not
+ *              given; with it, apply them first (scripts/migrate.mjs); then
+ *              `npm run deploy`. Warn if the API Shield schema the spec now
+ *              produces is not the one recorded as uploaded.
  *   3. Prod    the new version is the one serving, Access still fronts the
  *              hostname, production D1 answers a read, and API Shield still
  *              blocks every schema violation at the edge (`shield:probe`).
@@ -25,35 +27,36 @@
  *
  * Usage:
  *   npm run ship
- *   npm run ship -- --migrate migrations/0011_leave_type_active.sql
+ *   npm run ship -- --migrate           apply production's pending migrations first
  *   npm run ship -- --local-only        stage 1 alone
  *   npm run ship -- --check-drift       compare live vars with the config, nothing else
  *   npm run ship -- --accept-var-changes
  *                                       deploy even though vars differ — for a
  *                                       change made in the config on purpose
  *
- * Migrations are named, never inferred: D1 here has no record of which files
- * have been applied, and an ALTER TABLE run twice fails. Naming the file is the
- * deliberate act — read it first if it deletes anything.
+ * Migrations are tracked in production's `applied_migrations` table, so ship
+ * knows which are pending — but it still applies them only when told to.
+ * `--migrate` is the deliberate act: read a pending file first if it deletes
+ * anything. Shipping code without its pending migration is refused, since the
+ * code would meet a schema it does not expect.
  */
 
 import { spawnSync } from 'node:child_process';
 import { copyFileSync, existsSync, readFileSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
+import { LegacyError, applyPending, readState, wranglerTarget } from './migrate.mjs';
+import { fingerprint, recordedFingerprint, UPLOADED_RECORD } from './openapi-shield.mjs';
 
 const CONFIG = 'wrangler.local.jsonc';
 const args = process.argv.slice(2);
-const FLAGS = ['--local-only', '--check-drift', '--accept-var-changes'];
+const FLAGS = ['--local-only', '--check-drift', '--accept-var-changes', '--migrate'];
 const localOnly = args.includes('--local-only');
 const checkDriftOnly = args.includes('--check-drift');
 const acceptVarChanges = args.includes('--accept-var-changes');
-const migrations = [];
-for (let i = 0; i < args.length; i++) {
-	if (args[i] === '--migrate') migrations.push(args[++i]);
-	else if (!FLAGS.includes(args[i])) fail(`unknown argument: ${args[i]}`);
-}
-for (const m of migrations) {
-	if (!m || !existsSync(m)) fail(`no such migration: ${m}`);
+const migrate = args.includes('--migrate');
+for (const arg of args) {
+	if (arg.endsWith('.sql')) fail(`migrations are tracked now: --migrate applies every pending one, so name no file (${arg})`);
+	if (!FLAGS.includes(arg)) fail(`unknown argument: ${arg}`);
 }
 
 function fail(message) {
@@ -215,8 +218,43 @@ if (!reportDrift(varDrift(config))) {
 	console.log('--accept-var-changes: deploying anyway');
 }
 
-for (const file of migrations) {
-	run('npx', ['wrangler', 'd1', 'execute', dbName, '--remote', '--config', CONFIG, '--file', file], `migration ${file}`);
+// Production's migrations: pending ones block the deploy unless --migrate
+// says to apply them, and are applied before the code that needs them.
+const prodDb = wranglerTarget({ remote: true, config: CONFIG });
+let dbState;
+try {
+	dbState = readState(prodDb);
+} catch (err) {
+	fail(err.message);
+}
+if (dbState.kind === 'legacy') fail(`${new LegacyError(prodDb.where).message} (node scripts/migrate.mjs --remote --baseline <file>)`);
+if (dbState.pending.length === 0) {
+	console.log(`✓ production D1 has every migration (${dbState.applied.length})`);
+	if (migrate) console.log('--migrate: nothing to apply');
+} else if (!migrate) {
+	fail(`production D1 has pending migrations: ${dbState.pending.join(', ')}. Read them, then re-run with -- --migrate`);
+} else {
+	try {
+		const applied = applyPending(prodDb);
+		console.log(`✓ applied to production D1: ${applied.join(', ')}`);
+	} catch (err) {
+		fail(err.message);
+	}
+}
+
+// The edge validates against whatever schema was last uploaded, and nothing
+// fails when the spec moves on without it: operations it no longer matches
+// just stop being checked, or real requests start getting 403s. Not a refusal
+// — the upload usually follows the deploy that adds the route — but said where
+// it cannot be missed.
+const schemaPrint = fingerprint(readFileSync('public/openapi.yaml', 'utf8'));
+const uploadedPrint = recordedFingerprint();
+const schemaStale = schemaPrint !== uploadedPrint;
+if (schemaStale) {
+	console.log(`\n⚠ API Shield: the spec now validates differently (${schemaPrint}) from the schema recorded as uploaded (${uploadedPrint ?? 'none'}).`);
+	console.log(`  After this deploy: npm run openapi:shield && npm run shield:upload — or upload by hand, then npm run openapi:shield -- --mark-uploaded. Commit ${UPLOADED_RECORD}.`);
+} else {
+	console.log('✓ the API Shield schema recorded as uploaded matches the spec');
 }
 
 const deployOut = spawnSync('npm', ['run', 'deploy'], { encoding: 'utf8', env: { ...process.env, WRANGLER_SEND_METRICS: 'false' } });
@@ -288,4 +326,5 @@ else {
 }
 
 if (problems > 0) fail(`${problems} production check(s) failed — version ${version} is live; roll back with \`npx wrangler rollback\` if it is at fault`);
+if (schemaStale) console.log(`\n⚠ reminder: upload the API Shield schema (fingerprint ${schemaPrint}) — see above.`);
 console.log(`\n✓ shipped ${version}. Next: update the docs, then commit and push.`);

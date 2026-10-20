@@ -26,6 +26,7 @@
  */
 
 import { existsSync, readFileSync } from 'node:fs';
+import { fingerprintOf, recordUploaded } from './openapi-shield.mjs';
 
 const API = 'https://api.cloudflare.com/client/v4';
 const NAME_PREFIX = 'wan-nee-la-';
@@ -89,6 +90,9 @@ const uploaded = await api(`/zones/${zone}/schema_validation/schemas`, {
 const id = uploaded.schema?.schema_id ?? uploaded.schema_id;
 const ops = Object.values(spec.paths).reduce((n, item) => n + Object.keys(item).length, 0);
 console.log(`uploaded ${name} (${id}) — ${ops} operations, validation ${flag('--activate') ? 'enabled' : 'not enabled yet'}`);
+// What `ship` compares against, so it can say when the edge falls behind the spec.
+recordUploaded(fingerprintOf(spec), 'shield:upload');
+console.log('recorded its fingerprint in scripts/shield-uploaded.json — commit it');
 
 if (flag('--prune')) {
 	const all = await api(`/zones/${zone}/schema_validation/schemas?omit_source=true`);
