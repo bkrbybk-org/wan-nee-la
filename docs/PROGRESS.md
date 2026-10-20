@@ -8,7 +8,7 @@ Updated: 2026-10-18
 
 ## Status
 
-Deployed and serving. Version `6834d60c-7801-4aca-a013-0c7f15f962ef`, deployed 2026-10-20 with `npm run ship`, D1 `<database-id>` in APAC, behind Cloudflare Access on `<hostname>`. Production checks passed: the new version serves all traffic, `/health` and `/` both 302 to Access, production D1 answers, and migration 0011 is applied with every type still offered. That deploy also carried the 09:00 weekday schedule — production had still been on the old daily `0 1 * * *` cron until then.
+Deployed and serving. Version `26f1e994-c0c5-4faa-9edf-4dbd8545e3bb`, deployed 2026-10-20 with `npm run ship`, D1 `<database-id>` in APAC, behind Cloudflare Access on `<hostname>`. Production checks passed: the new version serves all traffic, `/health` and `/` both 302 to Access, production D1 answers, and migration 0011 is applied with every type still offered. That deploy also carried the 09:00 weekday schedule — production had still been on the old daily `0 1 * * *` cron until then.
 
 **In real use.** Ten active users, 20 confirmed bookings, 26 holidays, four leave types, 31 rows in the audit trail. That changes what matters here: the shared surfaces now have a real audience, so note visibility, the audit trail and the privacy rules on `/u/:email` are load-bearing rather than theoretical.
 
@@ -142,17 +142,18 @@ Two consequences worth remembering:
 
 ## Verification
 
-**768 automated assertions**, all green. CI runs them, and lint, on every push and pull request.
+**813 automated assertions**, all green. CI runs them, and lint, on every push and pull request.
 
 | Suite | Assertions | Covers |
 | --- | --- | --- |
 | `test-dates.mjs` | 114 | Bangkok boundary, half-days, weekends, holidays, month grids |
-| `test-leave.mjs` | 149 | Booking rules, balances and the per-year allowance fallback, retired types, the admin leave-type form, calendar placement, note visibility, the rejected-booking draft codec |
+| `test-leave.mjs` | 157 | Booking rules, balances and the per-year allowance fallback, retired types, the admin leave-type form, calendar placement, note visibility, the rejected-booking draft codec |
 | `test-line.mjs` | 42 | Webhook signature, group-id extraction, daily and week-ahead digest text |
 | `test-push.mjs` | 31 | RFC 8291 encryption against the spec's worked example, VAPID token and signature, the `วันนี้ … ลา` and week-ahead titles |
-| `test-holidays.mjs` | 39 | Parsing a pasted holiday list, and its bounds; the reminder to enter next year's |
+| `test-holidays.mjs` | 45 | Parsing a pasted holiday list, and its bounds; what an import would change; the reminder to enter next year's |
 | `test-i18n.mjs` | 27 | Lookup, placeholders, plurals, and the catalogue's own health |
-| `smoke.mjs` | 366 | The HTTP layer — see below |
+| `smoke.mjs` | 378 | The HTTP layer — see below |
+| `test-browser.mjs` | 19 | The calendar's own script in headless Chrome: the phone's day card, tapping and swiping it, the month swipe, the notification invitation, the entry popup, drag-to-move |
 | `check-openapi.mjs` | — | Each of the 34 routes is either documented in `openapi.yaml` or deliberately listed as not, and the API Shield 3.0.3 copy still builds from it |
 
 The smoke suite boots a real worker against a scratch database and exercises what pure functions cannot reach: the CSRF guard, ownership checks on edit and cancel, booking rules over real requests, the open-redirect guards on `returnTo` **and on the `Referer` header**, note visibility across two identities, the audit trail's contents, the security headers, digest decisions, the webhook signature, push subscription ownership, admin authorisation, undo and its re-validation, next-year and cross-year quota, a LINE channel switched off by its flag, adding, retiring and deleting leave types, and history pruning through the real scheduled handler.
@@ -169,7 +170,7 @@ It is built against its own worst failure mode — passing while testing nothing
 
 ## Open items
 
-**No known bugs.** The push keypair mismatch (#40) was repaired on 2026-09-21. 768 assertions are green and `npm audit` is clean. The 2026-08-25 audit and the 2026-09-13 review both found and fixed what they turned up — the second a quota overdraw when moving a booking across New Year (#36) — and each fix is covered by a test or, where a test could not reach it, recorded in [ISSUES.md](ISSUES.md).
+**No known bugs.** The push keypair mismatch (#40) was repaired on 2026-09-21. 813 assertions are green and `npm audit` is clean. The 2026-08-25 audit and the 2026-09-13 review both found and fixed what they turned up — the second a quota overdraw when moving a booking across New Year (#36) — and each fix is covered by a test or, where a test could not reach it, recorded in [ISSUES.md](ISSUES.md).
 
 What follows is decisions, unfinished configuration, accepted trade-offs and debt — not defects.
 
@@ -252,6 +253,7 @@ Features — iCal, CSV export, team grouping, coverage scoped to a team — are 
 
 ## Change log
 
+- **2026-10-20** — Browser tests: `npm run test:browser` drives headless Chrome over the DevTools protocol, with no new dependency, through the phone's day card, swiping, the notification invitation, the entry popup and drag-to-move; `ship` and CI run it. On its first run it found drag-to-move broken in Chrome — a native link drag was cancelling the gesture — now fixed (#45). Importing holidays now goes through a preview: new, renamed and already-held lines, errors by line number with the list handed back, and the bookings already charged for a new holiday, linked for re-saving. On a phone, swiping the day card steps a day at a time, into the next month off the end. Desktop bars break at weekends and holidays inside a booking, matching the phone.
 - **2026-10-20** — Someone is shown away only on the days they are actually off: a Friday-to-Monday booking no longer puts dots, day-card rows or `by-date` API entries on the weekend between, nor on a public holiday inside a booking. Swiping the phone's month grid sideways changes month. Admins get a banner on the calendar and `/admin` while the coming year holds only its fixed-date holidays; production's 2027 does, so it is showing (#10). The smoke suite runs in fifteen seconds instead of twelve minutes, writing its fixtures straight into the scratch database's SQLite file (#44), which brings a whole `npm run ship` to about a minute and a quarter.
 - **2026-10-19** — A new mark: a calendar page with a palm on it, on the app's blue. One drawing in `src/views/logo.ts` now feeds the header, the browser-tab icon, the home-screen icons and the notification badge, where there had been a 🌴 emoji that every operating system drew differently and a plain calendar on the home screen. `npm run icons` learned to fill curves to draw it. An iPhone that already has the app on its Home Screen keeps the old icon until it is removed and added again; Android refreshes installed icons from the manifest by itself, in its own time. The LINE message text keeps its 🌴.
 - **2026-10-19** — On a phone the list under the grid is one day's card, not the month: it opens on today, and tapping a day swaps it in place, so reading the 20th takes one tap instead of a scroll past the 1st to the 19th. Each row says how long that absence runs ("Annual · 18–21 Oct"), an empty day says nobody is away, and a ring marks the day shown. The phone's "Out today / Next 7 days" card is gone; the Upcoming list now shows at every width and covers it. With scripting off the list is the whole month's busy days, as before.

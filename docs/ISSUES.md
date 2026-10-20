@@ -580,3 +580,13 @@ The harness now retries once on that one error, which is what a browser does wit
 
 **2026-10-20: the pauses themselves are gone.** The suite now writes and reads the scratch database with Node's own SQLite, opening the same file the dev server uses, and runs `wrangler d1 execute` only once, for the first migration, so the file has the layout the server expects. The full run went from about twelve minutes to fifteen seconds, and the idle gaps that let a keep-alive connection go stale are now milliseconds. The retry stays.
 
+---
+
+## #45 — Drag-to-move did nothing in Chrome `resolved`
+
+Found 2026-10-20 by `scripts/test-browser.mjs` on its first run. Dragging a booking to another day on the desktop calendar left it where it was, with no error and no request.
+
+Chips and bars are `<a>` links, and a browser lets you drag a link — to the address bar, to another tab. A few pixels into the gesture Chrome started that native drag (`dragstart`), which cancels the pointer stream (`pointercancel`). `drag.ts` had already passed its threshold and marked the drag, but its `pointerup`, where the move is submitted, never came. The page's own event log in the test showed it plainly: `pointerdown`, `pointermove`, `dragstart`, `pointercancel`, and nothing else.
+
+How long it was broken is not known: the smoke suite checks the HTML, not what the script does with it, and drag-to-move had only ever been checked by hand. Fixed by refusing the native drag on chips (`dragstart` → `preventDefault`), which leaves the pointer events flowing and a click still opening the link. The browser test now drags a bar from Tuesday to Thursday and reads the moved date back from the database, on every `npm run ship` and in CI.
+

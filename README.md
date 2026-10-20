@@ -87,6 +87,15 @@ headers, the digest's decisions and the LINE webhook signature. It needs no
 secrets and makes no outbound calls. Every `check(` and `eq(` written in the
 file has to actually run, so a section that dies early fails the suite by name.
 
+`npm run test:browser` covers what the smoke suite cannot see: the calendar's
+own script. It boots the worker on a scratch database, starts headless Chrome
+and drives it over the DevTools protocol — tapping and swiping the phone's day
+card, swiping months, the notification invitation, the entry popup, and
+dragging a booking to another day. No Playwright or Puppeteer: Node's own
+WebSocket talks to Chrome. Chrome is found at `$CHROME_PATH`, the macOS install
+location, or on `PATH`; with none the run fails rather than passing on nothing.
+CI runs it, and so does `npm run ship`.
+
 `node scripts/palette.mjs` regenerates the Material 3 colour roles, checks every
 pair the stylesheet paints against WCAG AA, and fails if the values in
 `public/app.css` are not the ones it generates. CI runs it.
