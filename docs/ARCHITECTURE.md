@@ -43,7 +43,7 @@ An Access service token carries `common_name`, not `email`, so it is nobody's em
 
 Two zone-level layers run at the edge **before** Access, so they see anonymous traffic too (both verified 2026-09-19):
 
-- **API Shield schema validation.** The ten JSON operations are uploaded as an OpenAPI 3.0.3 schema derived from `public/openapi.yaml` (`npm run openapi:shield`), and a WAF custom rule blocks on `cf.schema_validation.uploaded.violated`. The other 26 routes are not in the schema and are not checked; there is no fallthrough rule, and there must not be one. A change to what one of those operations *accepts* needs the schema regenerated and re-uploaded in the same change, or real requests start getting 403s. `npm run shield:probe` checks enforcement from outside. And `ship` warns when the spec would now validate differently from the schema last recorded as uploaded: `scripts/shield-uploaded.json` holds a fingerprint of paths, parameters and request bodies — prose excluded, so rewording a description does not raise it — written by `shield:upload`, or by `openapi:shield -- --mark-uploaded` after a dashboard upload.
+- **API Shield schema validation.** The ten JSON operations are uploaded as an OpenAPI 3.0.3 schema derived from `public/openapi.yaml` (`npm run openapi:shield`), and a WAF custom rule blocks on `cf.schema_validation.uploaded.violated`. The other 32 routes are not in the schema and are not checked; there is no fallthrough rule, and there must not be one. A change to what one of those operations *accepts* needs the schema regenerated and re-uploaded in the same change, or real requests start getting 403s. `npm run shield:probe` checks enforcement from outside. And `ship` warns when the spec would now validate differently from the schema last recorded as uploaded: `scripts/shield-uploaded.json` holds a fingerprint of paths, parameters and request bodies — prose excluded, so rewording a description does not raise it — written by `shield:upload`, or by `openapi:shield -- --mark-uploaded` after a dashboard upload.
 - **A rule refusing `*.yaml` and `*.yml`.** Which is why `/docs` reads `/openapi.json`, not the YAML (ISSUES #42).
 
 ## Data model (D1)
@@ -181,10 +181,12 @@ Self-serve model (owner's decision): a POST creates a `confirmed` row directly. 
 | POST | `/me/name` · `/me/week-start` · `/me/lang` | Display name; Monday or Sunday first; English or Thai. |
 | POST | `/api/v1/push/subscribe` · `/api/v1/push/unsubscribe` | This browser's subscription. Unsubscribe is scoped to its owner. |
 | POST | `/api/v1/push/test` | Push to the caller's own browsers. |
-| GET | `/admin` | Users, quotas, leave types, holidays, LINE status, run log, audit trail, HR export. Admin only. |
+| GET | `/admin` | Overview, admin only like everything under it: the holiday reminder, four figures (away today, people with notifications on, the last 09:00 digest, changes in seven days) and a tile per section. An old `/admin?audit_…` link is sent on to `/admin/activity`. |
+| GET | `/admin/people?y=` | The roster for a year, read-only: one row per person, one column per offered type, through `allottedFor` so an unset year shows what the booking check enforces. The bell is a count of browsers, never an endpoint. |
+| GET · POST | `/admin/people/:email?y=` | One person's role, status and every allowance, in one form with one Save. Every allowance is validated before anything is written; the last-admin guard refuses the whole save. Replaced `POST /admin/user` and `POST /admin/quotas`, whose two Save buttons per person each discarded what was typed in the other. |
+| GET | `/admin/types` · `/admin/holidays?y=` · `/admin/notifications` · `/admin/export` · `/admin/activity` | One page per section. Types read as a line each, the form behind a `<details>`; holidays a year at a time with weekdays; notifications both channels side by side with the preview and send; the export form; the change history. |
 | GET | `/admin/export.csv` | `from`, `to` (≤ 366 days apart, defaulting to this year) and `kind` = `summary` or `bookings`. Counted by `daysWithin` in `src/domain/report.ts`: a booking crossing the range's edge is cut there and recounted, halves only where the booking's own half falls inside. Deactivated people are included (`listLeaveInRange`'s `includeInactive`); notes are not. CSV with a UTF-8 BOM, for Excel and Thai, every cell quoted, and a leading `= + - @` defused with an apostrophe, since display names are typed by employees. `Cache-Control: private, no-store`. |
-| POST | `/admin/quotas` · `/admin/quotas/bulk` | One person, or one leave type for every active user. |
-| POST | `/admin/user` | Role and active flag. The last admin cannot demote itself. |
+| POST | `/admin/quotas/bulk` | One leave type's allowance for every active user. |
 | POST | `/admin/holiday` · `/admin/holiday/delete` · `/admin/holidays/import` | Add, remove, or paste a year's list — all-or-nothing. |
 | POST | `/admin/holidays/preview` | The import's middle step, writing nothing: each line as new, renamed or already held; parse errors by line number, with the list handed back to fix; and the bookings already made across a new working-day holiday, which were charged for it (`importPlan`). Its confirm button posts the same text to `/admin/holidays/import`, with `recount=1` unless the admin unticks it: the import then recounts those bookings through `updateLeave`, the path an edit takes, so each recount is an audited edit by the admin. Only ever fewer days, so no balance check can refuse one; a booking left with no working day is left alone. |
 | POST | `/admin/type` · `/admin/type/delete` | Add or edit a leave type, including retiring it; delete only one nobody has ever booked. The code is fixed once added — it is the feed's `type`. |
@@ -309,6 +311,10 @@ Navigation changes shape at the same breakpoint, following M3's own guidance rat
 
 Both are rendered on every page and chosen by CSS, so there is no JS in the navigation.
 
+### Admin area
+
+An overview and six section pages (`src/views/admin.tsx`), replacing one page that had grown to 6,000px on a laptop and 10,000 on a phone with 242 controls and two forms per person. The overview is for "is anything wrong": the holiday reminder, four figures, a tile per section with a one-line state. Each section page carries a row of chips — the way back to the overview and across to the others — that scrolls sideways on a phone instead of wrapping. Everything is still a plain form or link, and every section has its own URL, so a flash from a POST lands on the page the form was on. On a phone the People table stays a table: the type headings wrap, the email and the pencil drop out (the name is the same link), and it fits 375px with four types.
+
 ## Response headers
 
 Every response the Worker returns carries `nosniff`, `X-Frame-Options: DENY`, `X-Robots-Tag: noindex, nofollow` and `Referrer-Policy: same-origin`; HTML additionally carries a Content-Security-Policy and `Cache-Control: private, no-store`.
@@ -374,7 +380,7 @@ The write is batched with the change itself, inside the repo functions that perf
 
 Snapshots are JSON rather than mirrored columns so the trail keeps its meaning when `leave_requests` changes shape.
 
-On `/admin` the trail is filtered by person — as actor or as subject, since "what happened around Mai" includes an admin changing her booking — and by action, through a GET form so a filtered view is a link; thirty rows a page, asking for one more than a page to know whether an older one exists rather than counting the table. Unrecognised filter values are dropped, not refused.
+On `/admin/activity` the trail is filtered by person — as actor or as subject, since "what happened around Mai" includes an admin changing her booking — and by action, through a GET form so a filtered view is a link; thirty rows a page, asking for one more than a page to know whether an older one exists rather than counting the table. Unrecognised filter values are dropped, not refused.
 
 **Retention.** After the digest, the same cron run deletes audit rows older than three years and `notification_runs` rows older than 90 days (`AUDIT_KEEP_YEARS`, `NOTIFICATION_KEEP_DAYS` in `src/repo/db.ts`). In its own `try`, so housekeeping can never delay or block a post. Three years covers the year being worked in, the two before it, and any balance that crossed New Year; everything the app can still change — 90 days of backdating, 10 minutes of undo — sits well inside it.
 

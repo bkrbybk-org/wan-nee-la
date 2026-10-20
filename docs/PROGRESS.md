@@ -8,7 +8,7 @@ Updated: 2026-10-20
 
 ## Status
 
-Deployed and serving. Version `6fb62cd6-e47e-4656-83ca-ea24aec40032`, deployed 2026-10-20 with `npm run ship`, D1 `<database-id>` in APAC, behind Cloudflare Access on `<hostname>`. Production checks passed: the new version serves all traffic, `/health` and `/` both 302 to Access, production D1 answers, and migration 0011 is applied with every type still offered. That deploy also carried the 09:00 weekday schedule — production had still been on the old daily `0 1 * * *` cron until then.
+Deployed and serving. Version `3a782b20-0495-48c1-ada6-dc4d438b8645`, deployed 2026-10-20 with `npm run ship`, D1 `<database-id>` in APAC, behind Cloudflare Access on `<hostname>`. Production checks passed: the new version serves all traffic, `/health` and `/` both 302 to Access, production D1 answers, and migration 0011 is applied with every type still offered. That deploy also carried the 09:00 weekday schedule — production had still been on the old daily `0 1 * * *` cron until then.
 
 **In real use.** Twelve active users, 24 confirmed bookings, 26 holidays, four leave types, 49 rows in the audit trail (read 2026-10-20). That changes what matters here: the shared surfaces now have a real audience, so note visibility, the audit trail and the privacy rules on `/u/:email` are load-bearing rather than theoretical.
 
@@ -86,10 +86,11 @@ Two consequences worth remembering:
 | POST | `/me/name` · `/me/week-start` · `/me/lang` | Display name; Monday or Sunday first; English or Thai. |
 | POST | `/api/v1/push/subscribe` · `/api/v1/push/unsubscribe` | This browser's push subscription. Unsubscribe is scoped to its owner. |
 | POST | `/api/v1/push/test` | Sends to the caller's own browsers, so a fresh setup can be proved without waiting for 09:00. |
-| GET | `/admin` | Users, quotas, leave types, holidays, LINE status, run log, audit trail, HR export. Admin only. |
+| GET | `/admin` | Overview: anything needing doing, four figures, a tile per section. Admin only, like everything under it. |
+| GET | `/admin/people` · `/admin/types` · `/admin/holidays` · `/admin/notifications` · `/admin/export` · `/admin/activity` | One page per section. |
+| GET · POST | `/admin/people/:email` | One person's role, status and allowances, saved together. Last admin cannot demote itself. |
 | GET | `/admin/export.csv?from=&to=&kind=` | Leave as a spreadsheet for HR: per person per type, or per booking. Days counted inside the range; people who have left included; notes never. |
-| POST | `/admin/quotas` · `/admin/quotas/bulk` | One person, or every active user at once. |
-| POST | `/admin/user` | Role and active flag. Last admin cannot demote itself. |
+| POST | `/admin/quotas/bulk` | One type's allowance for every active user. |
 | POST | `/admin/notify/preview` · `/admin/notify/send` | Dry-run and manual send, through the real digest job. |
 | POST | `/admin/holiday` · `/admin/holiday/delete` | |
 | POST | `/admin/holidays/preview` · `/admin/holidays/import` | Paste a year's list, see what it would change, then import. All-or-nothing: one bad line rejects the import. Optionally recounts bookings already charged for a new holiday. |
@@ -109,7 +110,7 @@ Two consequences worth remembering:
 
 **Balances** — per leave type, per year. Planned medical draws no quota. Leave is charged to the year it starts in, and a year nobody has been seeded for yet falls back to each type's `default_days`, so next January can be booked in November even when this year's allowance is spent. Editing credits a booking's own days back before checking the balance — only within the same year, so a booking moved across New Year is checked against the year it lands in (#36). Under the balances, twelve small bars show the year's days off month by month, split by type in the types' own colours, with a table behind them for a screen reader.
 
-**Admin** — quota editing per person or in bulk across active users, holiday management, user roles, whether each person has notifications on (a count of browsers, nothing about them), LINE status and run log, an audit trail filtered by person and action and paged thirty at a time, and a CSV export for HR: per person per leave type, or one row per booking, for any range up to a year. A booking that crosses the range's edge counts only its days inside; people who have since left are included; notes never are; a name a spreadsheet would run as a formula is defused. A year without quota rows shows each type's default — the number the booking check will actually enforce.
+**Admin** — an overview that says what needs doing (2027's holidays, say) and whether the app is doing its job (who is away today, how many people have notifications on, whether the 09:00 digest went out, how much changed this week), then a page per section. People is a read-only roster with one edit page per person, where role, status and every allowance are saved together; quota editing in bulk across active users, holiday management, user roles, whether each person has notifications on (a count of browsers, nothing about them), LINE status and run log, an audit trail filtered by person and action and paged thirty at a time, and a CSV export for HR: per person per leave type, or one row per booking, for any range up to a year. A booking that crosses the range's edge counts only its days inside; people who have since left are included; notes never are; a name a spreadsheet would run as a formula is defused. A year without quota rows shows each type's default — the number the booking check will actually enforce.
 
 **LINE digest** — on weekdays at 09:00 Asia/Bangkok, posts who is out when `LINE_ENABLED` is `"1"`; off by default. Skips weekends, holidays, and days with nobody out, because LINE bills a group push per member. Double-posting is guarded twice: a `notification_runs` row is claimed *before* the push, and the request carries LINE's `X-Line-Retry-Key`. `scheduled()` never throws, since a retried handler that already sent would post again.
 
@@ -123,7 +124,7 @@ Two consequences worth remembering:
 
 **Security headers** — every response carries `nosniff`, `X-Frame-Options`, `X-Robots-Tag` and `Referrer-Policy: same-origin`; HTML also carries a Content-Security-Policy and `Cache-Control: private, no-store`. The CSP is strict about scripts — the one inline script, the pre-paint theme switcher, is allowed by hash — and permissive about styles, because leave-type colours are inline on hundreds of elements. `no-store` matters on shared office machines: without it the next person can pull the last person's page out of the back/forward cache. ([ISSUES.md](ISSUES.md) #30)
 
-**Audit trail** — every booking created, edited or cancelled is recorded with who did it, whose leave it was, and a before/after snapshot. Written inside the same D1 batch as the change itself, so no route can make a change without recording it. Notes are recorded as present or absent, never copied — a trail that duplicated private notes into a second admin-readable table would undo the feature above. Shown on `/admin`. ([ISSUES.md](ISSUES.md) #8)
+**Audit trail** — every booking created, edited or cancelled is recorded with who did it, whose leave it was, and a before/after snapshot. Written inside the same D1 batch as the change itself, so no route can make a change without recording it. Notes are recorded as present or absent, never copied — a trail that duplicated private notes into a second admin-readable table would undo the feature above. Shown on `/admin/activity`, by name. ([ISSUES.md](ISSUES.md) #8)
 
 **Coverage warning** — the booking form says who else is already away on the busiest day of the range, and marks it as a caution when a third or more of the active roster would be out. Advisory only: the app does not know who covers for whom, so it never refuses a booking.
 
@@ -143,7 +144,7 @@ Two consequences worth remembering:
 
 ## Verification
 
-**930 automated assertions**, all green. CI runs them, and lint, on every push and pull request.
+**964 automated assertions**, all green. CI runs them, and lint, on every push and pull request.
 
 | Suite | Assertions | Covers |
 | --- | --- | --- |
@@ -155,9 +156,9 @@ Two consequences worth remembering:
 | `test-report.mjs` | 24 | Leave counted over a span — cut to it, halves where they fall — per person and per month; the CSV writer and its formula guard |
 | `test-migrate.mjs` | 29 | Migration tracking: the generated SQL on SQLite, then `migrate.mjs` itself through wrangler — applied twice, a legacy database refused and then baselined |
 | `test-i18n.mjs` | 27 | Lookup, placeholders, plurals, and the catalogue's own health |
-| `smoke.mjs` | 417 | The HTTP layer — see below |
-| `test-browser.mjs` | 44 | Three screenshots compared with per-platform references (phone light and dark, laptop) — then the calendar's own script in headless Chrome: the phone's day card, tapping and swiping it, what a screen reader is told, the folding Book button, the days-off-by-month chart, the busy-day count, the card staying on screen under both banners, the month swipe, the notification invitation, the entry popup, drag-to-move, remove and undo, booking from an empty day, the Thai interface |
-| `check-openapi.mjs` | — | Each of the 34 routes is either documented in `openapi.yaml` or deliberately listed as not, and the API Shield 3.0.3 copy still builds from it |
+| `smoke.mjs` | 449 | The HTTP layer — see below |
+| `test-browser.mjs` | 46 | Five screenshots compared with per-platform references (the month on a phone, light and dark, and a laptop; the admin People page on both) — then the calendar's own script in headless Chrome: the phone's day card, tapping and swiping it, what a screen reader is told, the folding Book button, the days-off-by-month chart, the busy-day count, the card staying on screen under both banners, the month swipe, the notification invitation, the entry popup, drag-to-move, remove and undo, booking from an empty day, the Thai interface |
+| `check-openapi.mjs` | — | Each of the 42 routes is either documented in `openapi.yaml` or deliberately listed as not, and the API Shield 3.0.3 copy still builds from it, and its validation fingerprint moves only when validation does |
 
 The smoke suite boots a real worker against a scratch database and exercises what pure functions cannot reach: the CSRF guard, ownership checks on edit and cancel, booking rules over real requests, the open-redirect guards on `returnTo` **and on the `Referer` header**, note visibility across two identities, the audit trail's contents, the security headers, digest decisions, the webhook signature, push subscription ownership, admin authorisation, undo and its re-validation, next-year and cross-year quota, a LINE channel switched off by its flag, adding, retiring and deleting leave types, and history pruning through the real scheduled handler, the audit trail's filter and pages, the admin's notifications column, and an unhandled error — a table renamed under the running server — answering in the app's own shapes and logged by route pattern, never by path.
 
@@ -175,7 +176,7 @@ It is built against its own worst failure mode — passing while testing nothing
 
 ## Open items
 
-**No known bugs.** The push keypair mismatch (#40) was repaired on 2026-09-21. 930 assertions are green and `npm audit` is clean. The 2026-08-25 audit and the 2026-09-13 review both found and fixed what they turned up — the second a quota overdraw when moving a booking across New Year (#36) — and each fix is covered by a test or, where a test could not reach it, recorded in [ISSUES.md](ISSUES.md).
+**No known bugs.** The push keypair mismatch (#40) was repaired on 2026-09-21. 964 assertions are green and `npm audit` is clean. The 2026-08-25 audit and the 2026-09-13 review both found and fixed what they turned up — the second a quota overdraw when moving a booking across New Year (#36) — and each fix is covered by a test or, where a test could not reach it, recorded in [ISSUES.md](ISSUES.md).
 
 What follows is decisions, unfinished configuration, accepted trade-offs and debt — not defects.
 
@@ -257,6 +258,7 @@ Features — iCal, team grouping, coverage scoped to a team — are in PLAN.md s
 
 ## Change log
 
+- **2026-10-20** — The admin page is an overview and six sections instead of one 6,000-pixel scroll. The overview shows the holiday reminder, who is away today, how many people have notifications on, whether the 09:00 digest went out and how much changed this week, with a tile into each of People, Leave types, Holidays, Notifications, Export for HR and Activity. People is a read-only table of allowances; each person has one edit page where role, status and allowances are saved together — it had been two forms and two Save buttons per person, each discarding what was typed in the other, and a bad number in one field no longer saves the rest. Leave types open their form only when asked; holidays show one year at a time with weekdays; the preview and send for the 09:00 notification moved from under "LINE notification", which is switched off, to Notifications, beside the push channel's state; the change history shows names and readable times. Smoke covers every section, the one-form save and its refusals; the People page joined the screenshot checks. Found on the way: the People table's bell carried "Notifications off" beside every name on a phone, which the screenshot showed.
 - **2026-10-20** — Migrations are tracked: each database has an `applied_migrations` table, `db:init` runs only what is missing and can be run again (#24), and `ship` refuses to deploy over a pending migration unless `--migrate` says to apply it. Production was baselined through 0011. `/admin` shows who has notifications on, and the audit trail filters by person and action and pages thirty at a time. An unhandled error now answers in the app's own shapes and leaves one JSON line in Workers Logs, naming the route pattern rather than the path, so no address is logged. The browser tests compare three screenshots with per-platform references. `ship` warns when the spec would validate differently from the API Shield schema last uploaded.
 - **2026-10-20** — Review and documentation cross-check; no code changed. ARCHITECTURE's route table gained `/api/v1/holidays` and `/api/v1/balances`, and its non-goals now say a payroll *integration* rather than an export, since the HR CSV exists. README counts seven unit suites and 36 routes, and drops a step for removing a "Not enabled yet" Push marker that is already gone. The client bundle is ~15kb now, not ~10kb. PLAN 5.2 (CSV export) closed. Production figures refreshed: twelve active users, and push still reaches only one person.
 - **2026-10-20** — A CSV export for HR on `/admin`: per person per leave type, or one row per booking, for a date range, counting only the days inside it, including people who have left, without notes, and defusing names a spreadsheet would run as formulas. `/me` shows the year's days off month by month, split by type. On a phone the floating Book button folds to its icon once the page scrolls, and a screen reader is told the day and who is away when a tap or swipe changes the day card. `src/domain/report.ts` does the counting for both reports, with its own unit suite.

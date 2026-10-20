@@ -88,7 +88,7 @@ builds from it.
 CI runs it.
 
 `npm run test:smoke` additionally boots a worker against a scratch database and
-exercises the HTTP layer over all 36 routes — CSRF, ownership checks, note
+exercises the HTTP layer over all 42 routes — CSRF, ownership checks, note
 visibility across two identities, booking rules, the audit trail, security
 headers, the digest's decisions and the LINE webhook signature. It needs no
 secrets and makes no outbound calls. Every `check(` and `eq(` written in the
@@ -187,10 +187,10 @@ Optional — the app is fully functional without it, and the channel is **off by
    ```bash
    wrangler secret put LINE_CHANNEL_SECRET
    ```
-4. Post any message in the group. The webhook captures the group id; `/admin` will show it.
-5. Set `"LINE_ENABLED": "1"` in `wrangler.local.jsonc` and redeploy. Until then `/admin` reports the channel as switched off, whatever the secrets say.
+4. Post any message in the group. The webhook captures the group id; `/admin/notifications` will show it.
+5. Set `"LINE_ENABLED": "1"` in `wrangler.local.jsonc` and redeploy. Until then `/admin/notifications` reports the channel as switched off, whatever the secrets say.
 6. Drop the "Not enabled yet" wording from the LINE tag and operation in `public/openapi.yaml`, then `npm run build:spec`. `/docs` says the channel is off until you do.
-6. Use **Preview** on `/admin`, then **Send now**.
+6. Use **Preview** on `/admin/notifications`, then **Send now**.
 
 LINE bills a group push **per member**, so a 20-person group is up to ~520 messages a month (about 22 weekday posts plus four Monday week-ahead posts, × 20). The job skips weekends, public holidays, and days with nobody on leave. See [docs/ISSUES.md](docs/ISSUES.md) #2.
 
@@ -288,7 +288,7 @@ hostname, so it stays in the gitignored `dist/`. `npm test` builds it from the
 spec on every run, so a 3.1-only construct fails there rather than in the
 dashboard.
 
-The other 26 routes — HTML pages and form posts — are deliberately not in the
+The other 32 routes — HTML pages and form posts — are deliberately not in the
 spec. So do **not** deploy API Shield's fallthrough rule ("mitigate requests to
 unidentified endpoints") on this hostname: it would block the whole app.
 Upload with a token that has the **API Gateway** permission, rather than by
