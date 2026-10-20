@@ -89,6 +89,13 @@ jobs:
         # so it behaves the same here as on a laptop.
         run: npm run test:smoke
 
+      - name: Browser tests
+        # The calendar's own script — the phone's day card, swiping, the
+        # notification invitation, the entry popup, drag-to-move — in headless
+        # Chrome, driven over the DevTools protocol. The runner image ships
+        # Chrome; nothing is installed for this.
+        run: npm run test:browser
+
       - name: Build the Worker
         # Catches bundling errors tsc cannot see — a bad import, a module that
         # does not survive the Workers runtime. --dry-run needs no credentials

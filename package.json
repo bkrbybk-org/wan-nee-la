@@ -27,6 +27,7 @@
     "vapid": "node scripts/vapid-keys.mjs",
     "icons": "node scripts/icons.mjs",
     "test:smoke": "node scripts/smoke.mjs",
+    "test:browser": "npm run build:client && node scripts/test-browser.mjs",
     "ship": "node scripts/ship.mjs",
     "openapi:shield": "node scripts/openapi-shield.mjs",
     "build:spec": "node scripts/spec-json.mjs",

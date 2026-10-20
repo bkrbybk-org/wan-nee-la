@@ -9,7 +9,8 @@
  * (updating the docs, committing, pushing) is left to a person on purpose:
  * this script only proves the code works where it runs.
  *
- *   1. Local   typecheck, lint, unit tests, colour contrast, route smoke tests.
+ *   1. Local   typecheck, lint, unit tests, colour contrast, route smoke tests,
+ *              browser tests.
  *   2. Deploy  refuse if the live Worker's vars differ from the config file,
  *              since a deploy overwrites them (ISSUES #40); then any
  *              migrations named with --migrate, applied to production D1
@@ -186,6 +187,7 @@ run('npm', ['test'], 'unit tests');
 console.log('\n$ node scripts/palette.mjs > /dev/null');
 if (spawnSync('node', ['scripts/palette.mjs'], { stdio: ['ignore', 'ignore', 'inherit'] }).status !== 0) fail('colour contrast failed');
 run('npm', ['run', 'test:smoke'], 'smoke tests');
+run('npm', ['run', 'test:browser'], 'browser tests');
 console.log('\n✓ local checks passed');
 if (localOnly) process.exit(0);
 

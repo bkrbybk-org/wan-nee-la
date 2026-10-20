@@ -33,11 +33,11 @@ import {
 	type BookingDraft,
 	type BookingInput,
 } from './domain/leave.ts';
-import { holidayGap, parseHolidayList, type HolidayGap } from './domain/holidays.ts';
+import { holidayGap, importPlan, parseHolidayList, type HolidayGap } from './domain/holidays.ts';
 import { parseLeaveTypeForm } from './domain/leaveTypes.ts';
 import { isLang, t, tm, toLang, type Lang, type Message, type StringKey } from './i18n/strings.ts';
 import * as db from './repo/db.ts';
-import { AdminPage } from './views/admin.tsx';
+import { AdminPage, HolidayPreviewPage } from './views/admin.tsx';
 import { BookPage } from './views/book.tsx';
 import { CalendarPage, UPCOMING_DAYS } from './views/calendar.tsx';
 import { EditPage } from './views/edit.tsx';
@@ -1540,6 +1540,30 @@ app.post('/admin/notify/send', async (c) => {
  * government holiday notice is the worst outcome: the calendar looks updated,
  * and the three days that failed silently draw down everyone's quota.
  */
+/**
+ * The holiday import's middle step: parse, compare with what is held, and show
+ * whose bookings cross a new holiday. Writes nothing; the page's confirm
+ * button posts the same text to /admin/holidays/import.
+ */
+app.post('/admin/holidays/preview', async (c) => {
+	const form = await c.req.parseBody();
+	const text = String(form.list ?? '');
+	if (!text.trim()) return redirectWithFlash('/admin', 'err', say(c, 'flash.nothingToImport'));
+
+	const { holidays, errors } = parseHolidayList(text);
+	let plan = null;
+	if (holidays.length > 0) {
+		const from = holidays[0].date;
+		const to = holidays[holidays.length - 1].date;
+		const [held, bookings] = await Promise.all([db.listHolidays(c.env.DB, from, to), db.listLeaveInRange(c.env.DB, from, to)]);
+		plan = importPlan(holidays, new Map(held.map((h) => [h.date, h.label])), bookings);
+	}
+	return page(
+		c,
+		<HolidayPreviewPage user={c.get('user')} text={text} errors={errors} plan={plan} version={c.env.CF_VERSION_METADATA?.id} />,
+	);
+});
+
 app.post('/admin/holidays/import', async (c) => {
 	const form = await c.req.parseBody();
 	const text = String(form.list ?? '');

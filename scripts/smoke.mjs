@@ -843,6 +843,35 @@ async function main() {
 	eq('a bad line rejects the whole import', flashOf(res)?.kind, 'err');
 	eq('and nothing from it was written', d1Rows("SELECT COUNT(*) AS n FROM holidays WHERE date LIKE '2028-%'")[0]?.n, 0);
 
+	// --- holiday import preview ---------------------------------------------
+	//
+	// A booking across Mon–Wed of the clear week, then a list that adds the
+	// Tuesday, repeats one held holiday and renames another.
+	{
+		const TUE = addDays(MON, 1);
+		d1(
+			`INSERT INTO leave_requests (id, user_email, leave_type_id, start_date, end_date, start_half, end_half, days_total, note, note_private, status, created_at)
+			 VALUES ('smoke-hol', '${ADMIN}', 1, '${MON}', '${addDays(MON, 2)}', 'full', 'full', 3, NULL, 1, 'confirmed', '${MON}')`,
+		);
+		const list = `${TUE} Smoke Day\n2027-01-01 New Year\n2027-04-13 Songkran Renamed`;
+		const previewRes = await post('/admin/holidays/preview', { list });
+		const html = await previewRes.text();
+		eq('import preview: a page, not a redirect', previewRes.status, 200);
+		check('import preview: a new date says new', new RegExp(`${TUE}</span><span>Smoke Day</span><span class="tag">new<`).test(html), 'no "new" row');
+		check('import preview: a held date says so', /New Year<\/span><span class="tag">already there</.test(html), 'no "already there" row');
+		check('import preview: a new name says what it replaces', html.includes('renames “Songkran”'), 'no rename row');
+		check('import preview: names the booking charged for the new holiday', html.includes('href="/leave/smoke-hol/edit"') && html.includes('1 day charged'), 'affected booking missing');
+		check('import preview: offers to import the two that change', html.includes('Import 2 holidays') && html.includes('action="/admin/holidays/import"'), 'no confirm button');
+		eq('import preview: and has written nothing', d1Rows(`SELECT COUNT(*) AS n FROM holidays WHERE date = '${TUE}'`)[0]?.n, 0);
+
+		const badHtml = await (await post('/admin/holidays/preview', { list: `${TUE} Fine\nnonsense line` })).text();
+		check('import preview: a bad line is shown with its number', badHtml.includes('Line 2:'), 'no line number');
+		check('import preview: and there is nothing to confirm', !badHtml.includes('action="/admin/holidays/import"'), 'confirm offered despite errors');
+		check('import preview: the list comes back to be fixed', badHtml.includes('nonsense line</textarea>'), 'text lost');
+		d1(`DELETE FROM leave_requests WHERE id = 'smoke-hol'`);
+		d1(`DELETE FROM leave_audit WHERE leave_id = 'smoke-hol'`);
+	}
+
 	// --- language -----------------------------------------------------------
 	res = await post('/me/lang', { lang: 'th' });
 	eq('language can be set to Thai', flashOf(res)?.kind, 'ok');
@@ -936,6 +965,7 @@ async function main() {
 	check('the holiday reminder is for admins only', !(await (await fetch(`${BASE}/`)).text()).includes('holidays-due'), 'shown to a non-admin');
 	eq('second user cannot reach an admin action', (await post('/admin/quotas/bulk', { year: '2027', leaveTypeId: '1', days: '1' })).status, 403);
 	eq('second user cannot import holidays', (await post('/admin/holidays/import', { list: '2030-01-01 Sneaky' })).status, 403);
+	eq('or preview an import', (await post('/admin/holidays/preview', { list: '2030-01-01 Sneaky' })).status, 403);
 	eq('and nothing was imported', d1Rows("SELECT COUNT(*) AS n FROM holidays WHERE date LIKE '2030-%'")[0]?.n, 0);
 	eq('second user cannot read balances', (await fetch(`${BASE}/api/v1/balances`)).status, 403);
 	check(
@@ -1221,6 +1251,17 @@ async function main() {
 	check('bars: carries the person\'s badge', /class="badge" style="--who: #[0-9a-f]{6}"/.test(barHtml.slice(barAt, barAt + 600)), 'no badge');
 	check('bars: read aloud with the whole range, not one day', /aria-label="[^"]*–[^"]*"/.test(bars[0] ?? ''), bars[0]);
 	check('bars: each cell still has its phone dot', (barHtml.match(/<a class="chip [^"]*"[^>]*data-entry="smoke-bar-1"/g) ?? []).length >= 3, 'phone dots gone');
+	{
+		// Friday to the next Monday: two one-day pieces, nothing across the weekend.
+		d1(
+			`INSERT INTO leave_requests (id, user_email, leave_type_id, start_date, end_date, start_half, end_half, days_total, note, note_private, status, created_at)
+			 VALUES ('smoke-bar-2', 'bar-person@example.com', 1, '${addDays(barMon, 4)}', '${addDays(barMon, 7)}', 'full', 'full', 2, NULL, 1, 'confirmed', '${barMon}')`,
+		);
+		const wkHtml = await (await fetch(`${BASE}/?y=${barMon.slice(0, 4)}&m=${Number(barMon.slice(5, 7))}`)).text();
+		const pieces = wkHtml.match(/<a class="chip bar[^"]*"[^>]*data-entry="smoke-bar-2"[^>]*>/g) ?? [];
+		check('bars: no bar across a weekend nobody took', pieces.length > 0 && pieces.every((p) => /span 1\b/.test(p)), JSON.stringify(pieces.map((p) => /span \d/.exec(p)?.[0])));
+		d1(`DELETE FROM leave_requests WHERE id = 'smoke-bar-2'`);
+	}
 
 	const homeHtml = await (await fetch(`${BASE}/`)).text();
 	const upcoming = homeHtml.slice(homeHtml.indexOf('class="cal-upcoming"'), homeHtml.indexOf('</section>', homeHtml.indexOf('class="cal-upcoming"')));

@@ -437,8 +437,10 @@ function CalendarBody(props: CalendarProps) {
 	const weekdays = weekdayLabels(weekStart, lang);
 	const weeks = intoWeeks(grid);
 	const holidayMap = new Map(holidays.map((h) => [h.date, h.label]));
-	// Who is away on each day — weekends and holidays inside a booking left out.
-	const map = byDate(entries, new Set(holidayMap.keys()));
+	// Who is away on each day — weekends and holidays inside a booking left
+	// out, here and in the desktop's bars alike.
+	const holidayDates = new Set(holidayMap.keys());
+	const map = byDate(entries, holidayDates);
 	const prev = shiftMonth(year, month, -1);
 	const next = shiftMonth(year, month, 1);
 	const monthPrefix = `${year}-${String(month).padStart(2, '0')}`;
@@ -575,7 +577,7 @@ function CalendarBody(props: CalendarProps) {
 								// Bars for the week, laid out once. Rows past CELL_CHIPS are
 								// not drawn; each day they would have covered says how many
 								// it holds back instead.
-								const segs = weekLanes(week, entries);
+								const segs = weekLanes(week, entries, holidayDates);
 								const shown = segs.filter((s) => s.lane < CELL_CHIPS);
 								const heldBack = week.map(
 									(_, c) => segs.filter((s) => s.lane >= CELL_CHIPS && c >= s.col && c < s.col + s.span).length,

@@ -279,10 +279,32 @@ const piece = (segs, id) => segs.find((s) => s.entry.id === id);
 {
 	const [s] = weekLanes(WEEK, [entry({ start_date: '2026-08-12', end_date: '2026-08-26' })]);
 	eq('lanes: a booking from the week before is cut at the start', s.col, 0);
-	eq('lanes: and covers the whole week', s.span, 7);
+	eq('lanes: and covers the working week, not the weekend', s.span, 5);
 	eq('lanes: flagged as carrying on at both ends', `${s.continuesBefore}/${s.continuesAfter}`, 'true/true');
 }
 eq('lanes: a booking outside the week is left out', weekLanes(WEEK, [entry({ start_date: '2026-08-24', end_date: '2026-08-25' })]).length, 0);
+{
+	// Thu 20 to Tue 25 in a Monday-first week: the bar stops on Friday, and
+	// the weekend that closes the week is not drawn as leave.
+	const [s, ...rest] = weekLanes(WEEK, [entry({ start_date: '2026-08-20', end_date: '2026-08-25' })]);
+	eq('lanes: the weekend is cut off the end of a week', `${s.col}+${s.span}`, '3+2');
+	eq('lanes: and that end still reads as carrying on', s.continuesAfter, true);
+	eq('lanes: with nothing drawn on the weekend', rest.length, 0);
+}
+{
+	// A Sunday-first week, Sun 16 – Sat 22: Fri 14 to Tue 18 shows from Monday.
+	const SUN_WEEK = ['2026-08-16', '2026-08-17', '2026-08-18', '2026-08-19', '2026-08-20', '2026-08-21', '2026-08-22'];
+	const [s] = weekLanes(SUN_WEEK, [entry({ start_date: '2026-08-14', end_date: '2026-08-18' })]);
+	eq('lanes: a Sunday-first week starts the bar on Monday', `${s.col}+${s.span}`, '1+2');
+	eq('lanes: flagged as begun earlier', s.continuesBefore, true);
+}
+{
+	// A holiday on Wednesday splits a Mon–Fri booking in two.
+	const segs = weekLanes(WEEK, [entry({ start_date: '2026-08-17', end_date: '2026-08-21' })], new Set(['2026-08-19']));
+	eq('lanes: a holiday splits a bar', segs.map((s) => `${s.col}+${s.span}`).join(' '), '0+2 3+2');
+	eq('lanes: the two pieces face each other across it', `${segs[0].continuesAfter}/${segs[1].continuesBefore}`, 'true/true');
+}
+eq('lanes: an all-weekend booking still draws', weekLanes(WEEK, [entry({ start_date: '2026-08-22', end_date: '2026-08-23' })])[0]?.span, 2);
 {
 	// Order must not depend on the order the rows came back from the database.
 	const a = weekLanes(WEEK, [entry({ id: 'x', display_name: 'Xa' }), entry({ id: 'y', display_name: 'Ya' })]);

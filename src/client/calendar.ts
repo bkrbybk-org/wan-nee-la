@@ -155,6 +155,46 @@ document.addEventListener('click', (e) => {
  * The CSS that hides the other rows keys on `.day-mode`, set here, so with
  * scripting off the list is the whole month as before.
  */
+/**
+ * Call `go(-1)` or `go(1)` when `el` is swiped sideways on a touch screen:
+ * finger moving left is +1, the thing to its right coming in.
+ *
+ * A swipe has to be clearly sideways — mostly horizontal, 60px or more, and
+ * under 600ms — so a tap, or a vertical scroll that drifts a little, is never
+ * taken for one. Passive listeners: nothing here ever blocks scrolling.
+ */
+const coarse = window.matchMedia('(pointer: coarse)').matches;
+function onSwipe(el: HTMLElement, go: (dir: -1 | 1) => void) {
+	if (!coarse) return;
+	let start: { x: number; y: number; t: number } | null = null;
+	el.addEventListener('touchstart', (e) => {
+		const touch = e.touches.length === 1 ? e.touches[0] : null;
+		start = touch ? { x: touch.clientX, y: touch.clientY, t: e.timeStamp } : null;
+	}, { passive: true });
+	el.addEventListener('touchend', (e) => {
+		const touch = e.changedTouches[0];
+		if (!start || !touch) return;
+		const dx = touch.clientX - start.x;
+		const dy = touch.clientY - start.y;
+		const quick = e.timeStamp - start.t < 600;
+		start = null;
+		if (!quick || Math.abs(dx) < 60 || Math.abs(dx) < Math.abs(dy) * 2) return;
+		go(dx < 0 ? 1 : -1);
+	}, { passive: true });
+	el.addEventListener('touchcancel', () => {
+		start = null;
+	}, { passive: true });
+}
+
+const prevLink = document.querySelector<HTMLAnchorElement>('[data-month-prev]');
+const nextLink = document.querySelector<HTMLAnchorElement>('[data-month-next]');
+
+/** The ISO date `n` days from `iso`. */
+function shiftDay(iso: string, n: number): string {
+	const [y, m, d] = iso.split('-').map(Number);
+	return new Date(Date.UTC(y, m - 1, d + n)).toISOString().slice(0, 10);
+}
+
 const agenda = document.querySelector<HTMLElement>('[data-agenda]');
 if (agenda) {
 	agenda.classList.add('day-mode');
@@ -184,39 +224,30 @@ if (agenda) {
 		// Keeps the URL shareable without the jump an anchor would make.
 		history.replaceState(null, '', `#d-${cell.dataset.day}`);
 	});
+
+	// Swipe the card to step a day at a time. Off the end of the month it
+	// carries on into the next or previous one, landing on the day after (or
+	// before) rather than wherever that month would open by default.
+	onSwipe(agenda, (dir) => {
+		const current = agenda.querySelector<HTMLElement>('.agenda-row.selected')?.dataset.day;
+		if (!current) return;
+		const target = shiftDay(current, dir);
+		if (select(target)) {
+			history.replaceState(null, '', `#d-${target}`);
+			return;
+		}
+		const link = dir > 0 ? nextLink : prevLink;
+		if (link) location.href = `${link.href}#d-${target}`;
+	});
 }
 
-/**
- * Swipe the month grid sideways to change month, on a touch screen.
- *
- * The arrows stay; this only follows their links, so the result is the same
- * page with the same URL. A swipe has to be clearly sideways — mostly
- * horizontal, long enough, and quick — so a tap on a day or a vertical scroll
- * that drifts a little never turns into a month change.
- */
+// Swipe the month grid to change month. The arrows stay; this follows their
+// links, so the result is the same page with the same URL.
 const gridView = document.querySelector<HTMLElement>('.grid-view');
-const prevLink = document.querySelector<HTMLAnchorElement>('[data-month-prev]');
-const nextLink = document.querySelector<HTMLAnchorElement>('[data-month-next]');
-if (gridView && prevLink && nextLink && window.matchMedia('(pointer: coarse)').matches) {
-	let start: { x: number; y: number; t: number } | null = null;
-	gridView.addEventListener('touchstart', (e) => {
-		const touch = e.touches.length === 1 ? e.touches[0] : null;
-		start = touch ? { x: touch.clientX, y: touch.clientY, t: e.timeStamp } : null;
-	}, { passive: true });
-	gridView.addEventListener('touchend', (e) => {
-		const touch = e.changedTouches[0];
-		if (!start || !touch) return;
-		const dx = touch.clientX - start.x;
-		const dy = touch.clientY - start.y;
-		const quick = e.timeStamp - start.t < 600;
-		start = null;
-		if (!quick || Math.abs(dx) < 60 || Math.abs(dx) < Math.abs(dy) * 2) return;
-		// Finger moving left brings the next month in from the right.
-		location.href = (dx < 0 ? nextLink : prevLink).href;
-	}, { passive: true });
-	gridView.addEventListener('touchcancel', () => {
-		start = null;
-	}, { passive: true });
+if (gridView && prevLink && nextLink) {
+	onSwipe(gridView, (dir) => {
+		location.href = (dir > 0 ? nextLink : prevLink).href;
+	});
 }
 
 /**

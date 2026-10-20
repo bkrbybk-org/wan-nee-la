@@ -183,6 +183,16 @@ if (grid) {
 
 	grid.addEventListener('pointercancel', cleanup);
 
+	// Chips and bars are links, and a browser lets you drag a link — to the
+	// address bar, another tab. That native drag starts a few pixels into the
+	// gesture and cancels the pointer stream, so the move above never got its
+	// pointerup: drag-to-move did nothing in Chrome, silently. Found by
+	// scripts/test-browser.mjs on its first run. Refusing the native drag keeps
+	// the pointer events flowing; the link still opens on a click.
+	grid.addEventListener('dragstart', (e) => {
+		if ((e.target as HTMLElement | null)?.closest?.('.chip')) e.preventDefault();
+	});
+
 	// Capture phase, ahead of calendar.ts's click listener on `document`, so
 	// the suppression flag is checked before that listener opens the popup.
 	document.addEventListener(

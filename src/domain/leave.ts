@@ -306,32 +306,55 @@ export interface WeekSegment {
  * month rather than stepping between rows week to week. Names break ties, so
  * the layout is the same on every render.
  *
+ * Weekends and public holidays inside a booking are cut out, as `byDate` does
+ * for the per-day views: a Friday-to-Monday booking in a Sunday-first week is
+ * a Friday piece and a Monday piece, not a bar across a weekend nobody took.
+ * The cut ends are flagged like a week boundary, so the bar still reads as
+ * carrying on. A booking made of nothing but days off keeps all its days.
+ *
  * `week` is seven consecutive dates.
  */
-export function weekLanes(week: readonly string[], entries: readonly LeaveEntry[]): WeekSegment[] {
+export function weekLanes(
+	week: readonly string[],
+	entries: readonly LeaveEntry[],
+	holidays: ReadonlySet<string> = new Set(),
+): WeekSegment[] {
 	const first = week[0];
 	const last = week[week.length - 1];
-	const pieces = entries
-		.filter((e) => e.start_date <= last && e.end_date >= first)
-		.map((e) => {
-			const from = e.start_date > first ? e.start_date : first;
-			const to = e.end_date < last ? e.end_date : last;
-			return {
+	const off = (d: string) => isWeekend(d) || holidays.has(d);
+	const pieces: WeekSegment[] = [];
+	for (const e of entries.filter((x) => x.start_date <= last && x.end_date >= first)) {
+		let allOff = true;
+		for (let d = e.start_date; d <= e.end_date && allOff; d = addDays(d, 1)) allOff = off(d);
+		// Runs of consecutive days this booking is away within the week.
+		let run: string[] = [];
+		const close = () => {
+			if (run.length === 0) return;
+			const from = run[0];
+			const to = run[run.length - 1];
+			pieces.push({
 				entry: e,
 				col: daysBetween(first, from),
-				span: daysBetween(from, to) + 1,
+				span: run.length,
 				lane: 0,
-				continuesBefore: e.start_date < first,
-				continuesAfter: e.end_date > last,
-			};
-		})
-		.sort(
-			(a, b) =>
-				a.col - b.col ||
-				b.span - a.span ||
-				a.entry.display_name.localeCompare(b.entry.display_name) ||
-				a.entry.id.localeCompare(b.entry.id),
-		);
+				continuesBefore: e.start_date < from,
+				continuesAfter: e.end_date > to,
+			});
+			run = [];
+		};
+		for (const d of week) {
+			if (d >= e.start_date && d <= e.end_date && (allOff || !off(d))) run.push(d);
+			else close();
+		}
+		close();
+	}
+	pieces.sort(
+		(a, b) =>
+			a.col - b.col ||
+			b.span - a.span ||
+			a.entry.display_name.localeCompare(b.entry.display_name) ||
+			a.entry.id.localeCompare(b.entry.id),
+	);
 
 	const taken: boolean[][] = [];
 	for (const piece of pieces) {

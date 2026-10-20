@@ -8,8 +8,8 @@
  * one exact format.
  */
 
-import { isValidDate } from './dates.ts';
-import type { Holiday } from '../types.ts';
+import { isValidDate, isWeekend } from './dates.ts';
+import type { Holiday, LeaveEntry } from '../types.ts';
 
 export interface HolidayParse {
 	holidays: Holiday[];
@@ -88,6 +88,49 @@ export function parseHolidayList(text: string): HolidayParse {
 	});
 
 	return { holidays: [...holidays.values()].sort((a, b) => a.date.localeCompare(b.date)), errors };
+}
+
+export interface ImportRow extends Holiday {
+	/** New date, a new name for a date already held, or nothing to change. */
+	status: 'new' | 'renamed' | 'same';
+	/** The name it replaces, when renamed. */
+	was?: string;
+}
+
+export interface ImportPlan {
+	rows: ImportRow[];
+	/**
+	 * Bookings already made across a newly added holiday on a working day.
+	 * Each booking's day count was stored when it was saved, so these people
+	 * were charged for a day that is about to become a holiday; saving the
+	 * booking again recounts it.
+	 */
+	affected: { entry: LeaveEntry; dates: string[] }[];
+}
+
+/**
+ * What an import would change, worked out before anything is written.
+ *
+ * `existing` is what the table holds for the dates in question, and
+ * `bookings` the confirmed leave across their range.
+ */
+export function importPlan(
+	parsed: readonly Holiday[],
+	existing: ReadonlyMap<string, string>,
+	bookings: readonly LeaveEntry[],
+): ImportPlan {
+	const rows: ImportRow[] = parsed.map((h) => {
+		const was = existing.get(h.date);
+		if (was === undefined) return { ...h, status: 'new' };
+		return was === h.label ? { ...h, status: 'same' } : { ...h, status: 'renamed', was };
+	});
+	// Only a date that was a working day until now changes anyone's count: a
+	// renamed holiday was already free, and a weekend was never charged.
+	const freed = rows.filter((r) => r.status === 'new' && !isWeekend(r.date)).map((r) => r.date);
+	const affected = bookings
+		.map((entry) => ({ entry, dates: freed.filter((d) => d >= entry.start_date && d <= entry.end_date) }))
+		.filter((a) => a.dates.length > 0);
+	return { rows, affected };
 }
 
 /**

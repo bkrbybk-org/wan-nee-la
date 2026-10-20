@@ -2,7 +2,7 @@
 // Unit tests for src/domain/holidays.ts — parsing a pasted holiday list, and
 // the reminder to enter next year's.
 // Run: npm run test:holidays
-import { FIXED_DATE_HOLIDAYS, holidayGap, parseHolidayList } from '../src/domain/holidays.ts';
+import { FIXED_DATE_HOLIDAYS, holidayGap, importPlan, parseHolidayList } from '../src/domain/holidays.ts';
 
 let failures = 0;
 const check = (name, cond, detail) => {
@@ -99,6 +99,26 @@ eq('reminder: quiet from February to September', holidayGap('2027-02-01', () => 
 eq('reminder: September is still quiet', holidayGap('2026-09-30', () => []), null);
 check('reminder: from 1 October', holidayGap('2026-10-01', seeded) !== null, 'quiet on 1 October');
 eq('reminder: the fixed-date list matches the seed', FIXED_DATE_HOLIDAYS.size, 15);
+
+// --- what an import would change -------------------------------------------
+
+const booking = (id, start_date, end_date) => ({ id, start_date, end_date, display_name: id });
+const plan = importPlan(
+	[
+		{ date: '2027-02-22', label: 'Makha Bucha' },
+		{ date: '2027-04-13', label: 'Songkran' },
+		{ date: '2027-05-01', label: 'Labour Day (moved)' },
+		{ date: '2027-02-20', label: 'A Saturday' },
+	],
+	new Map([['2027-04-13', 'Songkran'], ['2027-05-01', 'Labour Day']]),
+	[booking('across', '2027-02-19', '2027-02-23'), booking('before', '2027-02-01', '2027-02-05'), booking('labour', '2027-04-30', '2027-05-03')],
+);
+eq('import plan: a date not held is new', plan.rows[0].status, 'new');
+eq('import plan: a date held with the same name is unchanged', plan.rows[1].status, 'same');
+eq('import plan: a new name is a rename', `${plan.rows[2].status} ${plan.rows[2].was}`, 'renamed Labour Day');
+eq('import plan: a booking across a new working-day holiday is flagged', plan.affected.map((a) => `${a.entry.id}:${a.dates.join(',')}`).join(' '), 'across:2027-02-22');
+check('import plan: a new Saturday holiday charges nobody back', !plan.affected.some((a) => a.dates.includes('2027-02-20')), 'weekend counted');
+check('import plan: a rename frees no day', !plan.affected.some((a) => a.entry.id === 'labour'), 'rename counted');
 
 console.log(failures === 0 ? '\nAll holiday tests passed.' : `\n${failures} failure(s).`);
 process.exit(failures === 0 ? 0 : 1);

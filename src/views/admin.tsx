@@ -1,8 +1,8 @@
-import { formatDays } from '../domain/dates.ts';
+import { describeRange, formatDays } from '../domain/dates.ts';
 import { allottedFor } from '../domain/leave.ts';
 import type { Holiday, LeaveType, Quota, User } from '../types.ts';
 import type { AuditRow, LeaveSnapshot, NotificationRun } from '../repo/db.ts';
-import type { HolidayGap } from '../domain/holidays.ts';
+import type { HolidayGap, HolidayParse, ImportPlan } from '../domain/holidays.ts';
 import { FlashBanner, HolidaysDueBanner, Layout } from './layout.tsx';
 import { SelectField, TextField } from './fields.tsx';
 import { DeleteIcon } from './icons.tsx';
@@ -212,7 +212,8 @@ function AdminBody(props: AdminProps) {
 				</form>
 				<details class="import-block">
 					<summary class="btn text">{t('admin.import')}</summary>
-					<form method="post" action="/admin/holidays/import">
+					{/* Previewed first: nothing is written until it is confirmed there. */}
+					<form method="post" action="/admin/holidays/preview">
 						{/* No example here: it ran into the end of the sentence, and the
 						    textarea's own placeholder already shows the shape. */}
 						<p class="muted">{t('admin.importHelp')}</p>
@@ -223,7 +224,7 @@ function AdminBody(props: AdminProps) {
 							placeholder="2027-01-01 New Year's Day&#10;2027-04-13 Songkran"
 						></textarea>
 						<div class="actions">
-							<button type="submit" class="btn tonal">{t('admin.importButton')}</button>
+							<button type="submit" class="btn tonal">{t('admin.previewButton')}</button>
 						</div>
 					</form>
 				</details>
@@ -417,5 +418,107 @@ function AuditItem({ row }: { row: AuditRow }) {
 			<span class="leave-type muted mono">{who}</span>
 			<span class="leave-days muted mono">{row.at.slice(0, 16)}</span>
 		</li>
+	);
+}
+
+interface HolidayPreviewProps {
+	user: User;
+	/** The list as pasted, handed back so it can be fixed or confirmed. */
+	text: string;
+	errors: HolidayParse['errors'];
+	plan: ImportPlan | null;
+	version?: string;
+}
+
+/**
+ * The import's middle step: what the pasted list would do, before it does it.
+ *
+ * Importing used to write straight away, all or nothing. It still is all or
+ * nothing, but now the admin sees first which dates are new, which rename one
+ * already held, and whose existing bookings cross a new holiday — those were
+ * charged for that day when they were saved, and only re-saving recounts them.
+ *
+ * The confirm button posts the same text to the same import route as before,
+ * so the write path, and its checks, are unchanged.
+ */
+export function HolidayPreviewPage(props: HolidayPreviewProps) {
+	return (
+		<Layout title={translate(toLang(props.user.lang), 'admin.previewTitle')} user={props.user} active="admin" version={props.version}>
+			<HolidayPreviewBody {...props} />
+		</Layout>
+	);
+}
+
+function HolidayPreviewBody({ text, errors, plan }: HolidayPreviewProps) {
+	const t = useT();
+	const lang = useLang();
+	const toWrite = plan ? plan.rows.filter((r) => r.status !== 'same').length : 0;
+	return (
+		<section class="card">
+			<h1>{t('admin.previewTitle')}</h1>
+
+			{errors.length > 0 ? (
+				<div class="banner error">
+					<span>
+						{t('admin.previewErrors')}
+						{'\n'}
+						{errors.map((e) => `\n${t('admin.previewLine', { line: e.line })} ${e.text} — ${e.reason}`).join('')}
+					</span>
+				</div>
+			) : null}
+
+			{plan ? (
+				<>
+					<ul class="holiday-list import-preview">
+						{plan.rows.map((r) => (
+							<li class={`import-${r.status}`}>
+								<span class="mono">{r.date}</span>
+								<span>{r.label}</span>
+								<span class="tag">
+									{r.status === 'new' ? t('admin.previewNew') : r.status === 'renamed' ? t('admin.previewRenamed', { was: r.was ?? '' }) : t('admin.previewSame')}
+								</span>
+							</li>
+						))}
+					</ul>
+
+					<h2>{t('admin.previewBookings')}</h2>
+					{plan.affected.length === 0 ? (
+						<p class="muted">{t('admin.previewNoBookings')}</p>
+					) : (
+						<>
+							<p class="muted">{t('admin.previewAffected')}</p>
+							<ul class="holiday-list import-affected">
+								{plan.affected.map(({ entry, dates }) => (
+									<li>
+										<a href={`/leave/${entry.id}/edit`}>{entry.display_name}</a>
+										<span class="muted">{describeRange(entry.start_date, entry.end_date, entry.start_half, entry.end_half, lang)}</span>
+										<span class="tag">{t('admin.previewCharged', { n: dates.length, count: dates.length })}</span>
+									</li>
+								))}
+							</ul>
+						</>
+					)}
+				</>
+			) : null}
+
+			{/* Confirm: the same list, to the same import route as before. */}
+			{plan && errors.length === 0 && toWrite > 0 ? (
+				<form method="post" action="/admin/holidays/import" class="actions">
+					<input type="hidden" name="list" value={text} />
+					<button type="submit" class="btn primary">{t('admin.previewImport', { n: toWrite, count: toWrite })}</button>
+					<a class="btn text" href="/admin#holidays">{t('admin.previewCancel')}</a>
+				</form>
+			) : null}
+			{plan && errors.length === 0 && toWrite === 0 ? <p class="muted">{t('admin.previewNothing')}</p> : null}
+
+			{/* Fix and look again, without retyping anything. */}
+			<form method="post" action="/admin/holidays/preview">
+				<textarea class="tf-input import-list" name="list" rows={8}>{text}</textarea>
+				<div class="actions">
+					<button type="submit" class="btn tonal">{t('admin.previewAgain')}</button>
+					<a class="btn text" href="/admin#holidays">{t('admin.previewCancel')}</a>
+				</div>
+			</form>
+		</section>
 	);
 }
