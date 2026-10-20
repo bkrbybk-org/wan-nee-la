@@ -161,6 +161,8 @@ Hence the `holidays` table + admin editor, not a constant in the source.
 
 Add those via `/admin` → Holidays. A missing holiday is not cosmetic: leave booked across it silently costs the employee a day of quota.
 
+**2026-10-20: a reminder.** From 1 October to the end of January, an admin sees a banner on the calendar and on `/admin` while the coming year holds nothing but its fixed-date holidays, linking to the importer (`holidayGap` in `src/domain/holidays.ts`). The first version compared the count with the year before, and production showed why that fails on the first try: its 2026 starts in August, so the seeded 2027 already "had more". On 2026-10-20 production's 2027 is exactly the 15 seeded holidays, so the banner is showing. Still open in the sense that nothing *fetches* the announcement; the reminder makes forgetting it unlikely.
+
 
 **Partly addressed.** `/admin` now accepts a pasted list — dates and names separated by a space, comma, tab or semicolon, `#` comments ignored — and refuses the whole import if any line fails to parse, since a half-imported holiday notice silently draws down everyone's quota on the days that were dropped.
 
@@ -575,4 +577,6 @@ The harness now prints, on a harness error, the server's pid, exit code, signal 
 **Diagnosed and fixed 2026-09-30.** The server never went down. CI failed twice in a row at the same request, and the added diagnostics showed the worker still running, the request never logged, and undici's cause as `UND_ERR_SOCKET` "other side closed": a stale keep-alive connection. The suite blocks for a second or more at a time on `wrangler d1 execute`, a connection left idle that long can be closed by the dev server just as the next request reuses it, and a slower CI runner makes that likelier. It moved around between runs because it depends on where those pauses fall.
 
 The harness now retries once on that one error, which is what a browser does with a connection closed before the request was sent, and prints how many retries it made so a rising number is seen rather than absorbed. Any other fetch failure still fails the run, now with the method, URL and cause.
+
+**2026-10-20: the pauses themselves are gone.** The suite now writes and reads the scratch database with Node's own SQLite, opening the same file the dev server uses, and runs `wrangler d1 execute` only once, for the first migration, so the file has the layout the server expects. The full run went from about twelve minutes to fifteen seconds, and the idle gaps that let a keep-alive connection go stale are now milliseconds. The retry stays.
 
