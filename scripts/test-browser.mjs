@@ -17,7 +17,8 @@
  */
 
 import { spawn, spawnSync } from 'node:child_process';
-import { existsSync, mkdtempSync, readdirSync, rmSync } from 'node:fs';
+import { randomUUID } from 'node:crypto';
+import { existsSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
@@ -173,6 +174,13 @@ async function main() {
 	if (!busy.startsWith(month)) throw new Error('no weekday this month for the fixture');
 	book('b-busy', 'mai@example.com', busy, busy);
 	book('b-today', 'nok@example.com', today, today);
+	// Four away on the busy day, one more than a phone cell has dots for.
+	sqlite.exec(`INSERT INTO users (email, display_name, is_admin, active, created_at) VALUES
+		('pim@example.com', 'Pim Rattana', 0, 1, '2026-01-03'),
+		('anan@example.com', 'Anan Wongsa', 0, 1, '2026-01-04')`);
+	book('b-busy-2', 'nok@example.com', busy, busy);
+	book('b-busy-3', 'pim@example.com', busy, busy);
+	book('b-busy-4', 'anan@example.com', busy, busy);
 
 	// For dragging: the admin's own booking on a Tuesday some months ahead —
 	// inside the far-future guard — in a week whose Tuesday to Thursday holds no
@@ -180,7 +188,10 @@ async function main() {
 	const isHoliday = (d) => Boolean(sqlite.prepare('SELECT 1 FROM holidays WHERE date = ?').get(d));
 	let tue = addDays(today, 120);
 	while (weekday(tue) !== 2 || [0, 1, 2].some((i) => isHoliday(addDays(tue, i)))) tue = addDays(tue, 1);
-	book('b-drag', ADMIN, tue, tue);
+	// A real UUID, as every booking has: the undo offer is only carried for
+	// an id of that shape, so a made-up one would quietly lose it.
+	const DRAG_ID = randomUUID();
+	book(DRAG_ID, ADMIN, tue, tue);
 
 	chrome = spawn(chromePath, [
 		'--headless=new', '--remote-debugging-port=0', `--user-data-dir=${PROFILE}`,
@@ -237,6 +248,14 @@ async function main() {
 		await send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
 	};
 
+	// BROWSER_SHOTS=<dir> saves a PNG at the marked points, for looking at
+	// what the assertions only measure.
+	const shot = async (name) => {
+		if (!process.env.BROWSER_SHOTS) return;
+		const { data } = await send('Page.captureScreenshot', { format: 'png' });
+		writeFileSync(join(process.env.BROWSER_SHOTS, `${name}.png`), Buffer.from(data, 'base64'));
+	};
+
 	await send('Page.enable');
 	await send('Runtime.enable');
 	// Never asked, as a colleague's browser would be, so the invitation shows.
@@ -255,12 +274,26 @@ async function main() {
 		today,
 	);
 	check('day card: names who is away today', await evaluate("document.querySelector('.agenda-row.selected').innerText.includes('Nok Thongdee')"), 'name missing');
+	// With the notification invitation and the admin's holiday reminder both
+	// up — the busiest the top of the page gets — the card still starts on a
+	// 812px screen, with room to read its first row.
+	await waitFor("!document.querySelector('[data-push-nudge]').hidden", 5000);
+	const layout = await evaluate("({ banners: document.querySelectorAll('.banner:not([hidden])').length, cardTop: Math.round(document.querySelector('.agenda-row.selected').getBoundingClientRect().top), height: innerHeight })");
+	check('phone: with both banners up', layout.banners >= 2, JSON.stringify(layout));
+	check('phone: the day card still starts on screen', layout.cardTop < layout.height - 80, JSON.stringify(layout));
+	await shot('phone-calendar');
 
 	// Measured after bringing the cell on screen, which `tap` would do anyway:
 	// what matters is that choosing the day moves nothing.
 	await evaluate(`document.querySelector('.cell-day[data-day="${busy}"]').scrollIntoView({ block: 'center' })`);
 	await sleep(50);
 	const scrollBefore = await evaluate('scrollY');
+
+	// The busy day: a count instead of four dots.
+	const busyCell = `document.querySelector('.cell-day[data-day="${busy}"]').closest('.cell')`;
+	eq('busy day: shows how many are away', await evaluate(`(() => { const n = ${busyCell}.querySelector('.day-count'); return n && getComputedStyle(n).display !== 'none' ? n.textContent : null; })()`), '4');
+	check('busy day: instead of the dots', await evaluate(`getComputedStyle(${busyCell}.querySelector('.chips')).display === 'none'`), 'dots still shown');
+	check('quiet day: keeps its dot', await evaluate(`getComputedStyle(document.querySelector('.cell-day[data-day="${today}"]').closest('.cell').querySelector('.chips')).display !== 'none'`), 'dot hidden');
 	await tap(`.cell-day[data-day="${busy}"]`);
 	await sleep(150);
 	eq('day card: a tapped day takes its place', await evaluate("document.querySelector('.agenda-row.selected')?.dataset.day"), busy);
@@ -304,7 +337,7 @@ async function main() {
 	const [y, m] = tue.split('-').map(Number);
 	await open(`/?y=${y}&m=${m}`);
 
-	const bar = '.bar[data-entry="b-drag"]';
+	const bar = `.bar[data-entry="${DRAG_ID}"]`;
 	check('laptop: the booking is a bar', await evaluate(`Boolean(document.querySelector('${bar}'))`), 'no bar');
 	await tap(bar);
 	check('popup: clicking a bar opens its details', await waitFor("document.querySelector('[data-entry-dialog]').open"), 'dialog closed');
@@ -340,10 +373,60 @@ async function main() {
 	let moved = null;
 	for (let i = 0; i < 50 && moved !== thu; i++) {
 		await sleep(200);
-		moved = sqlite.prepare("SELECT start_date FROM leave_requests WHERE id = 'b-drag'").get()?.start_date;
+		moved = sqlite.prepare('SELECT start_date FROM leave_requests WHERE id = ?').get(DRAG_ID)?.start_date;
 	}
 	const after = moved === thu ? '' : await evaluate("location.href + ' | ' + (document.querySelector('.banner.error')?.innerText ?? 'no error banner')").catch((e) => e.message);
 	check('drag: a bar dropped on Thursday moves the booking there', moved === thu, `start ${moved}, page ${after}, seen ${seen}`);
+
+	// --- remove, then undo -----------------------------------------------------
+	await open(`/?y=${y}&m=${m}`);
+	await tap(bar);
+	await waitFor("document.querySelector('[data-entry-dialog]').open");
+	await tap('[data-p-cancel] button[type="submit"]');
+	const statusOf = (id) => sqlite.prepare('SELECT status FROM leave_requests WHERE id = ?').get(id)?.status;
+	let status = null;
+	for (let i = 0; i < 50 && status !== 'cancelled'; i++) {
+		await sleep(100);
+		status = statusOf(DRAG_ID);
+	}
+	eq('remove: the popup\'s Remove cancels the booking', status, 'cancelled');
+	check(
+		'undo: offered straight after',
+		await waitFor("Boolean(document.querySelector('form[action$=\"/undo\"] button'))"),
+		await evaluate("location.href + ' | ' + [...document.querySelectorAll('.banner')].map((b) => b.className + ': ' + b.innerText.slice(0, 80)).join(' / ')"),
+	);
+	await tap('form[action$="/undo"] button');
+	for (let i = 0; i < 50 && status !== 'confirmed'; i++) {
+		await sleep(100);
+		status = statusOf(DRAG_ID);
+	}
+	eq('undo: brings the booking back', status, 'confirmed');
+
+	// --- book from an empty day ------------------------------------------------
+	await open(`/?y=${y}&m=${m}`);
+	// Wednesday of the same week: on this month's grid, and free now the
+	// booking has moved to Thursday.
+	const freeDay = addDays(tue, 1);
+	await tap(`.cell-add[data-date="${freeDay}"]`);
+	check('book: clicking an empty day opens the form', await waitFor("document.querySelector('[data-create-dialog]').open"), 'dialog closed');
+	eq('book: on that day', await evaluate("document.querySelector('[data-create-dialog] [data-start]').value"), freeDay);
+	await tap('[data-create-dialog] button[type="submit"]');
+	let booked = null;
+	for (let i = 0; i < 50 && !booked; i++) {
+		await sleep(100);
+		booked = sqlite.prepare("SELECT start_date FROM leave_requests WHERE user_email = ? AND start_date = ? AND status = 'confirmed'").get(ADMIN, freeDay)?.start_date;
+	}
+	eq('book: submitting it books the day', booked, freeDay);
+
+	// --- in Thai ---------------------------------------------------------------
+	await evaluate("fetch('/me/lang', { method: 'POST', body: new URLSearchParams({ lang: 'th' }) }).then((r) => r.status)");
+	await send('Emulation.setDeviceMetricsOverride', { width: 375, height: 812, deviceScaleFactor: 2, mobile: true });
+	await send('Emulation.setTouchEmulationEnabled', { enabled: true, maxTouchPoints: 5 });
+	await open('/');
+	eq('thai: the page says it is Thai', await evaluate('document.documentElement.lang'), 'th');
+	check('thai: the phone heading is the Thai short month', await evaluate("/[\\u0E00-\\u0E7F]/.test(document.querySelector('.month-head .m-short').textContent)"), await evaluate("document.querySelector('.month-head .m-short').textContent"));
+	check('thai: and the day card still works', await evaluate("document.querySelector('[data-agenda]').classList.contains('day-mode') && Boolean(document.querySelector('.agenda-row.selected'))"), 'no day card');
+	await shot('phone-thai');
 
 	browser.close();
 }
@@ -356,6 +439,7 @@ let exitCode = 0;
 try {
 	await main();
 } catch (err) {
+	fail++;
 	console.log(`\nFAIL: the run itself broke — ${err.message}`);
 	exitCode = 1;
 } finally {

@@ -503,8 +503,17 @@ function HolidayPreviewBody({ text, errors, plan }: HolidayPreviewProps) {
 
 			{/* Confirm: the same list, to the same import route as before. */}
 			{plan && errors.length === 0 && toWrite > 0 ? (
-				<form method="post" action="/admin/holidays/import" class="actions">
+				<form method="post" action="/admin/holidays/import" class="actions import-confirm">
 					<input type="hidden" name="list" value={text} />
+					{/* Ticked by default: a booking charged for a holiday is the thing
+					    the preview exists to catch. Unticked, it is left for the admin
+					    to look at one by one. */}
+					{plan.affected.length > 0 ? (
+						<label class="checkline">
+							<input type="checkbox" name="recount" value="1" checked />
+							{t('admin.previewRecount', { n: plan.affected.length, count: plan.affected.length })}
+						</label>
+					) : null}
 					<button type="submit" class="btn primary">{t('admin.previewImport', { n: toWrite, count: toWrite })}</button>
 					<a class="btn text" href="/admin#holidays">{t('admin.previewCancel')}</a>
 				</form>

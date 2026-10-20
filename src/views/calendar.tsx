@@ -75,6 +75,12 @@ function typeLabel(e: { type_label_en: string; type_label_th: string }, lang: La
 const CELL_CHIPS = 3;
 
 /**
+ * Dots a phone's 48px cell shows before it shows a number instead. Three fit
+ * on one row; a fourth wraps, and by six they are a cluster to be counted.
+ */
+const PHONE_DOTS = 3;
+
+/**
  * How far ahead the sidebar looks.
  *
  * Exported so the route that fetches the window and the view that describes it
@@ -599,6 +605,7 @@ function CalendarBody(props: CalendarProps) {
 											holiday ? 'holiday' : '',
 											date === today ? 'today' : '',
 											date === selectedDay ? 'selected' : '',
+											dayEntries.length > PHONE_DOTS ? 'many' : '',
 											// Faded, not locked: leave can still be booked into the
 											// past — sick leave usually is — so this is a cue only.
 											date < today ? 'past' : '',
@@ -639,6 +646,13 @@ function CalendarBody(props: CalendarProps) {
 													<span class="visually-hidden">{longDate(date, lang)}</span>
 													{holiday ? <span class="holiday-tag" title={holiday}>{holiday}</span> : null}
 												</div>
+												{/* Phones only, on a busy day: a number reads at a glance
+												    where five or six dots wrap into a cluster that has to be
+												    counted. Hidden from assistive technology, which hears the
+												    cell's date and then the day card. */}
+												{dayEntries.length > PHONE_DOTS ? (
+													<span class="day-count" aria-hidden="true">{dayEntries.length}</span>
+												) : null}
 												{/* Phones only: each person away is a coloured dot, because
 												    a 48px cell has room for nothing else. On a wider screen
 												    these are hidden and the week's bars below take over. */}

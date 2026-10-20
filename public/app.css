@@ -652,6 +652,39 @@ h3.sub { margin: 20px 0 8px; color: var(--md-on-surface-variant); }
 .banner.nudge > span:not(.banner-action) { flex: 1 1 200px; }
 .banner.nudge .banner-action { gap: 4px; }
 .banner.nudge[hidden] { display: none; }
+.banner.holidays-due { align-items: center; flex-wrap: wrap; white-space: normal; }
+
+/* On a phone the two standing banners — the notification invitation and an
+   admin's holiday reminder — took 200px between them and pushed the day card
+   under the grid off an 812px screen (scripts/test-browser.mjs checks this).
+   Here they are one compact strip each: two lines of text at most, with the
+   buttons on the same row. The full sentence is still the element's text, so a
+   screen reader hears all of it. */
+@media (max-width: 767px) {
+	.banner.nudge,
+	.banner.holidays-due {
+		flex-wrap: nowrap;
+		gap: 8px;
+		padding: 6px 8px 6px 12px;
+		margin-bottom: 8px;
+		font-size: 13px;
+		line-height: 18px;
+	}
+	.banner.nudge > .icon { display: none; }
+	.banner.nudge > span:not(.banner-action),
+	.banner.holidays-due > span:not(.banner-action) {
+		flex: 1 1 auto;
+		min-width: 0;
+		display: -webkit-box;
+		-webkit-box-orient: vertical;
+		-webkit-line-clamp: 2;
+		overflow: hidden;
+	}
+	.banner.nudge .banner-action,
+	.banner.holidays-due .banner-action { flex: none; gap: 0; }
+	.banner.nudge .btn,
+	.banner.holidays-due .btn { height: 32px; padding: 0 10px; }
+}
 
 /* ---------- text fields ---------- */
 
@@ -865,6 +898,8 @@ form.inline:has(.tf-support) { margin-bottom: 28px; }
 
 .grid-view { display: block; }
 .cell-day { display: none; }
+/* A phone's count for a busy day; see PHONE_DOTS in views/calendar.tsx. */
+.day-count { display: none; }
 
 .weekhead-cell {
 	padding: 8px 6px;
@@ -1078,6 +1113,24 @@ form.inline:has(.tf-support) { margin-bottom: 28px; }
 		box-shadow: none;
 	}
 	.chip:hover { box-shadow: none; }
+
+	/* More people than dots fit: the number, on the primary, in place of them. */
+	.cell.many .chips { display: none; }
+	.cell.many .day-count {
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		min-width: 20px;
+		height: 16px;
+		margin: 0 auto;
+		padding: 0 5px;
+		border-radius: var(--md-shape-full);
+		background: var(--md-primary);
+		color: var(--md-on-primary);
+		font-size: 11px;
+		line-height: 16px;
+		font-weight: 600;
+	}
 }
 
 /* ---------- agenda (the day list) ---------- */
@@ -1143,7 +1196,10 @@ form.inline:has(.tf-support) { margin-bottom: 28px; }
 .agenda-view.day-mode .agenda-row.selected { display: flex; }
 .agenda-view.day-mode .agenda-quiet { display: none; }
 
-.calendar-actions { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: var(--pad); }
+/* Nothing in this row shows on a phone — the FAB carries the action and the
+   hint describes the desktop grid — so the row itself goes too, rather than
+   leaving its margin as a blank band above the grid. */
+.calendar-actions { display: none; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: var(--pad); }
 /* The fixed FAB carries this action on phones. */
 .calendar-actions .book-inline { display: none; }
 .calendar-actions .hint { display: none; font-size: 12px; line-height: 16px; }
@@ -1502,6 +1558,7 @@ form.inline:has(.tf-support) { margin-bottom: 28px; }
 	.account-name { display: inline; margin-right: 4px; color: var(--md-on-surface-variant); }
 	.agenda-view { display: none; }
 	.fab { display: none; }
+	.calendar-actions { display: flex; }
 	.calendar-actions .book-inline { display: inline-flex; }
 	/* Describes the month grid, which only exists at this width. */
 	.calendar-actions .hint { display: inline; }

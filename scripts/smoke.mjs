@@ -868,6 +868,24 @@ async function main() {
 		check('import preview: a bad line is shown with its number', badHtml.includes('Line 2:'), 'no line number');
 		check('import preview: and there is nothing to confirm', !badHtml.includes('action="/admin/holidays/import"'), 'confirm offered despite errors');
 		check('import preview: the list comes back to be fixed', badHtml.includes('nonsense line</textarea>'), 'text lost');
+		// Other fixtures in the same week may cross the Tuesday too, so the
+		// count is not pinned; smoke-hol itself is checked by its row below.
+		check('import preview: offers to recount, ticked', /name="recount" value="1" checked/.test(html) && /Also recount (\d+ booking|these \d+ bookings)/.test(html), 'no recount box');
+
+		// Confirm with the box ticked: the Tuesday becomes a holiday and the
+		// Mon–Wed booking drops from three days to two, on the record.
+		const imported = await post('/admin/holidays/import', { list: `${TUE} Smoke Day`, recount: '1' });
+		check('recount: the import says what it recounted', /Recounted \d+ bookings? that crossed/.test(flashOf(imported)?.message ?? ''), flashOf(imported)?.message);
+		eq('recount: the booking now costs two days, not three', d1Rows("SELECT days_total AS n FROM leave_requests WHERE id = 'smoke-hol'")[0]?.n, 2);
+		eq('recount: recorded as an edit by the admin', d1Rows("SELECT actor_email AS a FROM leave_audit WHERE leave_id = 'smoke-hol' AND action = 'edited'")[0]?.a, ADMIN);
+
+		// Without the box, nothing is touched.
+		d1(`DELETE FROM holidays WHERE date = '${TUE}'`);
+		d1(`UPDATE leave_requests SET days_total = 3 WHERE id = 'smoke-hol'`);
+		await post('/admin/holidays/import', { list: `${TUE} Smoke Day` });
+		eq('recount: only when asked', d1Rows("SELECT days_total AS n FROM leave_requests WHERE id = 'smoke-hol'")[0]?.n, 3);
+
+		d1(`DELETE FROM holidays WHERE date = '${TUE}'`);
 		d1(`DELETE FROM leave_requests WHERE id = 'smoke-hol'`);
 		d1(`DELETE FROM leave_audit WHERE leave_id = 'smoke-hol'`);
 	}

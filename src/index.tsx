@@ -1577,12 +1577,49 @@ app.post('/admin/holidays/import', async (c) => {
 	}
 	if (holidays.length === 0) return redirectWithFlash('/admin', 'err', say(c, 'flash.importEmpty'));
 
+	// Asked for from the preview: the bookings that cross a new holiday, worked
+	// out against the table as it is *before* the write, so "new" means new.
+	const from = holidays[0].date;
+	const to = holidays[holidays.length - 1].date;
+	let plan = null;
+	if (form.recount === '1') {
+		const [held, bookings] = await Promise.all([db.listHolidays(c.env.DB, from, to), db.listLeaveInRange(c.env.DB, from, to)]);
+		plan = importPlan(holidays, new Map(held.map((h) => [h.date, h.label])), bookings);
+	}
+
 	const written = await db.bulkUpsertHolidays(c.env.DB, holidays);
-	return redirectWithFlash(
-		'/admin',
-		'ok',
-		say(c, 'flash.imported', { count: written, n: written, from: holidays[0].date, to: holidays[holidays.length - 1].date }),
-	);
+
+	// Each booking's days were counted when it was saved, so a holiday added
+	// later is still charged. Recount through the same write an edit uses,
+	// which records it in the audit trail under the admin's name. Only ever
+	// fewer days, so no balance check can refuse it; a booking left with no
+	// working day at all is left as it is, for a person to decide about.
+	let recounted = 0;
+	for (const { entry } of plan?.affected ?? []) {
+		const off = await db.holidaySet(c.env.DB, entry.start_date, entry.end_date);
+		const count = countLeaveDays(entry.start_date, entry.end_date, entry.start_half, entry.end_half, off);
+		if (!count.ok || count.days === entry.days_total) continue;
+		const changed = await db.updateLeave(
+			c.env.DB,
+			entry.id,
+			{
+				leave_type_id: entry.leave_type_id,
+				start_date: entry.start_date,
+				end_date: entry.end_date,
+				start_half: entry.start_half,
+				end_half: entry.end_half,
+				days_total: count.days,
+				note: entry.note,
+				note_private: entry.note_private,
+			},
+			c.get('user').email,
+		);
+		if (changed) recounted++;
+	}
+
+	const imported = say(c, 'flash.imported', { count: written, n: written, from, to });
+	const recountNote = recounted > 0 ? ` ${say(c, 'flash.recounted', { count: recounted, n: recounted })}` : '';
+	return redirectWithFlash('/admin', 'ok', `${imported}${recountNote}`);
 });
 
 app.post('/admin/holiday', async (c) => {
