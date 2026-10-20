@@ -141,7 +141,7 @@ The write happens inside the same `db.batch()` as the change, in the repo layer,
 
 ## #9 — Access email vs. display name `resolved`
 
-The Access JWT gives an email, no name. First login auto-provisions the user with a name derived from the email local-part: `chatchai.w@…` → "Chatchai W". Good enough to render, and the user can correct it on `/me` under "Display name". Nothing blocks on it.
+The Access JWT gives an email, no name. First login auto-provisions the user with a name derived from the email local-part: `chatchai.w@…` → "Chatchai W". Good enough to render, and the user can correct it on `/me/settings` under "Display name". Nothing blocks on it.
 
 Related: **the first user to sign in becomes an admin**, because otherwise a fresh deployment has nobody who can reach `/admin` to promote anyone. Make sure the first sign-in is the right person. A last-admin guard then prevents that account from demoting or deactivating itself while it is the only admin.
 

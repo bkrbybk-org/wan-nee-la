@@ -43,7 +43,7 @@ An Access service token carries `common_name`, not `email`, so it is nobody's em
 
 Two zone-level layers run at the edge **before** Access, so they see anonymous traffic too (both verified 2026-09-19):
 
-- **API Shield schema validation.** The ten JSON operations are uploaded as an OpenAPI 3.0.3 schema derived from `public/openapi.yaml` (`npm run openapi:shield`), and a WAF custom rule blocks on `cf.schema_validation.uploaded.violated`. The other 32 routes are not in the schema and are not checked; there is no fallthrough rule, and there must not be one. A change to what one of those operations *accepts* needs the schema regenerated and re-uploaded in the same change, or real requests start getting 403s. `npm run shield:probe` checks enforcement from outside. And `ship` warns when the spec would now validate differently from the schema last recorded as uploaded: `scripts/shield-uploaded.json` holds a fingerprint of paths, parameters and request bodies — prose excluded, so rewording a description does not raise it — written by `shield:upload`, or by `openapi:shield -- --mark-uploaded` after a dashboard upload.
+- **API Shield schema validation.** The ten JSON operations are uploaded as an OpenAPI 3.0.3 schema derived from `public/openapi.yaml` (`npm run openapi:shield`), and a WAF custom rule blocks on `cf.schema_validation.uploaded.violated`. The other 31 routes are not in the schema and are not checked; there is no fallthrough rule, and there must not be one. A change to what one of those operations *accepts* needs the schema regenerated and re-uploaded in the same change, or real requests start getting 403s. `npm run shield:probe` checks enforcement from outside. And `ship` warns when the spec would now validate differently from the schema last recorded as uploaded: `scripts/shield-uploaded.json` holds a fingerprint of paths, parameters and request bodies — prose excluded, so rewording a description does not raise it — written by `shield:upload`, or by `openapi:shield -- --mark-uploaded` after a dashboard upload.
 - **A rule refusing `*.yaml` and `*.yml`.** Which is why `/docs` reads `/openapi.json`, not the YAML (ISSUES #42).
 
 ## Data model (D1)
@@ -176,9 +176,9 @@ Self-serve model (owner's decision): a POST creates a `confirmed` row directly. 
 | POST | `/api/v1/leave/:id/edit` | Save an edit, and offer undo. Also the drag-to-move target, which carries `returnTo` and so gets no form prefill. |
 | POST | `/api/v1/leave/:id/cancel` | Soft cancel, idempotent. Offers undo. |
 | POST | `/api/v1/leave/:id/undo` | Undo the last cancel or edit within ten minutes, after re-running the booking rules. |
-| GET | `/me` | Balances, days off by month (`monthlyDays`: each day in the month it falls in, so leave over New Year splits across the years while the balance charges it to the year it starts in), upcoming and past leave, settings. Year navigation. |
+| GET | `/me?y=&list=` | Next leave (under way, tomorrow, or in N days) with a Book button to `/book`; balances, an overdrawn one in the error colour as days over; one list switched between Upcoming — every confirmed booking from today on, any year, soonest first (`listUpcomingFor`) — and Earlier in the year, with cancelled ones folded under a `<details>`; days off by month (`monthlyDays`: each day in the month it falls in, so leave over New Year splits across the years while the balance charges it to the year it starts in). Each row links to the booking's page, where it is edited or removed. Year navigation. |
 | GET | `/u/:email` | One person's leave. Schedule shared; balances to them and admins; notes never. |
-| POST | `/me/name` · `/me/week-start` · `/me/lang` | Display name; Monday or Sunday first; English or Thai. |
+| GET · POST | `/me/settings` | Display name, Monday or Sunday first, English or Thai — one form, one Save. All three are checked before any is written; the confirmation comes back in the language just chosen. Replaced `/me/name`, `/me/week-start` and `/me/lang`. |
 | POST | `/api/v1/push/subscribe` · `/api/v1/push/unsubscribe` | This browser's subscription. Unsubscribe is scoped to its owner. |
 | POST | `/api/v1/push/test` | Push to the caller's own browsers. |
 | GET | `/admin` | Overview, admin only like everything under it: the holiday reminder, four figures (away today, people with notifications on, the last 09:00 digest, changes in seven days) and a tile per section. An old `/admin?audit_…` link is sent on to `/admin/activity`. |
@@ -328,7 +328,7 @@ Two choices worth knowing:
 
 ## Language
 
-Two languages, English and Thai, chosen per person on `/me` and stored in D1 — like the week start, and for the same reason: pages are rendered on the server, so the preference has to reach the Worker, and per person it follows someone between their laptop and their phone.
+Two languages, English and Thai, chosen per person on `/me/settings` and stored in D1 — like the week start, and for the same reason: pages are rendered on the server, so the preference has to reach the Worker, and per person it follows someone between their laptop and their phone.
 
 - **Strings** live in `src/i18n/strings.ts`, both languages on one line per key, so a stale translation is visible while editing rather than hiding in a second file.
 - **Components** read the reader's language from a Hono JSX context provided by `Layout`, instead of threading a prop through every component. Rendering is synchronous, so the provider reaches everything below it within one render and nothing is shared between requests.
