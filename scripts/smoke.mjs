@@ -47,6 +47,8 @@ const ORIGIN = `http://127.0.0.1:${PORT}`;
 const CHANNEL_SECRET = 'smoke-channel-secret';
 const ADMIN = 'admin@example.com';
 const OTHER = 'other@example.com';
+/** /me/settings takes all three settings at once; tests change one and pass the defaults for the rest. */
+const settings = (over) => post('/me/settings', { displayName: 'Admin', weekStart: '1', lang: 'en', ...over });
 const ADMIN_SECTIONS = ['/admin/people', '/admin/types', '/admin/holidays', '/admin/notifications', '/admin/export', '/admin/activity'];
 const STATE = mkdtempSync(join(tmpdir(), 'wnl-smoke-'));
 
@@ -928,17 +930,50 @@ async function main() {
 	{
 		const mePage = await (await fetch(`${BASE}/me`)).text();
 		check('me: shows days off by month', mePage.includes('class="card month-use"') && mePage.includes('Days off by month'), 'section missing');
+		check('me: no booking form of its own — the Book button goes to /book', !mePage.includes('class="booking') && mePage.includes('class="next-leave"') && mePage.includes('href="/book"'), 'form still there, or no next-leave card');
+		check('me: settings are a link away, not on the page', mePage.includes('href="/me/settings"') && !mePage.includes('name="weekStart"'), 'settings still inline');
+	}
+
+	// --- my leave: soonest first, and what is next ----------------------------
+	{
+		// Three of the admin's own, out of order, in the coming weeks, and one
+		// cancelled one earlier this year.
+		const soon = addDays(MON, 200);
+		const later = addDays(MON, 210);
+		const latest = addDays(MON, 220);
+		for (const [id, start, status] of [['me-latest', latest, 'confirmed'], ['me-soon', soon, 'confirmed'], ['me-later', later, 'confirmed']]) {
+			d1(`INSERT INTO leave_requests (id, user_email, leave_type_id, start_date, end_date, start_half, end_half, days_total, note, note_private, status, created_at)
+				VALUES ('${id}', '${ADMIN}', 2, '${start}', '${start}', 'full', 'full', 1, 'smoke note', 1, '${status}', '${MON}')`);
+		}
+		const html = await (await fetch(`${BASE}/me`)).text();
+		const order = ['me-soon', 'me-later', 'me-latest'].map((id) => html.indexOf(`href="/leave/${id}/edit"`));
+		check('me: upcoming is soonest first', order.every((at, i) => at > 0 && (i === 0 || order[i - 1] < at)), JSON.stringify(order));
+		check('me: a row shows its note and that it is private', /smoke note · private/.test(html), 'note line missing');
+		check('me: rows open the booking, rather than carrying their own buttons', !html.includes('/cancel"') , 'a cancel form is still on /me');
+		// No sick allowance that year, so those three days overdraw it.
+		const soonYear = soon.slice(0, 4);
+		d1(`INSERT OR REPLACE INTO quotas (user_email, year, leave_type_id, days_allotted) VALUES ('${ADMIN}', ${soonYear}, 2, 0)`);
+		const overHtml = await (await fetch(`${BASE}/me?y=${soonYear}`)).text();
+		check('me: an overdrawn balance says so, as days over', /class="balance-card over"[^]*?Sick[^]*?days over/.test(overHtml), 'no overdrawn card');
+		d1(`DELETE FROM quotas WHERE user_email = '${ADMIN}' AND year = ${soonYear} AND leave_type_id = 2`);
+		d1("DELETE FROM leave_requests WHERE id IN ('me-soon', 'me-later', 'me-latest')");
 	}
 
 	// --- language -----------------------------------------------------------
-	res = await post('/me/lang', { lang: 'th' });
+	page = await (await fetch(`${BASE}/me/settings`)).text();
+	check('settings: one form with all three', page.includes('action="/me/settings"') && ['name="displayName"', 'name="weekStart"', 'name="lang"'].every((s) => page.includes(s)), 'a field is missing');
+	res = await settings({ lang: 'th' });
 	eq('language can be set to Thai', flashOf(res)?.kind, 'ok');
+	eq('and the confirmation is already in Thai', flashOf(res)?.message, 'บันทึกการตั้งค่าแล้ว');
 	page = await (await fetch(`${BASE}/me`)).text();
 	check('the interface is in Thai', page.includes('การลาของฉัน'), 'Thai heading missing');
 	check('and the document says so', page.includes('<html lang="th"'), 'lang attribute not switched');
-	res = await post('/me/lang', { lang: 'kr' });
+	res = await settings({ lang: 'kr' });
 	eq('an unoffered language is refused', flashOf(res)?.kind, 'err');
-	res = await post('/me/lang', { lang: 'en' });
+	res = await settings({ lang: 'en', displayName: '   ' });
+	eq('one bad field refuses the whole form', flashOf(res)?.kind, 'err');
+	eq('and saves none of it — still Thai', d1Rows(`SELECT lang FROM users WHERE email = '${ADMIN}'`)[0]?.lang, 'th');
+	res = await settings({ lang: 'en' });
 	page = await (await fetch(`${BASE}/me`)).text();
 	check('and back to English', page.includes('My leave'), 'English heading missing');
 
@@ -1271,17 +1306,17 @@ async function main() {
 	let cal = await (await fetch(`${BASE}/`)).text();
 	check('calendar defaults to Monday first', cal.indexOf('>Mon<') < cal.indexOf('>Sun<'), 'column order not Monday-first');
 
-	res = await post('/me/week-start', { weekStart: '0' });
+	res = await settings({ weekStart: '0' });
 	eq('week start can be set to Sunday', flashOf(res)?.kind, 'ok');
 	cal = await (await fetch(`${BASE}/`)).text();
 	check('calendar now renders Sunday first', cal.indexOf('>Sun<') < cal.indexOf('>Mon<'), 'column order did not rotate');
 
-	res = await post('/me/week-start', { weekStart: '3' });
+	res = await settings({ weekStart: '3' });
 	eq('week start rejects a day that is not offered', flashOf(res)?.kind, 'err');
-	res = await post('/me/week-start', { weekStart: '' });
+	res = await settings({ weekStart: '' });
 	eq('week start rejects an empty value', flashOf(res)?.kind, 'err');
 
-	res = await post('/me/week-start', { weekStart: '1' });
+	res = await settings({ weekStart: '1' });
 	eq('week start can be set back to Monday', flashOf(res)?.kind, 'ok');
 	cal = await (await fetch(`${BASE}/`)).text();
 	check('calendar back to Monday first', cal.indexOf('>Mon<') < cal.indexOf('>Sun<'), 'did not rotate back');
@@ -1498,21 +1533,21 @@ async function main() {
 	d1("DELETE FROM leave_requests WHERE id = 'smoke-grid'");
 
 	// --- display name -------------------------------------------------------
-	res = await post('/me/name', { displayName: 'Renamed Admin' });
+	res = await settings({ displayName: 'Renamed Admin' });
 	eq('display name can be changed', flashOf(res)?.kind, 'ok');
 	check(
 		'and the new name reaches the shared calendar',
 		(await (await fetch(`${BASE}/`)).text()).includes('Renamed Admin'),
 		'new name missing',
 	);
-	res = await post('/me/name', { displayName: '   ' });
+	res = await settings({ displayName: '   ' });
 	eq('an empty display name is refused', flashOf(res)?.kind, 'err');
 	eq(
 		'and the old one survives',
 		d1Rows(`SELECT display_name FROM users WHERE email = '${ADMIN}'`)[0]?.display_name,
 		'Renamed Admin',
 	);
-	await post('/me/name', { displayName: 'Admin' });
+	await settings({ displayName: 'Admin' });
 
 	// --- removing a holiday --------------------------------------------------
 	await post('/admin/holiday', { date: '2031-03-04', label: 'Smoke Day' });

@@ -358,6 +358,23 @@ export async function listUserLeave(db: D1Database, email: string, year: number)
 	return res.results ?? [];
 }
 
+/**
+ * Someone's confirmed leave from today on, soonest first, whatever year it
+ * falls in — what /me leads with. A booking under way today is included.
+ */
+export async function listUpcomingFor(db: D1Database, email: string, today: string): Promise<LeaveEntry[]> {
+	const res = await db
+		.prepare(
+			`SELECT ${ENTRY_COLUMNS} ${ENTRY_FROM}
+			 WHERE r.user_email = ? AND r.status = 'confirmed' AND r.end_date >= ?
+			 ORDER BY r.start_date ASC
+			 LIMIT 100`,
+		)
+		.bind(email, today)
+		.all<LeaveEntry>();
+	return res.results ?? [];
+}
+
 /** Confirmed ranges for a user, for the overlap check. Cancelled rows do not block. */
 export async function confirmedRanges(
 	db: D1Database,

@@ -1908,3 +1908,87 @@ form.inline:has(.tf-support) { margin-bottom: 28px; }
 @media (min-width: 768px) { .channel-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 .channel h3.sub { margin-top: 8px; }
 .tag.good { background: var(--md-tertiary-container); color: var(--md-on-tertiary-container); }
+
+/* --- My leave ------------------------------------------------------------- */
+
+.page-head .year-nav + .icon-btn { margin-left: 4px; }
+
+/* When you are off next, and the way to book — the two things /me is opened for. */
+.next-leave {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 12px;
+	align-items: center;
+	justify-content: space-between;
+	padding: 16px;
+	margin-bottom: var(--pad);
+	border-radius: var(--md-shape-lg);
+	background: var(--md-primary-container);
+	color: var(--md-on-primary-container);
+}
+.next-leave-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.next-leave-lead { font-size: 13px; line-height: 18px; }
+.next-leave-what { font-size: 18px; line-height: 24px; font-weight: 500; color: inherit; text-decoration: none; }
+.next-leave-what:hover { text-decoration: underline; }
+.next-leave .btn .icon { width: 18px; height: 18px; }
+
+.balance-card.over { box-shadow: inset 0 0 0 1px var(--md-error); }
+.balance-card.over .balance-big { color: var(--md-error); }
+.balance-card.over .meter-fill { background: var(--md-error); }
+
+/* Upcoming / Earlier: links styled as one segmented control. */
+.segmented-links { display: inline-flex; border: 1px solid var(--md-outline); border-radius: var(--md-shape-full); overflow: hidden; margin-bottom: 8px; max-width: 100%; }
+.segmented-links a {
+	display: inline-flex;
+	align-items: center;
+	gap: 6px;
+	height: 36px;
+	padding: 0 14px;
+	font-size: 13px;
+	font-weight: 500;
+	color: var(--md-on-surface);
+	text-decoration: none;
+	white-space: nowrap;
+}
+.segmented-links a + a { border-left: 1px solid var(--md-outline); }
+.segmented-links a.on { background: var(--md-secondary-container); color: var(--md-on-secondary-container); }
+.segmented-links .count { font-size: 12px; color: var(--md-on-surface-variant); font-variant-numeric: tabular-nums; }
+.segmented-links a.on .count { color: inherit; }
+
+.my-list { list-style: none; padding: 0; margin: 0; }
+.my-row + .my-row { border-top: 1px solid var(--md-outline-variant); }
+.my-link {
+	position: relative;
+	isolation: isolate;
+	display: grid;
+	grid-template-columns: 12px minmax(0, 1fr) auto 24px;
+	gap: 4px 12px;
+	align-items: center;
+	padding: 12px 8px;
+	margin: 0 -8px;
+	border-radius: var(--md-shape-sm);
+	color: var(--md-on-surface);
+	text-decoration: none;
+}
+a.my-link::before { content: ''; position: absolute; inset: 0; border-radius: inherit; background: var(--md-on-surface); opacity: 0; z-index: -1; transition: opacity var(--md-dur-short) var(--md-ease); }
+a.my-link:hover::before { opacity: 0.08; }
+a.my-link:focus-visible { outline: 2px solid var(--md-primary); outline-offset: -2px; }
+.my-main { min-width: 0; }
+.my-when { font-weight: 500; }
+.my-main > .muted { font-size: 13px; }
+.my-note { display: block; font-size: 12px; line-height: 16px; margin-top: 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.my-days { font-variant-numeric: tabular-nums; color: var(--md-on-surface-variant); }
+.my-go { width: 20px; height: 20px; color: var(--md-on-surface-variant); }
+.my-row.cancelled .my-link { opacity: 0.6; }
+.my-row.cancelled .my-when { text-decoration: line-through; }
+.my-row .tag { justify-self: end; }
+.my-cancelled { margin-top: 8px; }
+.my-cancelled > summary { list-style: none; cursor: pointer; }
+.my-cancelled > summary::-webkit-details-marker { display: none; }
+
+.back-link { display: inline-flex; align-items: center; gap: 4px; margin-bottom: 8px; font-size: 13px; font-weight: 500; text-decoration: none; }
+.back-link .icon { width: 18px; height: 18px; }
+.settings-form .setting + .setting { border-top: 1px solid var(--md-outline-variant); margin-top: 16px; padding-top: 16px; }
+.settings-form .setting h2 { margin: 0 0 4px; font-size: 16px; }
+.settings-form .tf { max-width: 360px; }
+.settings-form .actions { margin-top: 20px; }

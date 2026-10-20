@@ -43,7 +43,7 @@ import { BookPage } from './views/book.tsx';
 import { CalendarPage, UPCOMING_DAYS } from './views/calendar.tsx';
 import { EditPage } from './views/edit.tsx';
 import { ErrorPage, Layout, THEME_SCRIPT } from './views/layout.tsx';
-import { MePage } from './views/me.tsx';
+import { MePage, MeSettingsPage } from './views/me.tsx';
 import { UserPage } from './views/user.tsx';
 import { PushKeyProvider } from './views/site.tsx';
 import { personColors } from './views/person.ts';
@@ -1122,12 +1122,16 @@ app.get('/me', async (c) => {
 	const nowYear = Number(today.slice(0, 4));
 	const year = clampInt(c.req.query('y'), nowYear, 2000, 2100);
 	const { minYear, maxYear } = yearNavBounds(nowYear);
+	// Upcoming unless asked otherwise — and for a year already over, where
+	// nothing is upcoming, that year's bookings.
+	const list = c.req.query('list') === 'past' || (c.req.query('list') === undefined && year < nowYear) ? 'past' : 'upcoming';
 
 	const types = await leaveTypesOf(c);
-	const [balances, entries, holidays] = await Promise.all([
+	const [balances, entries, holidays, upcoming] = await Promise.all([
 		db.balancesFor(c.env.DB, user.email, year, types),
 		db.listUserLeave(c.env.DB, user.email, year),
 		db.holidaySet(c.env.DB, `${year}-01-01`, `${year}-12-31`),
+		db.listUpcomingFor(c.env.DB, user.email, today),
 	]);
 	// Confirmed leave only: a cancelled booking took no days off.
 	const months = monthlyDays(entries.filter((e) => e.status === 'confirmed'), year, holidays);
@@ -1141,17 +1145,14 @@ app.get('/me', async (c) => {
 			maxYear={maxYear}
 			balances={balances}
 			months={months}
-			entries={entries}
+			upcoming={upcoming}
+			past={entries.filter((e) => e.status !== 'confirmed' || e.end_date < today)}
+			list={list}
 			types={types}
 			today={today}
-			// The VAPID public key is meant to be handed out — the browser needs
-			// it to subscribe, and it can only be used to verify our signature,
-			// never to make one.
 			version={c.env.CF_VERSION_METADATA?.id}
 			error={flashOf(c.get('flash'), 'err')}
-			errorField={flashField(c.get('flash'))}
 			notice={flashOf(c.get('flash'), 'ok')}
-			draft={flashDraft(c.get('flash'))}
 			undo={flashUndo(c.get('flash'))}
 		/>,
 	);
@@ -1205,37 +1206,41 @@ app.get('/u/:email', async (c) => {
 	);
 });
 
-app.post('/me/week-start', async (c) => {
-	const user = c.get('user');
-	const form = await c.req.parseBody();
-	const weekStart = parseWeekStart(form.weekStart);
-	// Only Sunday and Monday are offered; anything else is a crafted request,
-	// and silently storing it would rotate the grid to an arbitrary column.
-	if (weekStart === null) return redirectWithFlash('/me', 'err', say(c, 'flash.weekBad'));
-	await db.setWeekStart(c.env.DB, user.email, weekStart);
-	return redirectWithFlash('/me', 'ok', say(c, weekStart === 1 ? 'flash.weekMonday' : 'flash.weekSunday'));
-});
+app.get('/me/settings', (c) =>
+	page(
+		c,
+		<MeSettingsPage
+			user={c.get('user')}
+			version={c.env.CF_VERSION_METADATA?.id}
+			error={flashOf(c.get('flash'), 'err')}
+			notice={flashOf(c.get('flash'), 'ok')}
+		/>,
+	),
+);
 
-app.post('/me/lang', async (c) => {
-	const user = c.get('user');
-	const form = await c.req.parseBody();
-	const lang = String(form.lang ?? '');
-	// Only the languages actually offered. Storing anything else would fall back
-	// to English on every page while the radio button claimed otherwise.
-	if (!isLang(lang)) return redirectWithFlash('/me', 'err', say(c, 'flash.langBad'));
-
-	await db.setLanguage(c.env.DB, user.email, lang);
-	// Translated into the language just chosen, not the one being left behind.
-	return redirectWithFlash('/me', 'ok', t(lang, 'flash.langUpdated'));
-});
-
-app.post('/me/name', async (c) => {
+/**
+ * Name, week start and language, saved together. Each is checked before
+ * anything is written, so one bad field saves none of them.
+ */
+app.post('/me/settings', async (c) => {
 	const user = c.get('user');
 	const form = await c.req.parseBody();
 	const name = String(form.displayName ?? '').trim().slice(0, 60);
-	if (!name) return redirectWithFlash('/me', 'err', say(c, 'flash.nameEmpty'));
+	if (!name) return redirectWithFlash('/me/settings', 'err', say(c, 'flash.nameEmpty'));
+	// Only Sunday and Monday are offered; anything else is a crafted request,
+	// and silently storing it would rotate the grid to an arbitrary column.
+	const weekStart = parseWeekStart(form.weekStart);
+	if (weekStart === null) return redirectWithFlash('/me/settings', 'err', say(c, 'flash.weekBad'));
+	// Only the languages actually offered. Storing anything else would fall
+	// back to English on every page while the radio button claimed otherwise.
+	const lang = String(form.lang ?? '');
+	if (!isLang(lang)) return redirectWithFlash('/me/settings', 'err', say(c, 'flash.langBad'));
+
 	await db.setDisplayName(c.env.DB, user.email, name);
-	return redirectWithFlash('/me', 'ok', say(c, 'flash.nameUpdated'));
+	await db.setWeekStart(c.env.DB, user.email, weekStart);
+	await db.setLanguage(c.env.DB, user.email, lang);
+	// In the language just chosen, not the one being left behind.
+	return redirectWithFlash('/me/settings', 'ok', t(lang, 'flash.settingsSaved'));
 });
 
 // ---------------------------------------------------------------------------

@@ -550,7 +550,7 @@ async function main() {
 	await send('Emulation.setEmulatedMedia', { features: [] });
 
 	// --- in Thai ---------------------------------------------------------------
-	await evaluate("fetch('/me/lang', { method: 'POST', body: new URLSearchParams({ lang: 'th' }) }).then((r) => r.status)");
+	await evaluate("fetch('/me/settings', { method: 'POST', body: new URLSearchParams({ displayName: 'Admin', weekStart: '1', lang: 'th' }) }).then((r) => r.status)");
 	await send('Emulation.setDeviceMetricsOverride', { width: 375, height: 812, deviceScaleFactor: 2, mobile: true });
 	await send('Emulation.setTouchEmulationEnabled', { enabled: true, maxTouchPoints: 5 });
 	await open('/');
