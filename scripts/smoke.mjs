@@ -1394,6 +1394,18 @@ async function main() {
 	}
 
 	const homeHtml = await (await fetch(`${BASE}/`)).text();
+	// The calendar's layout: Book leave in the header, the day panel in the
+	// sidebar ahead of Upcoming, a + on every day of the month.
+	check('calendar: Book leave sits in the month header', /class="month-head"[^]*?class="btn primary book-head"/.test(homeHtml), 'not in the header');
+	check('calendar: the old actions row is gone', !homeHtml.includes('calendar-actions'), 'still rendered');
+	{
+		const side = homeHtml.indexOf('<aside class="cal-side"');
+		const panel = homeHtml.indexOf('data-agenda');
+		const upcomingAt = homeHtml.indexOf('class="cal-upcoming"');
+		check('calendar: the day card is the panel, in the sidebar, ahead of Upcoming', side > 0 && side < panel && panel < upcomingAt, `${side} ${panel} ${upcomingAt}`);
+		const inMonth = (homeHtml.match(/class="cell-day"/g) ?? []).length;
+		check('calendar: a + to book every day of the month', (homeHtml.match(/class="cell-plus"/g) ?? []).length >= 28 && inMonth >= 28, String(inMonth));
+	}
 	const upcoming = homeHtml.slice(homeHtml.indexOf('class="cal-upcoming"'), homeHtml.indexOf('</section>', homeHtml.indexOf('class="cal-upcoming"')));
 	eq('upcoming: a three-day booking is one row, not three', (upcoming.match(/data-entry="smoke-bar-1"/g) ?? []).length, 1);
 	check('upcoming: and says how long', /3 days/.test(upcoming), 'no day count');
@@ -1519,6 +1531,7 @@ async function main() {
 		const announcedIn = (y) => d1Rows(`SELECT date FROM holidays WHERE date LIKE '${y}-%'`).some((r) => !fixed.has(r.date.slice(5)));
 		const expected = target !== null && !announcedIn(target);
 		eq('holiday reminder: on the calendar exactly when the rule says', gridHtml.includes('class="banner holidays-due"'), expected);
+		eq('holiday reminder: and as a chip in the month header, for a laptop', gridHtml.includes('class="due-chip"'), expected);
 		const adminHtml = await (await fetch(`${BASE}/admin`)).text();
 		eq('holiday reminder: and on /admin, by the importer', adminHtml.includes('class="banner holidays-due"'), expected);
 		if (target !== null) {

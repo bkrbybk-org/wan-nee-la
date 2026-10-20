@@ -1201,13 +1201,6 @@ form.inline:has(.tf-support) { margin-bottom: 28px; }
 .agenda-view.day-mode .agenda-row.selected { display: flex; }
 .agenda-view.day-mode .agenda-quiet { display: none; }
 
-/* Nothing in this row shows on a phone — the FAB carries the action and the
-   hint describes the desktop grid — so the row itself goes too, rather than
-   leaving its margin as a blank band above the grid. */
-.calendar-actions { display: none; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: var(--pad); }
-/* The fixed FAB carries this action on phones. */
-.calendar-actions .book-inline { display: none; }
-.calendar-actions .hint { display: none; font-size: 12px; line-height: 16px; }
 
 /* ---------- legend ---------- */
 
@@ -1575,12 +1568,7 @@ form.inline:has(.tf-support) { margin-bottom: 28px; }
 	.navbar { display: none; }
 	.brand-name { display: inline; }
 	.account-name { display: inline; margin-right: 4px; color: var(--md-on-surface-variant); }
-	.agenda-view { display: none; }
 	.fab { display: none; }
-	.calendar-actions { display: flex; }
-	.calendar-actions .book-inline { display: inline-flex; }
-	/* Describes the month grid, which only exists at this width. */
-	.calendar-actions .hint { display: inline; }
 	.legend { display: flex; }
 
 	/* Bars replace the per-day chips. A week shows three rows of them and each
@@ -1992,3 +1980,110 @@ a.my-link:focus-visible { outline: 2px solid var(--md-primary); outline-offset: 
 .settings-form .setting h2 { margin: 0 0 4px; font-size: 16px; }
 .settings-form .tf { max-width: 360px; }
 .settings-form .actions { margin-top: 20px; }
+
+/* --- Calendar: the month fits, and a day panel beside it ------------------ */
+
+/* Header: Book leave beside Today, and an admin's holiday reminder as a chip
+   rather than a strip across the page. A phone keeps the strip — its header
+   has no room — and the FAB. */
+.book-head { display: none; }
+.due-chip { display: none; }
+@media (min-width: 768px) {
+	.cal-due { display: none; }
+	.book-head { display: inline-flex; margin-left: 8px; }
+	.due-chip {
+		display: inline-flex;
+		align-items: center;
+		height: 28px;
+		padding: 0 10px;
+		border-radius: var(--md-shape-full);
+		background: var(--md-error-container);
+		color: var(--md-on-error-container);
+		font-size: 12px;
+		font-weight: 500;
+		text-decoration: none;
+		white-space: nowrap;
+		margin-left: auto;
+	}
+	.due-chip + .today-link { margin-left: 8px; }
+}
+
+/* A day is selected by clicking it, on a laptop as on a phone; the + books it.
+   The selecting layer sits over .cell-add, which stays for drag-to-move. */
+.cell-plus { display: none; }
+@media (min-width: 768px) {
+	.cell-day { display: block; position: absolute; inset: 0; z-index: 0; border-radius: var(--md-shape-md); }
+	.cell-day:focus-visible { outline: 2px solid var(--md-primary); outline-offset: -2px; }
+	.cell.selected { box-shadow: inset 0 0 0 2px var(--md-primary); }
+	.cell-plus {
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		position: absolute;
+		top: 4px;
+		right: 4px;
+		z-index: 2;
+		width: 28px;
+		height: 28px;
+		border-radius: var(--md-shape-full);
+		background: var(--md-primary-container);
+		color: var(--md-on-primary-container);
+		opacity: 0;
+		transition: opacity var(--md-dur-short) var(--md-ease);
+	}
+	.cell:hover .cell-plus, .cell-plus:focus-visible { opacity: 1; }
+	.cell-plus .icon { width: 16px; height: 16px; }
+	/* A holiday's name gets two lines instead of one cut short. */
+	.cell .holiday-tag { white-space: normal; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; font-size: 10px; line-height: 12px; }
+	.legend { margin: 8px 0 0; }
+}
+/* A device without hover cannot reveal the +, so it is always there. */
+@media (min-width: 768px) and (hover: none) {
+	.cell-plus { opacity: 1; }
+}
+
+/* The day panel. Its card is the day chosen; a day with people away is the
+   one lit up, and a quiet day steps back so Upcoming leads. */
+.agenda-book {
+	display: inline-flex;
+	align-items: center;
+	gap: 6px;
+	align-self: flex-start;
+	margin-top: 6px;
+	font-size: 13px;
+	font-weight: 500;
+	text-decoration: none;
+	color: var(--md-primary);
+}
+.agenda-row.today .agenda-book { color: inherit; }
+.agenda-book .icon { width: 16px; height: 16px; }
+/* Without the script every busy day is listed, and a Book link on each would
+   repeat down the column. */
+.agenda-view:not(.day-mode) .agenda-book { display: none; }
+.agenda-view.day-mode .agenda-row.selected:not(.has-people) { background: var(--md-surface-container-low); color: var(--md-on-surface); }
+.agenda-view.day-mode .agenda-row.selected.has-people { background: var(--md-primary-container); color: var(--md-on-primary-container); }
+.agenda-view.day-mode .agenda-row.selected.has-people .agenda-dow,
+.agenda-view.day-mode .agenda-row.selected.has-people .agenda-type { color: inherit; opacity: 0.85; }
+.agenda-view.day-mode .agenda-row.selected.has-people .agenda-book { color: inherit; }
+
+/* On a phone the card is the answer, and Upcoming under it would repeat the
+   same names; it shows only while the chosen day has nobody away. */
+@media (max-width: 767px) {
+	.cal-side:has(.agenda-view.day-mode .agenda-row.selected.has-people) .cal-upcoming { display: none; }
+}
+@media (min-width: 1024px) and (min-height: 700px) {
+	body.fit-viewport .cal-side .agenda-view { margin-top: 0; }
+}
+
+/* In the sidebar the card is narrow: each name over its type, rather than
+   both squeezed onto one line and wrapping into each other. */
+@media (min-width: 1024px) and (min-height: 700px) {
+	body.fit-viewport .cal-side .agenda-item { display: grid; grid-template-columns: 12px minmax(0, 1fr); column-gap: 10px; align-items: center; padding-top: 4px; padding-bottom: 4px; }
+	body.fit-viewport .cal-side .agenda-type { grid-column: 2; margin-left: 0; text-align: left; }
+	body.fit-viewport .cal-side .agenda-row { padding-top: 12px; padding-bottom: 12px; }
+}
+
+/* The phone's Book button steps aside while the day card is on screen: the
+   card has its own, and the button would otherwise sit on a name. */
+.fab { transition: transform var(--md-dur-medium) var(--md-ease), opacity var(--md-dur-short) var(--md-ease); }
+.fab.fab-away { transform: translateY(160%); opacity: 0; pointer-events: none; }

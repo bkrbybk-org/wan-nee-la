@@ -479,7 +479,13 @@ function CalendarBody(props: CalendarProps) {
 			<FlashBanner error={error} notice={notice} undo={undo} />
 			{/* Admins only. Here as well as on /admin, because nobody opens /admin
 			    in November unless something sends them there. */}
-			{holidaysDue ? <HolidaysDueBanner gap={holidaysDue} link /> : null}
+			{holidaysDue ? (
+				// A phone keeps the two-line strip; from 768px it is a chip in the
+				// month's header, so the month gets the 70px the strip took.
+				<div class="cal-due">
+					<HolidaysDueBanner gap={holidaysDue} link />
+				</div>
+			) : null}
 
 			<div class="month-head">
 				{/* Ahead of the heading, not after it, so stepping through the year
@@ -539,25 +545,31 @@ function CalendarBody(props: CalendarProps) {
 						<button type="submit" class="btn tonal">{t('cal.go')}</button>
 					</form>
 				</details>
+				{holidaysDue ? (
+					<a
+						class="due-chip"
+						href={`/admin/holidays?y=${holidaysDue.year}`}
+						title={t('admin.holidaysDue', { year: holidaysDue.year, have: holidaysDue.have })}
+					>
+						{t('cal.holidaysDueShort', { year: holidaysDue.year })}
+					</a>
+				) : null}
 				<a class="btn text today-link" href="/">{t('cal.today')}</a>
-			</div>
-
-			{/* A real link, so this works with scripting off. The client script
-			    intercepts it and opens the dialog instead. The same link is drawn
-			    twice: inline on a wide screen, and as an extended FAB on a phone,
-			    where the bottom-right corner is where Material puts the primary
-			    action and where a thumb can reach it. */}
-			<p class="calendar-actions">
-				<a class="btn primary book-inline" href="/book" data-book-link>
+				{/* Beside Today rather than on a row of its own above the grid, which
+				    cost the month a week's worth of height on a laptop. A real link:
+				    the client script opens the dialog instead. */}
+				<a class="btn primary book-head" href="/book" data-book-link>
 					<PlusIcon class="sm" />
 					{t('cal.book')}
 				</a>
-				<span class="muted hint">{t('cal.hint')}</span>
-			</p>
-			{/* The label is its own element so the button can fold down to the
-			    icon once the page scrolls (client/calendar.ts) — and the
-			    accessible name stays the label either way. */}
-			<a class="fab" href="/book" data-book-link data-fab aria-label={t('cal.book')}>
+			</div>
+
+			{/* A phone's Book button, bottom right where a thumb reaches it. Round
+			    from the start: as an extended FAB it covered the day card's rows
+			    until the page was scrolled. The day card carries its own Book
+			    button, and the script moves this one aside while the card is on
+			    screen (client/calendar.ts), so it never sits on a name. */}
+			<a class="fab fab-mini" href="/book" data-book-link data-fab aria-label={t('cal.book')}>
 				<PlusIcon />
 				<span class="fab-label">{t('cal.book')}</span>
 			</a>
@@ -620,12 +632,18 @@ function CalendarBody(props: CalendarProps) {
 												{/* Covers the cell's empty space. Sits under the chips so a
 												    click on an entry opens that entry rather than the
 												    booking form. */}
+												{/* The day's surface, kept for drag-to-move, which finds the
+												    day under the pointer through it (client/drag.ts). Where a
+												    day can be selected, the layer above it takes the click and
+												    the + below books, so it is out of the tab order there. */}
 												<a
 													class="cell-add"
 													href={`/book?date=${date}`}
 													data-book-link
 													data-date={date}
 													aria-label={t('cal.bookOn', { date: longDate(date, lang) })}
+													tabindex={dayEntries.length > 0 || inMonth ? -1 : undefined}
+													aria-hidden={dayEntries.length > 0 || inMonth ? 'true' : undefined}
 												></a>
 												{/* Phones only. A cell is about 48px wide there — too narrow
 												    for names, and far too narrow to tap one of several. So the
@@ -641,6 +659,20 @@ function CalendarBody(props: CalendarProps) {
 														data-day={date}
 														aria-label={t('cal.seeDay', { date: longDate(date, lang) })}
 													></a>
+												) : null}
+												{/* Laptops: clicking a day shows it in the panel beside the
+												    month, as a tap does on a phone, so booking is this +,
+												    shown on hover and focus. */}
+												{inMonth ? (
+													<a
+														class="cell-plus"
+														href={`/book?date=${date}`}
+														data-book-link
+														data-date={date}
+														aria-label={t('cal.bookOn', { date: longDate(date, lang) })}
+													>
+														<PlusIcon class="sm" />
+													</a>
 												) : null}
 												<div class="cell-head">
 													<span class="daynum" aria-hidden="true">{Number(date.slice(8, 10))}</span>
@@ -702,76 +734,83 @@ function CalendarBody(props: CalendarProps) {
 					</table>
 				</section>
 
-				{/* What a screen reader hears when a tap or swipe changes the day:
-				    the day and who is away, said once. Showing one row and hiding
-				    another is not announced reliably on its own, and making the
-				    whole list live would read out every row it holds. */}
-				<p class="visually-hidden" aria-live="polite" data-day-status></p>
-				<section class="agenda-view" aria-label={t('cal.byDay')} data-agenda>
-					{agenda.every((r) => r.entries.length === 0 && !r.holiday) ? (
-						<p class="muted pad agenda-quiet">{t('cal.emptyMonth')}</p>
-					) : null}
-					{agenda.map((row) => {
-						const empty = row.entries.length === 0 && !row.holiday;
-						const classes = ['agenda-row', row.date === today ? 'today' : '', row.date === selectedDay ? 'selected' : '', empty ? 'empty' : '']
-							.filter(Boolean)
-							.join(' ');
-						return (
-							<div class={classes} id={`d-${row.date}`} data-day={row.date} data-label={longDate(row.date, lang)}>
-								<a
-									class="agenda-date"
-									href={`/book?date=${row.date}`}
-									data-book-link
-									data-date={row.date}
-									aria-label={t('cal.bookOn', { date: longDate(row.date, lang) })}
-								>
-									<span class="agenda-dow">{weekdayName(row.date, lang)}</span>
-									<span class="agenda-num">{Number(row.date.slice(8, 10))}</span>
-								</a>
-								<div class="agenda-body">
-									{row.holiday ? <div class="holiday-tag block">{row.holiday}</div> : null}
-									{empty ? <p class="muted agenda-none">{t('cal.nobodyOn')}</p> : null}
-									{row.entries.map((e) => (
-										<a
-											class={`agenda-item ${canEdit(e) ? 'mine' : ''}`}
-											href={canEdit(e) ? `/leave/${e.id}/edit` : '#'}
-											aria-label={entryLabel(e, row.date, lang)}
-											{...entryData(e, canEdit(e), noteFor(e), lang)}
-										>
-											<span class="dot" style={`--chip: ${e.color}`} />
-											<span class="agenda-name">{e.display_name}</span>
-											<span class="agenda-type">
-												{typeLabel(e, lang)}
-												{halfMark(halfOn(e, row.date), lang)}
-												{/* How long they are away, so one day's card answers
-												    "back when?" without tapping through the week. */}
-												{e.start_date !== e.end_date ? (
-													<span class="agenda-span"> · {spanLabel(e.start_date, e.end_date, lang)}</span>
-												) : null}
-											</span>
-										</a>
-									))}
-								</div>
-							</div>
-						);
-					})}
+				{/* Both languages, whichever the reader has chosen: the legend is where
+				    someone learns that ลาป่วย and Sick leave are the same chip colour. */}
+				<section class="legend">
+					{/* A retired type still explains its own chips on the months it appears in. */}
+					{types.filter((type) => type.active || entries.some((e) => e.leave_type_id === type.id)).map((type) => (
+						<span class="legend-item">
+							<span class="dot" style={`--chip: ${type.color}`} /> {lang === 'th' ? type.label_th : type.label_en}
+							<span class="muted"> · {lang === 'th' ? type.label_en : type.label_th}</span>
+						</span>
+					))}
 				</section>
 				</div>
 
+				{/* The day panel: the day chosen in the grid — today to begin with —
+				    and who is away on it, then the 90 days from today. On a phone it
+				    stacks under the grid, and Upcoming shows only while the chosen day
+				    has nobody away, since otherwise it repeats the card. */}
 				<aside class="cal-side" aria-label={t('cal.whoIsOut')}>
-					<UpcomingList entries={upcoming} today={today} user={user} lang={lang} />
-
-					{/* Both languages, whichever the reader has chosen: the legend is where
-					    someone learns that ลาป่วย and Sick leave are the same chip colour. */}
-					<section class="legend">
-						{/* A retired type still explains its own chips on the months it appears in. */}
-						{types.filter((type) => type.active || entries.some((e) => e.leave_type_id === type.id)).map((type) => (
-							<span class="legend-item">
-								<span class="dot" style={`--chip: ${type.color}`} /> {lang === 'th' ? type.label_th : type.label_en}
-								<span class="muted"> · {lang === 'th' ? type.label_en : type.label_th}</span>
-							</span>
-						))}
+					{/* What a screen reader hears when a tap or swipe changes the day:
+					    the day and who is away, said once. Showing one row and hiding
+					    another is not announced reliably on its own, and making the
+					    whole list live would read out every row it holds. */}
+					<p class="visually-hidden" aria-live="polite" data-day-status></p>
+					<section class="agenda-view" aria-label={t('cal.byDay')} data-agenda>
+						{agenda.every((r) => r.entries.length === 0 && !r.holiday) ? (
+							<p class="muted pad agenda-quiet">{t('cal.emptyMonth')}</p>
+						) : null}
+						{agenda.map((row) => {
+							const empty = row.entries.length === 0 && !row.holiday;
+							const classes = ['agenda-row', row.date === today ? 'today' : '', row.date === selectedDay ? 'selected' : '', empty ? 'empty' : '', row.entries.length > 0 ? 'has-people' : '']
+								.filter(Boolean)
+								.join(' ');
+							return (
+								<div class={classes} id={`d-${row.date}`} data-day={row.date} data-label={longDate(row.date, lang)}>
+									<a
+										class="agenda-date"
+										href={`/book?date=${row.date}`}
+										data-book-link
+										data-date={row.date}
+										aria-label={t('cal.bookOn', { date: longDate(row.date, lang) })}
+									>
+										<span class="agenda-dow">{weekdayName(row.date, lang)}</span>
+										<span class="agenda-num">{Number(row.date.slice(8, 10))}</span>
+									</a>
+									<div class="agenda-body">
+										{row.holiday ? <div class="holiday-tag block">{row.holiday}</div> : null}
+										{empty ? <p class="muted agenda-none">{t('cal.nobodyOn')}</p> : null}
+										{row.entries.map((e) => (
+											<a
+												class={`agenda-item ${canEdit(e) ? 'mine' : ''}`}
+												href={canEdit(e) ? `/leave/${e.id}/edit` : '#'}
+												aria-label={entryLabel(e, row.date, lang)}
+												{...entryData(e, canEdit(e), noteFor(e), lang)}
+											>
+												<span class="dot" style={`--chip: ${e.color}`} />
+												<span class="agenda-name">{e.display_name}</span>
+												<span class="agenda-type">
+													{typeLabel(e, lang)}
+													{halfMark(halfOn(e, row.date), lang)}
+													{/* How long they are away, so one day's card answers
+													    "back when?" without tapping through the week. */}
+													{e.start_date !== e.end_date ? (
+														<span class="agenda-span"> · {spanLabel(e.start_date, e.end_date, lang)}</span>
+													) : null}
+												</span>
+											</a>
+										))}
+										<a class="agenda-book" href={`/book?date=${row.date}`} data-book-link data-date={row.date}>
+											<PlusIcon class="sm" />
+											{t('cal.bookThisDay')}
+										</a>
+									</div>
+								</div>
+							);
+						})}
 					</section>
+					<UpcomingList entries={upcoming} today={today} user={user} lang={lang} />
 				</aside>
 			</div>
 

@@ -139,11 +139,14 @@ document.addEventListener('click', (e) => {
 });
 
 // ---------------------------------------------------------------------------
-// One day at a time, on a phone
+// The day panel
 // ---------------------------------------------------------------------------
 
 /**
- * The day list under a phone's grid becomes one card: the day tapped.
+ * The day list becomes one card: the day tapped or clicked. On a phone it
+ * sits under the grid; on a laptop it is the panel beside the month, ahead of
+ * Upcoming, and clicking a day there selects it rather than booking it — the
+ * + on each day, and the card's own link, book.
  *
  * Without this the list holds every busy day of the month, and the 20th is a
  * long scroll past the 1st to the 19th. The server already marks the day to
@@ -260,13 +263,12 @@ if (agenda) {
 	});
 }
 
-// Fold the floating "Book leave" button to its icon once the page has
-// scrolled, so it stops covering the right-hand edge of the rows beneath it.
+// The phone's Book button steps aside while the day card is on screen. The
+// card carries its own Book link, and the button — fixed in the bottom-right
+// corner — would otherwise sit on top of a name in it.
 const fab = document.querySelector<HTMLElement>('[data-fab]');
-if (fab) {
-	const fold = () => fab.classList.toggle('fab-mini', window.scrollY > 40);
-	window.addEventListener('scroll', fold, { passive: true });
-	fold();
+if (fab && agenda && 'IntersectionObserver' in window) {
+	new IntersectionObserver(([entry]) => fab.classList.toggle('fab-away', entry.isIntersecting)).observe(agenda);
 }
 
 // Swipe the month grid to change month. The arrows stay; this follows their

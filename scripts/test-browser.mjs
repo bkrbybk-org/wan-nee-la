@@ -295,6 +295,7 @@ async function main() {
 		'*, *::before, *::after { transition: none !important; animation: none !important; caret-color: transparent !important; }',
 		// Present or not by the date or the browser's history, not by the code.
 		'.banner { display: none !important; }',
+		'.due-chip { visibility: hidden !important; }',
 		'.cal-upcoming, .foot { visibility: hidden !important; }',
 	].join('\n');
 	const looksRight = async (name) => {
@@ -377,20 +378,24 @@ async function main() {
 	check('screen reader: the new day is announced, with who is away', said.includes('Mai Srisuk') && /\d{4}/.test(said), said);
 	eq('screen reader: from a polite live region', await evaluate("document.querySelector('[data-day-status]').getAttribute('aria-live')"), 'polite');
 
-	// The floating button folds to its icon once the page scrolls.
+	// The floating Book button is round from the start, and steps aside while
+	// the day card is on screen — the card has its own Book link, and the
+	// button would sit on a name in it.
 	await evaluate('scrollTo(0, 0)');
-	await sleep(100);
-	check('book button: full width at the top', !(await evaluate("document.querySelector('[data-fab]').classList.contains('fab-mini')")), 'folded at the top');
-	await evaluate('scrollTo(0, 400)');
-	await sleep(150);
-	check('book button: folds to its icon once scrolled', await evaluate("document.querySelector('[data-fab]').getBoundingClientRect().width <= 60"), String(await evaluate("document.querySelector('[data-fab]').getBoundingClientRect().width")));
+	await sleep(400);
+	check('book button: round from the start', await evaluate("document.querySelector('[data-fab]').getBoundingClientRect().width <= 60"), String(await evaluate("document.querySelector('[data-fab]').getBoundingClientRect().width")));
 	eq('book button: and keeps its name', await evaluate("document.querySelector('[data-fab]').getAttribute('aria-label')"), 'Book leave');
-	await evaluate('scrollTo(0, 0)');
+	check('book button: steps aside while the day card is on screen', await waitFor("document.querySelector('[data-fab]').classList.contains('fab-away')", 3000), 'still over the card');
+	check('day card: carries its own Book link', await evaluate("Boolean(document.querySelector('.agenda-row.selected .agenda-book[data-book-link]'))"), 'no Book link in the card');
+	// Upcoming repeats the card on a phone, so it shows only for a quiet day.
+	check('phone: Upcoming hidden while the chosen day has people', await evaluate("getComputedStyle(document.querySelector('.cal-upcoming')).display === 'none'"), 'Upcoming shown');
 
 	// A day in the middle of the month, so a step either way stays in it.
 	const mid = `${month}-15`;
 	await tap(`.cell-day[data-day="${mid}"]`);
 	await sleep(150);
+	// The 15th has nobody away in this fixture: Upcoming comes back.
+	check('phone: a quiet day brings Upcoming back', await evaluate("getComputedStyle(document.querySelector('.cal-upcoming')).display !== 'none'"), 'Upcoming still hidden');
 	// Banners above the grid can push the card below a short screen's fold;
 	// a person scrolls to it before swiping it, and so does this.
 	await evaluate("document.querySelector('.agenda-row.selected').scrollIntoView({ block: 'center' })");
@@ -492,8 +497,15 @@ async function main() {
 	// Wednesday of the same week: on this month's grid, and free now the
 	// booking has moved to Thursday.
 	const freeDay = addDays(tue, 1);
-	await tap(`.cell-add[data-date="${freeDay}"]`);
-	check('book: clicking an empty day opens the form', await waitFor("document.querySelector('[data-create-dialog]').open"), 'dialog closed');
+	// On a laptop a day is selected by clicking it, into the panel beside the
+	// month; its + books it.
+	await tap(`.cell-day[data-day="${tue}"]`);
+	await sleep(150);
+	eq('laptop: clicking a day shows it in the panel', await evaluate("document.querySelector('.cal-side .agenda-row.selected')?.dataset.day"), tue);
+	check('laptop: the panel sits beside the month', await evaluate("(() => { const g = document.querySelector('.grid-view').getBoundingClientRect(); const p = document.querySelector('.cal-side .agenda-view').getBoundingClientRect(); return p.left >= g.right && p.top < g.bottom; })()"), 'panel not beside the grid');
+	check('laptop: and does not open the booking form', !(await evaluate("document.querySelector('[data-create-dialog]').open")), 'dialog opened');
+	await tap(`.cell-plus[data-date="${freeDay}"]`);
+	check('book: the + on an empty day opens the form', await waitFor("document.querySelector('[data-create-dialog]').open"), 'dialog closed');
 	eq('book: on that day', await evaluate("document.querySelector('[data-create-dialog] [data-start]').value"), freeDay);
 	await tap('[data-create-dialog] button[type="submit"]');
 	let booked = null;
