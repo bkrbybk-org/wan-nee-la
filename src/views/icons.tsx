@@ -121,6 +121,35 @@ export const BellOffIcon = (p: IconProps) => (
 	</Svg>
 );
 
+/** People, plural — the admin's roster. */
+export const UsersIcon = (p: IconProps) => (
+	<Svg {...p}>
+		<path d="M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8z" />
+		<path d="M2 21v-1a7 7 0 0 1 14 0v1M16 3.5a4 4 0 0 1 0 7.5M22 21v-1a6 6 0 0 0-4-5.6" />
+	</Svg>
+);
+
+export const TagIcon = (p: IconProps) => (
+	<Svg {...p}>
+		<path d="M3 12V4h8l10 10-8 8z" />
+		<path d="M7.5 8.5h.01" />
+	</Svg>
+);
+
+export const DownloadIcon = (p: IconProps) => (
+	<Svg {...p}>
+		<path d="M12 4v11M7 10l5 5 5-5M5 20h14" />
+	</Svg>
+);
+
+/** A clock with its hand turned back: the change history. */
+export const HistoryIcon = (p: IconProps) => (
+	<Svg {...p}>
+		<path d="M4 12a8 8 0 1 0 2.3-5.6L4 8.7" />
+		<path d="M4 4v4.7h4.7M12 8v4l3 2" />
+	</Svg>
+);
+
 export const CheckIcon = (p: IconProps) => (
 	<Svg {...p}>
 		<path d="M5 13l4 4 10-10" />

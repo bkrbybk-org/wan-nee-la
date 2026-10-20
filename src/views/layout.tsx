@@ -220,7 +220,8 @@ function LayoutShell({
 
 /**
  * "Next year's holidays look unentered", for admins (see `holidayGap`). On
- * the calendar it carries a link to the importer; on /admin it sits above it.
+ * the calendar and the admin overview it links to the importer; on the
+ * holidays page it sits above it.
  */
 export function HolidaysDueBanner({ gap, link = false }: { gap: HolidayGap; link?: boolean }) {
 	const t = useT();
@@ -229,7 +230,7 @@ export function HolidaysDueBanner({ gap, link = false }: { gap: HolidayGap; link
 			<span>{t('admin.holidaysDue', { year: gap.year, have: gap.have })}</span>
 			{link ? (
 				<span class="banner-action">
-					<a class="btn tonal" href={`/admin?y=${gap.year}#holidays`}>{t('admin.holidaysAdd')}</a>
+					<a class="btn tonal" href={`/admin/holidays?y=${gap.year}`}>{t('admin.holidaysAdd')}</a>
 				</span>
 			) : null}
 		</div>

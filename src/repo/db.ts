@@ -647,7 +647,16 @@ function auditStatement(
 		);
 }
 
-export const AUDIT_ACTIONS: readonly AuditAction[] = ['created', 'edited', 'cancelled', 'restored'];
+/** How many changes the trail holds, in all and since `since` — for the admin overview. */
+export async function auditCounts(db: D1Database, since: string): Promise<{ total: number; since: number }> {
+	const row = await db
+		.prepare('SELECT COUNT(*) AS total, COALESCE(SUM(at >= ?), 0) AS since FROM leave_audit')
+		.bind(since)
+		.first<{ total: number; since: number }>();
+	return { total: row?.total ?? 0, since: row?.since ?? 0 };
+}
+
+export const AUDIT_ACTIONS: readonly AuditAction[] =['created', 'edited', 'cancelled', 'restored'];
 
 export interface AuditFilter {
 	/** Rows where this address is the actor or the subject — "what happened around this person". */

@@ -20,7 +20,8 @@
  * chip grey passes all of them. The shots are of March 2030 — a month with
  * fixed bookings, no holidays and no today — with the parts that depend on the
  * date (the Upcoming list, the banners, the footer) blanked, so the same code
- * draws the same picture any day of the year. Fonts differ between operating
+ * draws the same picture any day of the year. The admin People page is shot
+ * for 2030 too, where every allowance is a type default. Fonts differ between operating
  * systems, so each platform keeps its own references, in
  * scripts/visual/<platform>/. A shot with no reference yet is recorded as one;
  * `UPDATE_VISUAL=1` re-records them after a deliberate change, and
@@ -533,6 +534,19 @@ async function main() {
 	await send('Emulation.setDeviceMetricsOverride', { width: 1280, height: 900, deviceScaleFactor: 1, mobile: false });
 	await open('/?y=2030&m=3');
 	await looksRight('laptop-month');
+	// The admin roster, for a year nobody has set allowances in, so every
+	// number is a type default and the year label never moves.
+	const openPlain = async (path) => {
+		await send('Page.navigate', { url: `${BASE}${path}` });
+		await sleep(200);
+		await waitFor("document.readyState === 'complete'");
+	};
+	await openPlain('/admin/people?y=2030');
+	await looksRight('laptop-admin-people');
+	await send('Emulation.setDeviceMetricsOverride', { width: 375, height: 812, deviceScaleFactor: 1, mobile: true });
+	await openPlain('/admin/people?y=2030');
+	await looksRight('phone-admin-people');
+	await send('Emulation.setDeviceMetricsOverride', { width: 1280, height: 900, deviceScaleFactor: 1, mobile: false });
 	await send('Emulation.setEmulatedMedia', { features: [] });
 
 	// --- in Thai ---------------------------------------------------------------

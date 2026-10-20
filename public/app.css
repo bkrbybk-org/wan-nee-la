@@ -1426,29 +1426,14 @@ form.inline:has(.tf-support) { margin-bottom: 28px; }
 .holiday-list li + li { border-top: 1px solid var(--md-outline-variant); }
 .holiday-list form.inline { margin-left: auto; }
 
-/* On a phone the two-column quota table is wider than the screen, and
-   side-scrolling puts the Save button somewhere nobody looks — the row appears
-   half-empty with its second column off to the right. Stack it instead: each
-   person becomes a block, their quota fields underneath.
-
-   This does drop the table semantics under the breakpoint. It is a form laid
-   out in a table rather than data being read across rows, every control keeps
-   its own label, and the column headings ("Person", "Days allotted") say
-   nothing the fields do not. */
+/* On a phone the People table stays a table — it is data read across a row —
+   with tighter cells; the table scrolls sideways inside its card if a roster
+   of many leave types still does not fit. The edit form's allowances sit two
+   to a row. */
 @media (max-width: 767px) {
-	.table-scroll { overflow-x: visible; }
-	.grid-table thead { display: none; }
-	.grid-table,
-	.grid-table tbody,
-	.grid-table tr,
-	.grid-table td {
-		display: block;
-		width: 100%;
-	}
-	.grid-table tr { padding: 8px 0; border-bottom: 1px solid var(--md-outline-variant); }
-	.grid-table tr:last-child { border-bottom: 0; }
-	.grid-table td { padding: 4px 0; border: 0; }
-	/* The person's own controls read as one row; their quotas as a grid below. */
+	.grid-table th, .grid-table td { padding-left: 4px; padding-right: 4px; }
+	.people-table th { font-size: 11px; line-height: 14px; vertical-align: bottom; }
+	.people-table th .dot { display: block; margin: 0 0 2px auto; }
 	.quota-form { gap: 8px; }
 	.quota-cell { flex: 1 1 calc(50% - 4px); }
 }
@@ -1798,3 +1783,128 @@ form.inline:has(.tf-support) { margin-bottom: 28px; }
 .type-head { display: flex; gap: 8px; align-items: center; flex: 1 1 100%; }
 .color-field { display: flex; gap: 8px; align-items: center; }
 .color-field input { width: 44px; height: 36px; padding: 0; border: 1px solid var(--md-outline-variant); border-radius: 8px; background: none; }
+
+/* --- Admin: overview and sections --------------------------------------- */
+
+/* The way between sections. One row that scrolls sideways on a phone rather
+   than wrapping into three lines above the page it belongs to. */
+.admin-tabs {
+	display: flex;
+	gap: 8px;
+	align-items: center;
+	overflow-x: auto;
+	scrollbar-width: none;
+	margin: 0 calc(-1 * var(--pad)) 12px;
+	padding: 0 var(--pad) 4px;
+}
+.admin-tabs::-webkit-scrollbar { display: none; }
+.admin-tabs a {
+	flex: none;
+	display: inline-flex;
+	align-items: center;
+	gap: 4px;
+	height: 32px;
+	padding: 0 12px;
+	border-radius: var(--md-shape-sm);
+	border: 1px solid var(--md-outline-variant);
+	color: var(--md-on-surface-variant);
+	font-size: 13px;
+	font-weight: 500;
+	text-decoration: none;
+	white-space: nowrap;
+}
+.admin-tabs a.on { background: var(--md-secondary-container); color: var(--md-on-secondary-container); border-color: transparent; }
+.admin-tabs .admin-back { border-color: transparent; padding: 0 8px 0 0; }
+.admin-tabs .admin-back .icon { width: 18px; height: 18px; }
+
+.admin-metrics { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; margin-bottom: var(--pad); }
+@media (min-width: 768px) { .admin-metrics { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
+.admin-metric {
+	display: flex;
+	flex-direction: column;
+	gap: 2px;
+	padding: 12px 16px;
+	border-radius: var(--md-shape-md);
+	background: var(--md-surface-container);
+	min-width: 0;
+}
+.admin-metric-label { font-size: 12px; color: var(--md-on-surface-variant); }
+.admin-metric-value { font-size: 28px; line-height: 36px; font-weight: 500; color: var(--md-on-surface); }
+.admin-metric-value.small { font-size: 16px; line-height: 24px; padding-top: 6px; }
+.admin-metric-value.bad { color: var(--md-error); }
+.admin-metric-note { font-size: 12px; color: var(--md-on-surface-variant); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.admin-tiles { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: minmax(0, 1fr); gap: 12px; }
+@media (min-width: 600px) { .admin-tiles { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (min-width: 1024px) { .admin-tiles { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+.admin-tile {
+	position: relative;
+	isolation: isolate;
+	display: flex;
+	gap: 12px;
+	align-items: flex-start;
+	padding: 16px;
+	border-radius: var(--md-shape-md);
+	border: 1px solid var(--md-outline-variant);
+	color: var(--md-on-surface);
+	text-decoration: none;
+	height: 100%;
+	box-sizing: border-box;
+}
+.admin-tile::before { content: ''; position: absolute; inset: 0; border-radius: inherit; background: var(--md-on-surface); opacity: 0; z-index: -1; transition: opacity var(--md-dur-short) var(--md-ease); }
+.admin-tile:hover::before { opacity: 0.08; }
+.admin-tile:focus-visible { outline: 2px solid var(--md-primary); outline-offset: 2px; }
+.admin-tile.alert { border-color: var(--md-error); }
+.admin-tile-icon { width: 24px; height: 24px; color: var(--md-primary); flex: none; }
+.admin-tile-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.admin-tile-text .muted { font-size: 13px; }
+
+.card-head { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; justify-content: space-between; }
+.card-head h2 { margin: 0; }
+.bulk-quota[open] { flex-basis: 100%; }
+.bulk-quota > summary { list-style: none; cursor: pointer; }
+.bulk-quota > summary::-webkit-details-marker { display: none; }
+.bulk-quota[open] > summary { margin-bottom: 8px; }
+
+.people-table td { vertical-align: middle; padding-top: 10px; padding-bottom: 10px; }
+.people-table th.num, .people-table td.num { text-align: right; font-variant-numeric: tabular-nums; }
+.people-table td.num { white-space: nowrap; }
+.people-table th .dot { width: 8px; height: 8px; vertical-align: 1px; }
+.people-table .tag { margin-left: 6px; height: 20px; }
+.people-table .push-state { margin-left: 6px; vertical-align: -3px; }
+/* The bell alone in the table, the words kept for a screen reader and a tooltip. */
+.people-table .push-state .push-text { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+.person-link { color: var(--md-on-surface); text-decoration: none; }
+.person-link:hover { text-decoration: underline; }
+.person-email { display: block; font-size: 12px; }
+.row-action { width: 48px; text-align: right; }
+/* The name is the link to the same form, so a phone can spare the pencil. */
+@media (max-width: 599px) { .person-email, .people-table .row-action { display: none; } }
+
+.person-head { display: flex; flex-wrap: wrap; gap: 8px; align-items: flex-start; justify-content: space-between; }
+.person-head h2 { margin: 0; }
+.person-form .quota-form .tf { margin-bottom: 0; }
+
+.type-row { flex: 1; min-width: 0; }
+.type-row > summary {
+	list-style: none;
+	cursor: pointer;
+	display: flex;
+	flex-wrap: wrap;
+	gap: 4px 10px;
+	align-items: center;
+}
+.type-row > summary::-webkit-details-marker { display: none; }
+.type-row > summary .btn { margin-left: auto; }
+.type-row[open] > summary .btn { visibility: hidden; }
+.type-row[open] > summary { margin-bottom: 12px; }
+.type-row .type-facts { font-size: 13px; }
+.type-list li.inactive .type-row > summary { opacity: 0.7; }
+.btn.danger { color: var(--md-error); }
+
+.holiday-date { min-width: 8ch; font-variant-numeric: tabular-nums; }
+
+.channel-grid { display: grid; grid-template-columns: minmax(0, 1fr); gap: 16px; }
+@media (min-width: 768px) { .channel-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+.channel h3.sub { margin-top: 8px; }
+.tag.good { background: var(--md-tertiary-container); color: var(--md-on-tertiary-container); }

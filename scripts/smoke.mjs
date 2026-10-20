@@ -47,6 +47,7 @@ const ORIGIN = `http://127.0.0.1:${PORT}`;
 const CHANNEL_SECRET = 'smoke-channel-secret';
 const ADMIN = 'admin@example.com';
 const OTHER = 'other@example.com';
+const ADMIN_SECTIONS = ['/admin/people', '/admin/types', '/admin/holidays', '/admin/notifications', '/admin/export', '/admin/activity'];
 const STATE = mkdtempSync(join(tmpdir(), 'wnl-smoke-'));
 
 let pass = 0;
@@ -679,7 +680,7 @@ async function main() {
 	);
 	check(
 		'and the admin page says LINE is switched off',
-		(await (await fetch(`${BASE}/admin`)).text()).includes('switched off'),
+		(await (await fetch(`${BASE}/admin/notifications`)).text()).includes('switched off'),
 		'admin page does not report the channel as off',
 	);
 
@@ -857,7 +858,7 @@ async function main() {
 		const previewRes = await post('/admin/holidays/preview', { list });
 		const html = await previewRes.text();
 		eq('import preview: a page, not a redirect', previewRes.status, 200);
-		check('import preview: a new date says new', new RegExp(`${TUE}</span><span>Smoke Day</span><span class="tag">new<`).test(html), 'no "new" row');
+		check('import preview: a new date says new', html.includes('<span>Smoke Day</span><span class="tag">new<'), 'no "new" row');
 		check('import preview: a held date says so', /New Year<\/span><span class="tag">already there</.test(html), 'no "already there" row');
 		check('import preview: a new name says what it replaces', html.includes('renames “Songkran”'), 'no rename row');
 		check('import preview: names the booking charged for the new holiday', html.includes('href="/leave/smoke-hol/edit"') && html.includes('1 day charged'), 'affected booking missing');
@@ -1006,8 +1007,39 @@ async function main() {
 	res = await post('/admin/quotas/bulk', { year: '2027', leaveTypeId: '99', days: '5' });
 	eq('bulk quota rejects unknown leave type', flashOf(res)?.kind, 'err');
 
-	res = await post('/admin/user', { email: ADMIN, active: '1' });
+	// --- the admin area: an overview, and a page per section -----------------
+	const overview = await (await fetch(`${BASE}/admin`)).text();
+	check('admin overview: the four figures', ['Away today', 'Notifications on', '09:00 notification', 'Changes, 7 days'].every((s) => overview.includes(s)), 'a figure is missing');
+	for (const href of ADMIN_SECTIONS) {
+		check(`admin overview: links to ${href}`, overview.includes(`href="${href}"`), 'link missing');
+		const html = await (await fetch(`${BASE}${href}`)).text();
+		check(`admin section: ${href} renders, marked as the current tab`, html.includes(`href="${href}" class="admin-tab on" aria-current="page"`), html.slice(0, 200));
+	}
+	res = await fetch(`${BASE}/admin?audit_action=created`, { redirect: 'manual' });
+	eq('admin: an old filtered-trail link goes on to Activity, filter and all', res.headers.get('location'), '/admin/activity?audit_action=created');
+
+	// One person, one form: role, status and allowances saved together.
+	const personUrl = `/admin/people/${encodeURIComponent(ADMIN)}`;
+	const personHtml = await (await fetch(`${BASE}${personUrl}?y=2027`)).text();
+	check(
+		'person page: allowances and role in one form',
+		personHtml.includes(`action="${personUrl}"`) && personHtml.includes('name="q_1"') && personHtml.includes('name="isAdmin"') && personHtml.includes('name="active"'),
+		'form incomplete',
+	);
+	const quota2027 = () => d1Rows(`SELECT days_allotted AS d FROM quotas WHERE user_email = '${ADMIN}' AND year = 2027 AND leave_type_id = 1`)[0]?.d;
+	res = await post(personUrl, { year: '2027', isAdmin: '1', active: '1', q_1: '14', q_2: '999' });
+	eq('person save: an out-of-range allowance refuses the whole save', flashOf(res)?.kind, 'err');
+	eq('person save: and writes none of it', quota2027(), 12);
+	res = await post(personUrl, { year: '2027', isAdmin: '1', active: '1', q_1: '14' });
+	eq('person save: accepted', flashOf(res)?.kind, 'ok');
+	eq('person save: back to People, for that year', res.headers.get('location'), '/admin/people?y=2027');
+	eq('person save: the allowance is written', quota2027(), 14);
+	res = await post(personUrl, { year: '2027', active: '1', q_1: '15' });
 	check('last admin cannot demote itself', /only admin/i.test(flashOf(res)?.message ?? ''), flashOf(res)?.message);
+	eq('and the allowance in the same form is not saved either', quota2027(), 14);
+	eq('and is still an admin', d1Rows(`SELECT is_admin FROM users WHERE email = '${ADMIN}'`)[0]?.is_admin, 1);
+	res = await fetch(`${BASE}/admin/people/${encodeURIComponent('nobody@example.com')}`, { redirect: 'manual' });
+	check('person page: an unknown address goes back to People', /^\/admin\/people\?y=\d{4}$/.test(res.headers.get('location') ?? ''), res.headers.get('location'));
 
 	await stopServer();
 
@@ -1019,6 +1051,9 @@ async function main() {
 	await startServer(OTHER);
 
 	eq('second user is not admin', (await fetch(`${BASE}/admin`)).status, 403);
+	for (const href of ADMIN_SECTIONS) eq(`second user cannot open ${href}`, (await fetch(`${BASE}${href}`)).status, 403);
+	eq('second user cannot change anyone', (await post(`/admin/people/${encodeURIComponent(OTHER)}`, { year: '2027', isAdmin: '1', active: '1' })).status, 403);
+	eq('and did not make themselves an admin', d1Rows(`SELECT is_admin FROM users WHERE email = '${OTHER}'`)[0]?.is_admin, 0);
 	check('the holiday reminder is for admins only', !(await (await fetch(`${BASE}/`)).text()).includes('holidays-due'), 'shown to a non-admin');
 	eq('second user cannot reach an admin action', (await post('/admin/quotas/bulk', { year: '2027', leaveTypeId: '1', days: '1' })).status, 403);
 	eq('second user cannot import holidays', (await post('/admin/holidays/import', { list: '2030-01-01 Sneaky' })).status, 403);
@@ -1220,8 +1255,10 @@ async function main() {
 	far = (await feed(addDays(MON, 35), addDays(MON, 35))).entries;
 	eq('a deactivated user drops off the shared calendar', far.length, 0);
 
-	const adminHtml = await (await fetch(`${BASE}/admin`)).text();
-	check('but admin still lists them', adminHtml.includes(OTHER), 'deactivated user missing from /admin');
+	const adminHtml = await (await fetch(`${BASE}/admin/people`)).text();
+	check('but admin still lists them', adminHtml.includes(OTHER), 'deactivated user missing from /admin/people');
+	const leftAt = adminHtml.indexOf(`person-email">${OTHER}<`);
+	check('and marks them as having left', adminHtml.slice(adminHtml.lastIndexOf('<tr', leftAt), leftAt).includes('>left</span>'), 'not marked as left');
 
 	const stillThere = d1Rows(`SELECT status FROM leave_requests WHERE id = '${otherLeave}'`);
 	eq('and their leave row is hidden, not deleted', stillThere[0]?.status, 'confirmed');
@@ -1513,7 +1550,7 @@ async function main() {
 	eq('the type can be retired', flashOf(res)?.kind, 'ok');
 	eq('and is stored as retired', d1Rows(`SELECT active FROM leave_types WHERE id = ${smokeType.id}`)[0]?.active, 0);
 	check('a retired type leaves the booking form', !(await (await fetch(`${BASE}/book`)).text()).includes('Smoke type'), 'still offered');
-	check('a retired type leaves the quota editor', !(await (await fetch(`${BASE}/admin`)).text()).includes(`q_${smokeType.id}`), 'still in the quota editor');
+	check('a retired type leaves the quota editor', !(await (await fetch(`${BASE}/admin/people/${encodeURIComponent(ADMIN)}`)).text()).includes(`q_${smokeType.id}`), 'still in the quota editor');
 	res = await post('/api/v1/leave', { leaveTypeId: String(smokeType.id), startDate: addDays(TYPE_MON, 1), endDate: addDays(TYPE_MON, 1) });
 	check('a retired type refuses a new booking', /no longer offered/i.test(flashOf(res)?.message ?? ''), flashOf(res)?.message);
 	eq('and the refusal points at the type field', flashOf(res)?.field, 'leaveTypeId');
@@ -1645,7 +1682,7 @@ async function main() {
 	// -----------------------------------------------------------------------
 	const noKeysPage = await (await fetch(`${BASE}/health`)).json();
 	check('bell: the earlier sessions ran without push keys', noKeysPage.db === true, 'health unreadable');
-	const noKeysAdminHtml = await (await fetch(`${BASE}/admin`)).text();
+	const noKeysAdminHtml = await (await fetch(`${BASE}/admin/people`)).text();
 
 	await stopServer();
 	await startServer(ADMIN, { pushKeys: true });
@@ -1678,14 +1715,14 @@ async function main() {
 
 	// --- who has notifications on, for an admin -------------------------------
 	// One subscription is left from session 1, re-subscribed by OTHER.
-	const pushAdminHtml = await (await fetch(`${BASE}/admin`)).text();
+	const pushAdminHtml = await (await fetch(`${BASE}/admin/people`)).text();
 	const rowOf = (html, email) => {
-		const at = html.indexOf(`<span class="muted mono">${email}</span>`);
-		return at < 0 ? '' : html.slice(at, html.indexOf('</tr>', at));
+		const end = html.indexOf(`<span class="muted mono person-email">${email}</span>`);
+		return end < 0 ? '' : html.slice(html.lastIndexOf('<tr', end), end);
 	};
 	check('admin push: a person with a subscription shows as on, with a count', /push-state on[^]*Notifications on · 1 browser/.test(rowOf(pushAdminHtml, OTHER)), rowOf(pushAdminHtml, OTHER).slice(0, 300));
 	check('admin push: a person without one shows as off', /push-state muted[^]*Notifications off/.test(rowOf(pushAdminHtml, ADMIN)), rowOf(pushAdminHtml, ADMIN).slice(0, 300));
-	check('admin push: no endpoint reaches the page', !pushAdminHtml.includes('push.example.net'), 'endpoint in /admin');
+	check('admin push: no endpoint reaches the page', !pushAdminHtml.includes('push.example.net'), 'endpoint in /admin/people');
 	check('admin push: absent where push is not configured', !noKeysAdminHtml.includes('push-state'), 'push column without keys');
 
 	// --- the audit trail, filtered and paged ------------------------------------
@@ -1694,12 +1731,12 @@ async function main() {
 		const section = html.slice(at, html.indexOf('</section>', at));
 		return { section, items: section.split('<li class="leave-row">').slice(1) };
 	};
-	let audits = trailOf(await (await fetch(`${BASE}/admin?audit_who=${encodeURIComponent(OTHER)}`)).text());
+	let audits = trailOf(await (await fetch(`${BASE}/admin/activity?audit_who=${encodeURIComponent(OTHER)}`)).text());
 	check('audit filter: by person keeps only their rows', audits.items.length > 0 && audits.items.every((li) => li.includes(OTHER)), `${audits.items.length} rows`);
 	check('audit filter: the person stays chosen', audits.section.includes(`<option value="${OTHER}" selected`), 'not selected');
-	audits = trailOf(await (await fetch(`${BASE}/admin?audit_action=cancelled`)).text());
+	audits = trailOf(await (await fetch(`${BASE}/admin/activity?audit_action=cancelled`)).text());
 	check('audit filter: by action keeps only that action', audits.items.length > 0 && audits.items.every((li) => li.includes('>cancelled</span>')), `${audits.items.length} rows`);
-	res = await fetch(`${BASE}/admin?audit_action=drop%20table&audit_who=nobody&audit_page=-4`);
+	res = await fetch(`${BASE}/admin/activity?audit_action=drop%20table&audit_who=nobody&audit_page=-4`);
 	audits = trailOf(await res.text());
 	check('audit filter: nonsense is ignored, not refused', res.status === 200 && audits.items.length > 0, `${res.status}, ${audits.items.length} rows`);
 
@@ -1709,11 +1746,11 @@ async function main() {
 		d1(`INSERT INTO leave_audit (leave_id, actor_email, subject_email, action, at) VALUES ('smoke-pager', '${PAGER}', '${PAGER}', 'edited', '2026-01-01T09:00:00+07:00')`);
 	}
 	sqlite.exec('COMMIT');
-	audits = trailOf(await (await fetch(`${BASE}/admin?audit_who=${encodeURIComponent(PAGER)}`)).text());
+	audits = trailOf(await (await fetch(`${BASE}/admin/activity?audit_who=${encodeURIComponent(PAGER)}`)).text());
 	eq('audit pages: thirty to a page', audits.items.length, 30);
-	check('audit pages: an Older link to page 2, keeping the filter', audits.section.includes(`href="/admin?audit_who=${encodeURIComponent(PAGER)}&amp;audit_page=2#audit"`), audits.section.slice(-600));
+	check('audit pages: an Older link to page 2, keeping the filter', audits.section.includes(`href="/admin/activity?audit_who=${encodeURIComponent(PAGER)}&amp;audit_page=2"`), audits.section.slice(-600));
 	check('audit pages: no Newer link on page 1', !audits.section.includes('rel="prev"'), 'Newer on page 1');
-	audits = trailOf(await (await fetch(`${BASE}/admin?audit_who=${encodeURIComponent(PAGER)}&audit_page=2`)).text());
+	audits = trailOf(await (await fetch(`${BASE}/admin/activity?audit_who=${encodeURIComponent(PAGER)}&audit_page=2`)).text());
 	eq('audit pages: the rest on page 2', audits.items.length, 5);
 	check('audit pages: page 2 links back, and not on', audits.section.includes('rel="prev"') && !audits.section.includes('rel="next"'), 'links wrong');
 	d1("DELETE FROM leave_audit WHERE leave_id = 'smoke-pager'");
