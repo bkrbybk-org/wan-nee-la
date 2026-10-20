@@ -8,7 +8,7 @@ Updated: 2026-10-20
 
 ## Status
 
-Deployed and serving. Version `2963107a-6051-4b8c-b57f-e1f30aa542ec`, deployed 2026-10-20 with `npm run ship`, D1 `<database-id>` in APAC, behind Cloudflare Access on `<hostname>`. Production checks passed: the new version serves all traffic, `/health` and `/` both 302 to Access, production D1 answers, and migration 0011 is applied with every type still offered. That deploy also carried the 09:00 weekday schedule — production had still been on the old daily `0 1 * * *` cron until then.
+Deployed and serving. Version `6fb62cd6-e47e-4656-83ca-ea24aec40032`, deployed 2026-10-20 with `npm run ship`, D1 `<database-id>` in APAC, behind Cloudflare Access on `<hostname>`. Production checks passed: the new version serves all traffic, `/health` and `/` both 302 to Access, production D1 answers, and migration 0011 is applied with every type still offered. That deploy also carried the 09:00 weekday schedule — production had still been on the old daily `0 1 * * *` cron until then.
 
 **In real use.** Twelve active users, 24 confirmed bookings, 26 holidays, four leave types, 49 rows in the audit trail (read 2026-10-20). That changes what matters here: the shared surfaces now have a real audience, so note visibility, the audit trail and the privacy rules on `/u/:email` are load-bearing rather than theoretical.
 
@@ -50,7 +50,7 @@ src/client/    progressive enhancement only (booking preview, dialogs, drag,
                ripple, push subscription)
 ```
 
-Eleven migrations, applied in order; `migrations/0011` is the newest — it added `leave_types.active`, so a type with bookings can be retired rather than deleted (#39). Each is written to survive being replayed, because `db:init` runs the whole directory — the one exception is `0003`, which is why [ISSUES.md](ISSUES.md) #24 is open.
+Eleven migrations, applied in order; `migrations/0011` is the newest — it added `leave_types.active`, so a type with bookings can be retired rather than deleted (#39). Each database records which have run in an `applied_migrations` table, and `scripts/migrate.mjs` (`db:init`, `db:init:remote`) runs only the rest, so a second run is a no-op rather than the failure on `0003` it used to be ([ISSUES.md](ISSUES.md) #24). `npm run db:status:remote` lists production's.
 
 The rule that keeps this honest: **the server computes and validates everything.** `days_total` is never read from a request; the booking form's live preview asks the server rather than reimplementing the rules; drag-to-move submits to the same endpoint the edit page uses, so one set of validations covers every path.
 
@@ -109,7 +109,7 @@ Two consequences worth remembering:
 
 **Balances** — per leave type, per year. Planned medical draws no quota. Leave is charged to the year it starts in, and a year nobody has been seeded for yet falls back to each type's `default_days`, so next January can be booked in November even when this year's allowance is spent. Editing credits a booking's own days back before checking the balance — only within the same year, so a booking moved across New Year is checked against the year it lands in (#36). Under the balances, twelve small bars show the year's days off month by month, split by type in the types' own colours, with a table behind them for a screen reader.
 
-**Admin** — quota editing per person or in bulk across active users, holiday management, user roles, LINE status and run log, and a CSV export for HR: per person per leave type, or one row per booking, for any range up to a year. A booking that crosses the range's edge counts only its days inside; people who have since left are included; notes never are; a name a spreadsheet would run as a formula is defused. A year without quota rows shows each type's default — the number the booking check will actually enforce.
+**Admin** — quota editing per person or in bulk across active users, holiday management, user roles, whether each person has notifications on (a count of browsers, nothing about them), LINE status and run log, an audit trail filtered by person and action and paged thirty at a time, and a CSV export for HR: per person per leave type, or one row per booking, for any range up to a year. A booking that crosses the range's edge counts only its days inside; people who have since left are included; notes never are; a name a spreadsheet would run as a formula is defused. A year without quota rows shows each type's default — the number the booking check will actually enforce.
 
 **LINE digest** — on weekdays at 09:00 Asia/Bangkok, posts who is out when `LINE_ENABLED` is `"1"`; off by default. Skips weekends, holidays, and days with nobody out, because LINE bills a group push per member. Double-posting is guarded twice: a `notification_runs` row is claimed *before* the push, and the request carries LINE's `X-Line-Retry-Key`. `scheduled()` never throws, since a retried handler that already sent would post again.
 
@@ -143,7 +143,7 @@ Two consequences worth remembering:
 
 ## Verification
 
-**876 automated assertions**, all green. CI runs them, and lint, on every push and pull request.
+**930 automated assertions**, all green. CI runs them, and lint, on every push and pull request.
 
 | Suite | Assertions | Covers |
 | --- | --- | --- |
@@ -153,16 +153,19 @@ Two consequences worth remembering:
 | `test-push.mjs` | 31 | RFC 8291 encryption against the spec's worked example, VAPID token and signature, the `วันนี้ … ลา` and week-ahead titles |
 | `test-holidays.mjs` | 45 | Parsing a pasted holiday list, and its bounds; what an import would change; the reminder to enter next year's |
 | `test-report.mjs` | 24 | Leave counted over a span — cut to it, halves where they fall — per person and per month; the CSV writer and its formula guard |
+| `test-migrate.mjs` | 29 | Migration tracking: the generated SQL on SQLite, then `migrate.mjs` itself through wrangler — applied twice, a legacy database refused and then baselined |
 | `test-i18n.mjs` | 27 | Lookup, placeholders, plurals, and the catalogue's own health |
-| `smoke.mjs` | 395 | The HTTP layer — see below |
-| `test-browser.mjs` | 41 | The calendar's own script in headless Chrome: the phone's day card, tapping and swiping it, what a screen reader is told, the folding Book button, the days-off-by-month chart, the busy-day count, the card staying on screen under both banners, the month swipe, the notification invitation, the entry popup, drag-to-move, remove and undo, booking from an empty day, the Thai interface |
+| `smoke.mjs` | 417 | The HTTP layer — see below |
+| `test-browser.mjs` | 44 | Three screenshots compared with per-platform references (phone light and dark, laptop) — then the calendar's own script in headless Chrome: the phone's day card, tapping and swiping it, what a screen reader is told, the folding Book button, the days-off-by-month chart, the busy-day count, the card staying on screen under both banners, the month swipe, the notification invitation, the entry popup, drag-to-move, remove and undo, booking from an empty day, the Thai interface |
 | `check-openapi.mjs` | — | Each of the 34 routes is either documented in `openapi.yaml` or deliberately listed as not, and the API Shield 3.0.3 copy still builds from it |
 
-The smoke suite boots a real worker against a scratch database and exercises what pure functions cannot reach: the CSRF guard, ownership checks on edit and cancel, booking rules over real requests, the open-redirect guards on `returnTo` **and on the `Referer` header**, note visibility across two identities, the audit trail's contents, the security headers, digest decisions, the webhook signature, push subscription ownership, admin authorisation, undo and its re-validation, next-year and cross-year quota, a LINE channel switched off by its flag, adding, retiring and deleting leave types, and history pruning through the real scheduled handler.
+The smoke suite boots a real worker against a scratch database and exercises what pure functions cannot reach: the CSRF guard, ownership checks on edit and cancel, booking rules over real requests, the open-redirect guards on `returnTo` **and on the `Referer` header**, note visibility across two identities, the audit trail's contents, the security headers, digest decisions, the webhook signature, push subscription ownership, admin authorisation, undo and its re-validation, next-year and cross-year quota, a LINE channel switched off by its flag, adding, retiring and deleting leave types, and history pruning through the real scheduled handler, the audit trail's filter and pages, the admin's notifications column, and an unhandled error — a table renamed under the running server — answering in the app's own shapes and logged by route pattern, never by path.
 
 It is built against its own worst failure mode — passing while testing nothing. The server is health-checked before any assertion; each boot proves it is signed in as the expected identity; and every assertion written in the file must actually run, so a section that throws early fails the run with the missed lines named. Confirmed by sabotage: removing the ownership check turns 5 assertions red, restoring the leaked email field turns 1 red, and pointing a boot at the wrong identity fails the harness. Its Mon–Fri fixture picks a week with no seeded public holiday, after it drifted onto one and failed for a reason that was the calendar's rather than the code's (#37). It runs in about fifteen seconds: fixtures go straight into the scratch database's SQLite file rather than through a `wrangler d1 execute` per statement, which had made it twelve minutes (#44).
 
 **API Shield** is enforced in front of Access and checked from outside with `npm run shield:probe`: on 2026-09-19 all 12 schema-breaking requests were refused at the edge and all 7 compliant ones passed. The same day the app was feature-tested in production, signed in, behind that rule — booking, the live preview, edit, undo, cancel, every page, language, push test — with nothing blocked (#42, #43 were found and fixed on the way). Probed again on 2026-10-18, after the move to `/api/v1/…`: all 12 violating requests were stopped at the edge and every compliant one reached Access, so the schema was re-uploaded for the new paths. The probe then gained cases for `by-date`, `holidays` and `balances` (16 violating, 12 compliant): `holidays` and `balances` were not enforced, since the uploaded schema predated them. On 2026-10-19, after a re-upload, adding the two endpoints in Endpoint Management, and setting every endpoint's action to Block, **all 16 violating requests were stopped at the edge** and all 12 compliant ones reached Access. On the way, the probe twice caught a dashboard change that had quietly switched enforcement off — first for everything, then for the three POST bodies — which is what it is for.
+
+**Screenshots.** `test-browser.mjs` compares March 2030 — fixed bookings, no holidays, no today; the Upcoming list, banners and footer blanked — with references in `scripts/visual/<platform>/`, failing when more than 0.1% of pixels move by more than 48 in a channel. Confirmed by sabotage: recolouring the busy-day pill fails both phone shots at 0.19%, with a diff image showing only the pill. CI keeps every shot as an artifact, which is where the Linux references come from.
 
 **CI** also builds the client bundle and the Worker (`--dry-run`, no credentials), and fails if `.dev.vars`, `wrangler.local.jsonc` or the built bundle are ever tracked, or if a credential-shaped string is committed. It needs no secrets, so it runs on pull requests from forks.
 
@@ -172,7 +175,7 @@ It is built against its own worst failure mode — passing while testing nothing
 
 ## Open items
 
-**No known bugs.** The push keypair mismatch (#40) was repaired on 2026-09-21. 876 assertions are green and `npm audit` is clean. The 2026-08-25 audit and the 2026-09-13 review both found and fixed what they turned up — the second a quota overdraw when moving a booking across New Year (#36) — and each fix is covered by a test or, where a test could not reach it, recorded in [ISSUES.md](ISSUES.md).
+**No known bugs.** The push keypair mismatch (#40) was repaired on 2026-09-21. 930 assertions are green and `npm audit` is clean. The 2026-08-25 audit and the 2026-09-13 review both found and fixed what they turned up — the second a quota overdraw when moving a booking across New Year (#36) — and each fix is covered by a test or, where a test could not reach it, recorded in [ISSUES.md](ISSUES.md).
 
 What follows is decisions, unfinished configuration, accepted trade-offs and debt — not defects.
 
@@ -203,10 +206,9 @@ What follows is decisions, unfinished configuration, accepted trade-offs and deb
 
 Nothing here is urgent; all of it is confirmed present. Owners and ordering in [PLAN.md](PLAN.md) section 4.
 
-- `npm run db:init` cannot be run twice (#24): migration `0003` is a bare `ADD COLUMN`, so a real failure is indistinguishable from a no-op.
 - A plain `npm run deploy` still overwrites Worker vars with only a warning (#40). `npm run ship` refuses on drift since 2026-10-19, so use that.
 - Nothing rate-limits the feeds (PLAN 3.4). Authentication stops strangers, not a signed-in caller looping over the roster.
-- The API Shield schema is uploaded by hand. Changing what one of the ten JSON operations accepts means `npm run openapi:shield` and a re-upload in the same change, or real requests get a 403. Nothing checks that the uploaded copy is current.
+- The API Shield schema is uploaded by hand. Changing what one of the ten JSON operations accepts means `npm run openapi:shield` and a re-upload in the same change, or real requests get a 403. Since 2026-10-20 `ship` warns when the spec validates differently from the schema recorded as uploaded (`scripts/shield-uploaded.json`, a fingerprint of paths, parameters and bodies only) — a record kept by hand after a dashboard upload, so it is only as true as that habit.
 - Deploy is manual, by choice. Deploy-on-merge would put a Cloudflare API token and the infrastructure ids into a public repo's settings.
 
 Dependencies are clean: `npm audit` reports zero vulnerabilities after bumping Hono to `^4.13.8` and Wrangler to `^4.135.0` — the latter clears a HIGH advisory in its bundled `sharp`.
@@ -255,6 +257,7 @@ Features — iCal, team grouping, coverage scoped to a team — are in PLAN.md s
 
 ## Change log
 
+- **2026-10-20** — Migrations are tracked: each database has an `applied_migrations` table, `db:init` runs only what is missing and can be run again (#24), and `ship` refuses to deploy over a pending migration unless `--migrate` says to apply it. Production was baselined through 0011. `/admin` shows who has notifications on, and the audit trail filters by person and action and pages thirty at a time. An unhandled error now answers in the app's own shapes and leaves one JSON line in Workers Logs, naming the route pattern rather than the path, so no address is logged. The browser tests compare three screenshots with per-platform references. `ship` warns when the spec would validate differently from the API Shield schema last uploaded.
 - **2026-10-20** — Review and documentation cross-check; no code changed. ARCHITECTURE's route table gained `/api/v1/holidays` and `/api/v1/balances`, and its non-goals now say a payroll *integration* rather than an export, since the HR CSV exists. README counts seven unit suites and 36 routes, and drops a step for removing a "Not enabled yet" Push marker that is already gone. The client bundle is ~15kb now, not ~10kb. PLAN 5.2 (CSV export) closed. Production figures refreshed: twelve active users, and push still reaches only one person.
 - **2026-10-20** — A CSV export for HR on `/admin`: per person per leave type, or one row per booking, for a date range, counting only the days inside it, including people who have left, without notes, and defusing names a spreadsheet would run as formulas. `/me` shows the year's days off month by month, split by type. On a phone the floating Book button folds to its icon once the page scrolls, and a screen reader is told the day and who is away when a tap or swipe changes the day card. `src/domain/report.ts` does the counting for both reports, with its own unit suite.
 - **2026-10-20** — The holiday import can recount for you: with "Also recount these bookings" ticked (the default), bookings already charged for a newly added holiday are recounted through the same write an edit uses, so each is in the audit trail under the admin's name, and the message says how many. On a phone a day with more than three people away shows the number instead of a cluster of dots, and the two standing banners — the notification invitation and the holiday reminder — are compact strips of at most two lines, so the day card stays on an 812px screen with both up; an empty row above the grid is gone too. The browser tests now cover all of that plus remove-then-undo, booking from an empty day, and the Thai interface (33 assertions), and `BROWSER_SHOTS=<dir>` saves screenshots.

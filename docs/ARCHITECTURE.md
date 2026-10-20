@@ -43,12 +43,14 @@ An Access service token carries `common_name`, not `email`, so it is nobody's em
 
 Two zone-level layers run at the edge **before** Access, so they see anonymous traffic too (both verified 2026-09-19):
 
-- **API Shield schema validation.** The ten JSON operations are uploaded as an OpenAPI 3.0.3 schema derived from `public/openapi.yaml` (`npm run openapi:shield`), and a WAF custom rule blocks on `cf.schema_validation.uploaded.violated`. The other 26 routes are not in the schema and are not checked; there is no fallthrough rule, and there must not be one. A change to what one of those operations *accepts* needs the schema regenerated and re-uploaded in the same change, or real requests start getting 403s. `npm run shield:probe` checks enforcement from outside.
+- **API Shield schema validation.** The ten JSON operations are uploaded as an OpenAPI 3.0.3 schema derived from `public/openapi.yaml` (`npm run openapi:shield`), and a WAF custom rule blocks on `cf.schema_validation.uploaded.violated`. The other 26 routes are not in the schema and are not checked; there is no fallthrough rule, and there must not be one. A change to what one of those operations *accepts* needs the schema regenerated and re-uploaded in the same change, or real requests start getting 403s. `npm run shield:probe` checks enforcement from outside. And `ship` warns when the spec would now validate differently from the schema last recorded as uploaded: `scripts/shield-uploaded.json` holds a fingerprint of paths, parameters and request bodies — prose excluded, so rewording a description does not raise it — written by `shield:upload`, or by `openapi:shield -- --mark-uploaded` after a dashboard upload.
 - **A rule refusing `*.yaml` and `*.yml`.** Which is why `/docs` reads `/openapi.json`, not the YAML (ISSUES #42).
 
 ## Data model (D1)
 
 Eleven migrations, applied in order; `0010` removed the unused unpaid leave type and changed data only, and `0011` added `leave_types.active`. This is the schema they produce — checked against a database with all of them applied, not written from memory.
+
+Which have run is recorded in the database itself, in `applied_migrations (name, applied_at)`, written by `scripts/migrate.mjs` in the same script as each file it applies. It is not in the block below because no migration creates it: the runner does, on first use.
 
 ```sql
 CREATE TABLE users (
@@ -372,6 +374,8 @@ The write is batched with the change itself, inside the repo functions that perf
 
 Snapshots are JSON rather than mirrored columns so the trail keeps its meaning when `leave_requests` changes shape.
 
+On `/admin` the trail is filtered by person — as actor or as subject, since "what happened around Mai" includes an admin changing her booking — and by action, through a GET form so a filtered view is a link; thirty rows a page, asking for one more than a page to know whether an older one exists rather than counting the table. Unrecognised filter values are dropped, not refused.
+
 **Retention.** After the digest, the same cron run deletes audit rows older than three years and `notification_runs` rows older than 90 days (`AUDIT_KEEP_YEARS`, `NOTIFICATION_KEEP_DAYS` in `src/repo/db.ts`). In its own `try`, so housekeeping can never delay or block a post. Three years covers the year being worked in, the two before it, and any balance that crossed New Year; everything the app can still change — 90 days of backdating, 10 minutes of undo — sits well inside it.
 
 ## Errors
@@ -379,6 +383,8 @@ Snapshots are JSON rather than mirrored columns so the trail keeps its meaning w
 Every JSON failure is `{ "error": { "message", "key"?, "vars"? } }`. `message` is a sentence in the reader's language, ready to show; `key` is present when the booking rules named the message, for a program that would rather match than parse prose. There were three shapes before 2026-09-21 — a bare string on the feeds, `{ ok: false, error }` on the push routes, and a bare key from the preview — and a caller had to know which endpoint it was talking to before it could read a failure.
 
 Success bodies are unchanged: the feeds return their data, the push routes `{ ok: true }`.
+
+**Unhandled errors** (`app.onError`) answer in the same shapes — that error body on `/api/…`, an error page elsewhere — instead of Hono's bare "Internal Server Error", and write one JSON line for Workers Logs (`observability` is on in the config): method, the **route pattern**, the error's name and message, five stack frames and the version. The pattern rather than the path, because `/u/:email` would put an address in the log; no query, body or identity either. The smoke suite renames a table under the running server to prove it.
 
 ## Versioning
 

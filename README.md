@@ -44,6 +44,12 @@ Edit `wrangler.local.jsonc` and replace the `REPLACE_ME_*` placeholders:
 npm run db:init && npm run db:seed
 ```
 
+`db:init` applies the migrations this database has not had yet and records
+them in its `applied_migrations` table, so it is safe to run again after
+pulling a new one. A local database made before that table existed is refused
+once; record it with `node scripts/migrate.mjs --local --baseline
+0011_leave_type_active.sql` (or delete `.wrangler/state` and start over).
+
 Cloudflare Access cannot run locally, so create `.dev.vars` (gitignored) to log in as a fixed user:
 
 ```bash
@@ -100,6 +106,14 @@ passing on nothing. CI runs it, and so does `npm run ship`.
 `BROWSER_SHOTS=<dir> npm run test:browser` also saves screenshots of the phone
 calendar, in English and in Thai.
 
+It also compares three screenshots — the phone month in light and dark, the
+laptop month — with references in `scripts/visual/<platform>/`, since fonts
+differ between operating systems. They are of March 2030, with fixed bookings
+and the date-dependent parts blanked, so they do not change with the calendar.
+A failure writes the actual shot and a diff, with what moved in red. After a
+deliberate visual change, `UPDATE_VISUAL=1 npm run test:browser` re-records
+them; for Linux, take them from the `visual-<sha>` artifact of the CI run.
+
 `node scripts/palette.mjs` regenerates the Material 3 colour roles, checks every
 pair the stylesheet paints against WCAG AA, and fails if the values in
 `public/app.css` are not the ones it generates. CI runs it.
@@ -132,12 +146,15 @@ production — the new version is the one serving, Access still fronts `/health`
 and `/`, production D1 answers a read, and API Shield still blocks every
 schema violation (`shield:probe`). It stops at the first failure. Run
 from a git worktree, it borrows `wrangler.local.jsonc` from the main checkout
-for the deploy and removes it afterwards. A migration is named, never inferred,
-since D1 here keeps no record of which files have run:
+for the deploy and removes it afterwards. Production records which migrations
+it has had, so `ship` knows what is pending — and refuses to deploy over a
+pending one until told to apply it. Read the file first, then:
 
 ```bash
-npm run ship -- --migrate migrations/0011_leave_type_active.sql
+npm run ship -- --migrate
 ```
+
+`npm run db:status:remote` lists what production has had and what is pending.
 
 **Every deploy replaces the Worker's vars with the ones in
 `wrangler.local.jsonc`.** A var changed in the dashboard, or by a deploy from
@@ -271,7 +288,7 @@ hostname, so it stays in the gitignored `dist/`. `npm test` builds it from the
 spec on every run, so a 3.1-only construct fails there rather than in the
 dashboard.
 
-The other 24 routes — HTML pages and form posts — are deliberately not in the
+The other 26 routes — HTML pages and form posts — are deliberately not in the
 spec. So do **not** deploy API Shield's fallthrough rule ("mitigate requests to
 unidentified endpoints") on this hostname: it would block the whole app.
 Upload with a token that has the **API Gateway** permission, rather than by
@@ -291,6 +308,12 @@ exactly, so after any change to what the API accepts, run `npm run
 openapi:shield` and upload the file again — until you do, those operations are
 simply not validated. Moving to `/api/v1/…` on 2026-09-21 left the whole API
 unvalidated until the re-upload, which `npm run shield:probe` shows plainly.
+
+`npm run ship` warns when that has happened: it compares a fingerprint of what
+the spec validates — paths, parameters, request bodies, not the prose — with
+the one in `scripts/shield-uploaded.json`, the schema last known to be
+uploaded. `shield:upload` updates that file; after a dashboard upload, run
+`npm run openapi:shield -- --mark-uploaded`. Either way, commit it.
 
 After a dashboard upload, check **API Shield → Schema validation** filtered to
 this schema: all ten endpoints listed, a **new** endpoint added to Endpoint

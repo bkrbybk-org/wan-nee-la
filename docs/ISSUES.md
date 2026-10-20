@@ -352,13 +352,15 @@ One bug surfaced on the way and is fixed: a browser keeps the subscription it ma
 
 ---
 
-## #24 — `npm run db:init` fails on a second run `open`
+## #24 — `npm run db:init` fails on a second run `resolved`
 
 `migrations/0003_week_start.sql` is a bare `ALTER TABLE users ADD COLUMN week_start`, which errors with "duplicate column name" if the column is already there. Since `db:init` replays every file in `migrations/` and stops at the first failure, running it twice against the same database fails.
 
 Harmless in practice — the schema is already correct when it happens — but it makes a real failure indistinguishable from a no-op, and it means the command cannot be used to bring an existing database up to date.
 
 Found while checking that `0004_push.sql`, which rebuilds a table, survives being replayed; it does. The fix for 0003 is to rebuild the table the same way, or to move to a migration runner that records what it has applied.
+
+**Resolved 2026-10-20** by the second: `scripts/migrate.mjs` keeps an `applied_migrations` table in each database and runs only files it does not list, each followed in the same script by its own record. `db:init` and `db:init:remote` go through it, and a second run says "nothing pending". A database migrated before it existed — production, and any old local one — has the schema but no table; that is refused rather than guessed at, and recorded once with `--baseline <last file>`. Production was baselined through 0011 on 2026-10-20, after a read-only check that the effects of all eleven were there. `ship` reads the table: pending migrations refuse the deploy unless `--migrate` says to apply them. `scripts/test-migrate.mjs` replays the directory twice through wrangler, and baselines an old-style database.
 
 ---
 
