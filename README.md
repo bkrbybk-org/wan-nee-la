@@ -4,7 +4,7 @@
 
 Employee leave tracker on Cloudflare Workers. "wan nee la" is Thai for *on leave today*.
 
-- Global calendar — who is out, which day. A month grid at every width: names on a laptop, dots on a phone with one day's card beneath. Click a day to book it, click an entry to open it, drag an entry to move it.
+- Global calendar — who is out, which day. A month grid at every width: names on a laptop, dots on a phone, and a panel for the chosen day — who is away, then what is coming up. Click a day to see it, its + to book it, an entry to open it, drag an entry to move it.
 - Self-serve booking with half-day granularity, and a note that is private unless you share it. Edit or remove afterwards, undo a cancel or a move within ten minutes; every change is recorded. A refused booking comes back to the form with what you typed and the offending field marked.
 - Personal dashboard — days remaining per leave type, and the year's days off month by month. An upcoming sidebar on the calendar, and a month/year jump for planning further out.
 - A 09:00 Asia/Bangkok notification on weekdays, only on days someone is away — "วันนี้ Mai, Nok ลา" — to subscribed browsers (free). A LINE group post is built too but off by default (billed per member). A week-ahead post on Mondays.
