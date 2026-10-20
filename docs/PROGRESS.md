@@ -8,7 +8,7 @@ Updated: 2026-10-18
 
 ## Status
 
-Deployed and serving. Version `40c63d60-9068-465a-bbcc-8e7f282c998f`, deployed 2026-10-20 with `npm run ship`, D1 `<database-id>` in APAC, behind Cloudflare Access on `<hostname>`. Production checks passed: the new version serves all traffic, `/health` and `/` both 302 to Access, production D1 answers, and migration 0011 is applied with every type still offered. That deploy also carried the 09:00 weekday schedule — production had still been on the old daily `0 1 * * *` cron until then.
+Deployed and serving. Version `def49a9c-27ce-4cd0-b1a3-95f9680b1729`, deployed 2026-10-20 with `npm run ship`, D1 `<database-id>` in APAC, behind Cloudflare Access on `<hostname>`. Production checks passed: the new version serves all traffic, `/health` and `/` both 302 to Access, production D1 answers, and migration 0011 is applied with every type still offered. That deploy also carried the 09:00 weekday schedule — production had still been on the old daily `0 1 * * *` cron until then.
 
 **In real use.** Ten active users, 20 confirmed bookings, 26 holidays, four leave types, 31 rows in the audit trail. That changes what matters here: the shared surfaces now have a real audience, so note visibility, the audit trail and the privacy rules on `/u/:email` are load-bearing rather than theoretical.
 
@@ -81,12 +81,13 @@ Two consequences worth remembering:
 | GET · POST | `/leave/:id/edit` · `/api/v1/leave/:id/edit` | Edit, and offer undo. Also the drag-to-move target. |
 | POST | `/api/v1/leave/:id/cancel` | Soft cancel; idempotent. Offers undo. |
 | POST | `/api/v1/leave/:id/undo` | Undo the last cancel or edit within ten minutes, re-running the booking rules first. |
-| GET | `/me` | Balances, upcoming and past leave, settings. Year navigation. |
+| GET | `/me` | Balances, days off by month, upcoming and past leave, settings. Year navigation. |
 | GET | `/u/:email` | One person's leave. Schedule is shared; balances only for that person and admins; notes never. |
 | POST | `/me/name` · `/me/week-start` · `/me/lang` | Display name; Monday or Sunday first; English or Thai. |
 | POST | `/api/v1/push/subscribe` · `/api/v1/push/unsubscribe` | This browser's push subscription. Unsubscribe is scoped to its owner. |
 | POST | `/api/v1/push/test` | Sends to the caller's own browsers, so a fresh setup can be proved without waiting for 09:00. |
 | GET | `/admin` | Users, quotas, leave types, holidays, LINE status and run log. Admin only. |
+| GET | `/admin/export.csv?from=&to=&kind=` | Leave as a spreadsheet for HR: per person per type, or per booking. Days counted inside the range; people who have left included; notes never. |
 | POST | `/admin/quotas` · `/admin/quotas/bulk` | One person, or every active user at once. |
 | POST | `/admin/user` | Role and active flag. Last admin cannot demote itself. |
 | POST | `/admin/notify/preview` · `/admin/notify/send` | Dry-run and manual send, through the real digest job. |
@@ -106,9 +107,9 @@ Two consequences worth remembering:
 
 **Leave types** — annual, sick, planned medical, personal, all offered. Managed from `/admin` → Leave types: add, rename, recolour, set default days, reorder, retire, and delete one nobody has ever booked. A retired type leaves the booking form but keeps its history, and its existing bookings stay editable. Unpaid leave was seeded in 0002, never booked once, and removed in 0010. Planned medical is deliberately separate from sick leave: sick leave is unplanned and often entered after the fact, while a scheduled appointment or procedure is booked in advance like any other absence, and folding the two together would let planned treatment eat the allowance meant for being unexpectedly ill. It carries no allowance, so it is recorded but never refused — the only honest default without a stated policy.
 
-**Balances** — per leave type, per year. Planned medical draws no quota. Leave is charged to the year it starts in, and a year nobody has been seeded for yet falls back to each type's `default_days`, so next January can be booked in November even when this year's allowance is spent. Editing credits a booking's own days back before checking the balance — only within the same year, so a booking moved across New Year is checked against the year it lands in (#36).
+**Balances** — per leave type, per year. Planned medical draws no quota. Leave is charged to the year it starts in, and a year nobody has been seeded for yet falls back to each type's `default_days`, so next January can be booked in November even when this year's allowance is spent. Editing credits a booking's own days back before checking the balance — only within the same year, so a booking moved across New Year is checked against the year it lands in (#36). Under the balances, twelve small bars show the year's days off month by month, split by type in the types' own colours, with a table behind them for a screen reader.
 
-**Admin** — quota editing per person or in bulk across active users, holiday management, user roles, LINE status and run log. A year without quota rows shows each type's default — the number the booking check will actually enforce.
+**Admin** — quota editing per person or in bulk across active users, holiday management, user roles, LINE status and run log, and a CSV export for HR: per person per leave type, or one row per booking, for any range up to a year. A booking that crosses the range's edge counts only its days inside; people who have since left are included; notes never are; a name a spreadsheet would run as a formula is defused. A year without quota rows shows each type's default — the number the booking check will actually enforce.
 
 **LINE digest** — on weekdays at 09:00 Asia/Bangkok, posts who is out when `LINE_ENABLED` is `"1"`; off by default. Skips weekends, holidays, and days with nobody out, because LINE bills a group push per member. Double-posting is guarded twice: a `notification_runs` row is claimed *before* the push, and the request carries LINE's `X-Line-Retry-Key`. `scheduled()` never throws, since a retried handler that already sent would post again.
 
@@ -142,7 +143,7 @@ Two consequences worth remembering:
 
 ## Verification
 
-**832 automated assertions**, all green. CI runs them, and lint, on every push and pull request.
+**876 automated assertions**, all green. CI runs them, and lint, on every push and pull request.
 
 | Suite | Assertions | Covers |
 | --- | --- | --- |
@@ -151,9 +152,10 @@ Two consequences worth remembering:
 | `test-line.mjs` | 42 | Webhook signature, group-id extraction, daily and week-ahead digest text |
 | `test-push.mjs` | 31 | RFC 8291 encryption against the spec's worked example, VAPID token and signature, the `วันนี้ … ลา` and week-ahead titles |
 | `test-holidays.mjs` | 45 | Parsing a pasted holiday list, and its bounds; what an import would change; the reminder to enter next year's |
+| `test-report.mjs` | 24 | Leave counted over a span — cut to it, halves where they fall — per person and per month; the CSV writer and its formula guard |
 | `test-i18n.mjs` | 27 | Lookup, placeholders, plurals, and the catalogue's own health |
-| `smoke.mjs` | 383 | The HTTP layer — see below |
-| `test-browser.mjs` | 33 | The calendar's own script in headless Chrome: the phone's day card, tapping and swiping it, the busy-day count, the card staying on screen under both banners, the month swipe, the notification invitation, the entry popup, drag-to-move, remove and undo, booking from an empty day, the Thai interface |
+| `smoke.mjs` | 395 | The HTTP layer — see below |
+| `test-browser.mjs` | 41 | The calendar's own script in headless Chrome: the phone's day card, tapping and swiping it, what a screen reader is told, the folding Book button, the days-off-by-month chart, the busy-day count, the card staying on screen under both banners, the month swipe, the notification invitation, the entry popup, drag-to-move, remove and undo, booking from an empty day, the Thai interface |
 | `check-openapi.mjs` | — | Each of the 34 routes is either documented in `openapi.yaml` or deliberately listed as not, and the API Shield 3.0.3 copy still builds from it |
 
 The smoke suite boots a real worker against a scratch database and exercises what pure functions cannot reach: the CSRF guard, ownership checks on edit and cancel, booking rules over real requests, the open-redirect guards on `returnTo` **and on the `Referer` header**, note visibility across two identities, the audit trail's contents, the security headers, digest decisions, the webhook signature, push subscription ownership, admin authorisation, undo and its re-validation, next-year and cross-year quota, a LINE channel switched off by its flag, adding, retiring and deleting leave types, and history pruning through the real scheduled handler.
@@ -170,7 +172,7 @@ It is built against its own worst failure mode — passing while testing nothing
 
 ## Open items
 
-**No known bugs.** The push keypair mismatch (#40) was repaired on 2026-09-21. 832 assertions are green and `npm audit` is clean. The 2026-08-25 audit and the 2026-09-13 review both found and fixed what they turned up — the second a quota overdraw when moving a booking across New Year (#36) — and each fix is covered by a test or, where a test could not reach it, recorded in [ISSUES.md](ISSUES.md).
+**No known bugs.** The push keypair mismatch (#40) was repaired on 2026-09-21. 876 assertions are green and `npm audit` is clean. The 2026-08-25 audit and the 2026-09-13 review both found and fixed what they turned up — the second a quota overdraw when moving a booking across New Year (#36) — and each fix is covered by a test or, where a test could not reach it, recorded in [ISSUES.md](ISSUES.md).
 
 What follows is decisions, unfinished configuration, accepted trade-offs and debt — not defects.
 
@@ -253,6 +255,7 @@ Features — iCal, CSV export, team grouping, coverage scoped to a team — are 
 
 ## Change log
 
+- **2026-10-20** — A CSV export for HR on `/admin`: per person per leave type, or one row per booking, for a date range, counting only the days inside it, including people who have left, without notes, and defusing names a spreadsheet would run as formulas. `/me` shows the year's days off month by month, split by type. On a phone the floating Book button folds to its icon once the page scrolls, and a screen reader is told the day and who is away when a tap or swipe changes the day card. `src/domain/report.ts` does the counting for both reports, with its own unit suite.
 - **2026-10-20** — The holiday import can recount for you: with "Also recount these bookings" ticked (the default), bookings already charged for a newly added holiday are recounted through the same write an edit uses, so each is in the audit trail under the admin's name, and the message says how many. On a phone a day with more than three people away shows the number instead of a cluster of dots, and the two standing banners — the notification invitation and the holiday reminder — are compact strips of at most two lines, so the day card stays on an 812px screen with both up; an empty row above the grid is gone too. The browser tests now cover all of that plus remove-then-undo, booking from an empty day, and the Thai interface (33 assertions), and `BROWSER_SHOTS=<dir>` saves screenshots.
 - **2026-10-20** — Browser tests: `npm run test:browser` drives headless Chrome over the DevTools protocol, with no new dependency, through the phone's day card, swiping, the notification invitation, the entry popup and drag-to-move; `ship` and CI run it. On its first run it found drag-to-move broken in Chrome — a native link drag was cancelling the gesture — now fixed (#45). Importing holidays now goes through a preview: new, renamed and already-held lines, errors by line number with the list handed back, and the bookings already charged for a new holiday, linked for re-saving. On a phone, swiping the day card steps a day at a time, into the next month off the end. Desktop bars break at weekends and holidays inside a booking, matching the phone.
 - **2026-10-20** — Someone is shown away only on the days they are actually off: a Friday-to-Monday booking no longer puts dots, day-card rows or `by-date` API entries on the weekend between, nor on a public holiday inside a booking. Swiping the phone's month grid sideways changes month. Admins get a banner on the calendar and `/admin` while the coming year holds only its fixed-date holidays; production's 2027 does, so it is showing (#10). The smoke suite runs in fifteen seconds instead of twelve minutes, writing its fixtures straight into the scratch database's SQLite file (#44), which brings a whole `npm run ship` to about a minute and a quarter.
