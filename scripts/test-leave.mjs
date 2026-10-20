@@ -234,8 +234,17 @@ check('byDate: excludes the day after', !idx.has('2026-08-20'), 'leaked past the
 const two = byDate([entry(), entry({ id: 'e2', display_name: 'B' })]);
 eq('byDate: two people on one day', two.get('2026-08-18').length, 2);
 
-// A range crossing a month boundary must not drop days.
-eq('byDate: spans month end', byDate([entry({ start_date: '2026-08-30', end_date: '2026-09-02' })]).size, 4);
+// A range crossing a month boundary must not drop days. Mon 31 Aug to Wed 2 Sep.
+eq('byDate: spans month end', byDate([entry({ start_date: '2026-08-31', end_date: '2026-09-02' })]).size, 3);
+
+// Friday to Monday is two days away, not four: the weekend is nobody's leave.
+const friToMon = byDate([entry({ start_date: '2026-08-21', end_date: '2026-08-24' })]);
+eq('byDate: a weekend inside a booking is left out', [...friToMon.keys()].join(' '), '2026-08-21 2026-08-24');
+// And a public holiday inside one, likewise.
+const overHoliday = byDate([entry({ start_date: '2026-08-11', end_date: '2026-08-13' })], new Set(['2026-08-12']));
+eq('byDate: a holiday inside a booking is left out', [...overHoliday.keys()].join(' '), '2026-08-11 2026-08-13');
+// A booking of nothing but days off keeps its days rather than vanishing.
+eq('byDate: an all-weekend booking still shows', byDate([entry({ start_date: '2026-08-22', end_date: '2026-08-23' })]).size, 2);
 
 // ---------------------------------------------------------------------------------------
 // Bars: a week's bookings as pieces in the fewest non-overlapping rows.

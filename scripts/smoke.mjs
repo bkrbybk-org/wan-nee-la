@@ -37,6 +37,7 @@ import { rmSync, mkdtempSync, readdirSync, readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { DatabaseSync } from 'node:sqlite';
 
 // Randomised per run so a stray worker left behind by an earlier run can never
 // be mistaken for this one's server.
@@ -107,32 +108,60 @@ const WRANGLER = ['wrangler', 'dev', '--config', 'wrangler.jsonc', '--port', Str
 let server = null;
 let serverLog = '';
 
-function d1(sql, file) {
-	const args = ['wrangler', 'd1', 'execute', 'wan-nee-la', '--local', '--persist-to', STATE];
-	args.push(file ? '--file' : '--command', file ?? sql);
+/**
+ * The scratch database, written and read directly.
+ *
+ * Every fixture used to go through `wrangler d1 execute --local`, a fresh
+ * process — and a fresh local runtime — per statement: five to eight seconds
+ * each, seventy-odd times, which was most of a twelve-minute run. That command
+ * was already a second process opening the same SQLite file the dev server
+ * holds, so opening it here with Node's own SQLite is the same arrangement
+ * without the start-up cost. SQLite's file locking keeps the two honest.
+ *
+ * Wrangler still runs once, for the first migration, so the file is created
+ * with exactly the name and layout the dev server will look for; everything
+ * after that is direct.
+ */
+let sqlite = null;
+
+function wranglerD1(file) {
+	const args = ['wrangler', 'd1', 'execute', 'wan-nee-la', '--local', '--persist-to', STATE, '--file', file];
 	const res = spawnSync('npx', args, { encoding: 'utf8', env: { ...process.env, WRANGLER_SEND_METRICS: 'false' } });
-	if (res.status !== 0) {
-		throw new Error(`d1 failed: ${(res.stderr || res.stdout || '').slice(0, 600)}`);
-	}
-	return res.stdout;
+	if (res.status !== 0) throw new Error(`d1 failed: ${(res.stderr || res.stdout || '').slice(0, 600)}`);
 }
 
-/**
- * Rows from a d1 query.
- *
- * wrangler prints a banner before the JSON, so asserting with a regex over the
- * raw stdout matches the banner as readily as the data. Parse it properly and
- * fail loudly if the shape is not what we expect, rather than quietly treating
- * an unparseable result as "no rows".
- */
+/** The one .sqlite file wrangler made under the persist directory. */
+function localDatabase() {
+	const found = [];
+	const walk = (dir) => {
+		for (const entry of readdirSync(dir, { withFileTypes: true })) {
+			const path = join(dir, entry.name);
+			if (entry.isDirectory()) walk(path);
+			else if (entry.name.endsWith('.sqlite') && entry.name !== 'metadata.sqlite') found.push(path);
+		}
+	};
+	walk(join(STATE, 'v3', 'd1'));
+	if (found.length !== 1) throw new Error(`expected one local D1 file, found ${found.length}: ${found.join(', ')}`);
+	const db = new DatabaseSync(found[0]);
+	// The dev server may hold a write lock for a moment; wait rather than fail.
+	db.exec('PRAGMA busy_timeout = 10000');
+	return db;
+}
+
+function d1(sql, file) {
+	if (!sqlite) {
+		if (!file) throw new Error('the first d1 call must be a migration file, which creates the database');
+		wranglerD1(file);
+		sqlite = localDatabase();
+		return;
+	}
+	sqlite.exec(file ? readFileSync(file, 'utf8') : sql);
+}
+
+/** Rows from a query, as plain objects. */
 function d1Rows(sql) {
-	const out = d1(sql);
-	const start = out.indexOf('[');
-	if (start === -1) throw new Error(`no JSON in d1 output: ${out.slice(0, 300)}`);
-	const parsed = JSON.parse(out.slice(start));
-	const results = parsed?.[0]?.results;
-	if (!Array.isArray(results)) throw new Error(`unexpected d1 shape: ${out.slice(0, 300)}`);
-	return results;
+	if (!sqlite) throw new Error('no database yet: run the migrations first');
+	return sqlite.prepare(sql).all();
 }
 
 async function startServer(devEmail, { serviceToken = '', pushKeys = false } = {}) {
@@ -904,6 +933,7 @@ async function main() {
 	await startServer(OTHER);
 
 	eq('second user is not admin', (await fetch(`${BASE}/admin`)).status, 403);
+	check('the holiday reminder is for admins only', !(await (await fetch(`${BASE}/`)).text()).includes('holidays-due'), 'shown to a non-admin');
 	eq('second user cannot reach an admin action', (await post('/admin/quotas/bulk', { year: '2027', leaveTypeId: '1', days: '1' })).status, 403);
 	eq('second user cannot import holidays', (await post('/admin/holidays/import', { list: '2030-01-01 Sneaky' })).status, 403);
 	eq('and nothing was imported', d1Rows("SELECT COUNT(*) AS n FROM holidays WHERE date LIKE '2030-%'")[0]?.n, 0);
@@ -1304,6 +1334,31 @@ async function main() {
 		'quiet day has no cell link',
 	);
 	check('the who-is-out card is gone, the Upcoming list carries it', !gridHtml.includes('who-summary') && gridHtml.includes('cal-upcoming'), 'old card still rendered');
+
+	// --- the reminder to enter next year's holidays (admin) -----------------
+	//
+	// Whether it shows depends on today's date, which the suite does not
+	// control, so the expectation is worked out from the same counts the
+	// route uses; the rule itself is pinned in test-holidays.mjs.
+	{
+		const thisYear = Number(TODAY.slice(0, 4));
+		const month = Number(TODAY.slice(5, 7));
+		const target = month >= 10 ? thisYear + 1 : month === 1 ? thisYear : null;
+		const fixed = new Set(['01-01', '04-06', '04-13', '04-14', '04-15', '05-01', '05-04', '06-03', '07-28', '08-12', '10-13', '10-23', '12-05', '12-10', '12-31']);
+		const announcedIn = (y) => d1Rows(`SELECT date FROM holidays WHERE date LIKE '${y}-%'`).some((r) => !fixed.has(r.date.slice(5)));
+		const expected = target !== null && !announcedIn(target);
+		eq('holiday reminder: on the calendar exactly when the rule says', gridHtml.includes('class="banner holidays-due"'), expected);
+		const adminHtml = await (await fetch(`${BASE}/admin`)).text();
+		eq('holiday reminder: and on /admin, by the importer', adminHtml.includes('class="banner holidays-due"'), expected);
+		if (target !== null) {
+			// One announced holiday and it goes quiet. 30 February is inside the
+			// year's range but no real date, so it cannot collide with a seeded
+			// holiday or land on any grid.
+			d1(`INSERT INTO holidays (date, label) VALUES ('${target}-02-30', 'Smoke announced')`);
+			check('holiday reminder: quiet once an announced holiday is in', !(await (await fetch(`${BASE}/`)).text()).includes('holidays-due'), 'still shown');
+			d1(`DELETE FROM holidays WHERE date = '${target}-02-30'`);
+		}
+	}
 	d1("DELETE FROM leave_requests WHERE id = 'smoke-grid'");
 
 	// --- display name -------------------------------------------------------
@@ -1539,6 +1594,7 @@ try {
 	for (const line of serverLog.split('\n').slice(-25)) console.log(`  | ${line}`);
 } finally {
 	await stopServer();
+	sqlite?.close();
 	rmSync(STATE, { recursive: true, force: true });
 }
 

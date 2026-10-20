@@ -196,6 +196,11 @@ export const STRINGS = {
 	'admin.countsQuota': { en: 'counts against an allowance', th: 'หักจากสิทธิ์วันลา' },
 	'admin.offered': { en: 'offered', th: 'เปิดให้เลือก' },
 	'admin.retired': { en: 'retired', th: 'เลิกใช้แล้ว' },
+	'admin.holidaysDue': {
+		en: '{year} has only its {have} fixed-date holidays so far. Add the announced Buddhist holidays, substitution days and company days, so nobody is charged leave on them.',
+		th: 'ปี {year} มีเพียงวันหยุดประจำ {have} วัน เพิ่มวันหยุดทางพุทธศาสนา วันหยุดชดเชย และวันหยุดของบริษัทที่ประกาศแล้ว เพื่อไม่ให้ใครถูกหักวันลาในวันเหล่านั้น',
+	},
+	'admin.holidaysAdd': { en: 'Add holidays', th: 'เพิ่มวันหยุด' },
 	'admin.bookings': { en: '{n} booking|{n} bookings', th: 'ลา {n} รายการ' },
 	'admin.addType': { en: 'Add a leave type', th: 'เพิ่มประเภทการลา' },
 	'admin.deleteType': { en: 'Delete {label}', th: 'ลบ {label}' },

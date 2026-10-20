@@ -89,3 +89,46 @@ export function parseHolidayList(text: string): HolidayParse {
 
 	return { holidays: [...holidays.values()].sort((a, b) => a.date.localeCompare(b.date)), errors };
 }
+
+/**
+ * The holidays that fall on the same date every year, as MM-DD — the ones
+ * migrations/0002 seeds for each year ahead. Everything else (the Buddhist
+ * holidays, which move with the lunar calendar, substitution days, and any
+ * company days) is announced year by year and has to be entered by an admin.
+ */
+export const FIXED_DATE_HOLIDAYS: ReadonlySet<string> = new Set([
+	'01-01', '04-06', '04-13', '04-14', '04-15', '05-01', '05-04', '06-03',
+	'07-28', '08-12', '10-13', '10-23', '12-05', '12-10', '12-31',
+]);
+
+export interface HolidayGap {
+	/** The year whose list still needs entering. */
+	year: number;
+	/** How many holidays it has so far, all of them fixed-date ones. */
+	have: number;
+}
+
+/**
+ * Whether a year's announced holidays still need entering.
+ *
+ * Nothing used to say so until someone booked a Buddhist holiday and had a day
+ * taken off their quota (#10). A year whose every holiday is a fixed-date one
+ * has had nothing announced added to it, which is exactly the gap: no year in
+ * Thailand goes by without Makha Bucha, Visakha Bucha and Asarnha Bucha. (A
+ * first version compared counts with the year before and was fooled straight
+ * away: production's 2026 began in August, so a seeded 2027 already had more.)
+ *
+ * Asked from 1 October, once the cabinet's list is usually out, about next
+ * year, and through January about the year just begun.
+ *
+ * `datesOf(year)` is the holiday dates entered for that year.
+ */
+export function holidayGap(today: string, datesOf: (year: number) => readonly string[]): HolidayGap | null {
+	const y = Number(today.slice(0, 4));
+	const m = Number(today.slice(5, 7));
+	const year = m >= 10 ? y + 1 : m === 1 ? y : null;
+	if (year === null) return null;
+	const dates = datesOf(year);
+	const announced = dates.some((d) => !FIXED_DATE_HOLIDAYS.has(d.slice(5)));
+	return announced ? null : { year, have: dates.length };
+}

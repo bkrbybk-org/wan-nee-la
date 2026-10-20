@@ -15,6 +15,7 @@ import { LangProvider, useT } from '../i18n/context.tsx';
 import { usePushKey } from './site.tsx';
 import { initials } from './person.ts';
 import { logoSvg } from './logo.ts';
+import type { HolidayGap } from '../domain/holidays.ts';
 import { toLang, type StringKey } from '../i18n/strings.ts';
 
 /** The app's mark in the header, and as the browser-tab icon. Built once. */
@@ -217,7 +218,24 @@ function LayoutShell({
 	);
 }
 
-/** Previous / next year links, shared by /me and /u/:email. */
+/**
+ * "Next year's holidays look unentered", for admins (see `holidayGap`). On
+ * the calendar it carries a link to the importer; on /admin it sits above it.
+ */
+export function HolidaysDueBanner({ gap, link = false }: { gap: HolidayGap; link?: boolean }) {
+	const t = useT();
+	return (
+		<div class="banner holidays-due" role="status">
+			<span>{t('admin.holidaysDue', { year: gap.year, have: gap.have })}</span>
+			{link ? (
+				<span class="banner-action">
+					<a class="btn tonal" href={`/admin?y=${gap.year}#holidays`}>{t('admin.holidaysAdd')}</a>
+				</span>
+			) : null}
+		</div>
+	);
+}
+
 /**
  * The flash banners, and the undo offer that sometimes rides with one.
  *

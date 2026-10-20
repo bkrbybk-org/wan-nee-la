@@ -7,7 +7,7 @@
  * POST could book three weeks and claim it cost half a day.
  */
 
-import { addDays, countLeaveDays, daysBetween, isValidDate, rangesOverlap, type Half } from './dates.ts';
+import { addDays, countLeaveDays, daysBetween, isValidDate, isWeekend, rangesOverlap, type Half } from './dates.ts';
 import type { Balance, LeaveEntry, LeaveType, Quota } from '../types.ts';
 import { msg, type Message, type StringKey } from '../i18n/strings.ts';
 
@@ -345,11 +345,28 @@ export function weekLanes(week: readonly string[], entries: readonly LeaveEntry[
 	return pieces;
 }
 
-/** Index entries by every calendar date they cover, for the month grid. */
-export function byDate(entries: readonly LeaveEntry[]): Map<string, LeaveEntry[]> {
+/**
+ * Index entries by the days someone is actually away.
+ *
+ * A booking from Friday to Monday covers four calendar dates but two leave
+ * days — the weekend is not taken and not charged (`countLeaveDays`). Listing
+ * the person on Saturday and Sunday too put a dot on the phone's grid and a
+ * row in the day card for days nobody was off, so weekends and public holidays
+ * inside a booking are left out. A booking made up of nothing but days off,
+ * which the booking rules do not allow but older data might hold, keeps all
+ * its days rather than vanishing.
+ *
+ * Per day only: the desktop's bars still run the whole range, since one
+ * booking reads as one line there.
+ */
+export function byDate(entries: readonly LeaveEntry[], holidays: ReadonlySet<string> = new Set()): Map<string, LeaveEntry[]> {
+	const off = (d: string) => isWeekend(d) || holidays.has(d);
 	const map = new Map<string, LeaveEntry[]>();
 	for (const e of entries) {
-		for (let d = e.start_date; d <= e.end_date; d = addDays(d, 1)) {
+		const days: string[] = [];
+		for (let d = e.start_date; d <= e.end_date; d = addDays(d, 1)) days.push(d);
+		const working = days.filter((d) => !off(d));
+		for (const d of working.length > 0 ? working : days) {
 			const list = map.get(d);
 			if (list) list.push(e);
 			else map.set(d, [e]);

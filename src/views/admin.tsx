@@ -2,7 +2,8 @@ import { formatDays } from '../domain/dates.ts';
 import { allottedFor } from '../domain/leave.ts';
 import type { Holiday, LeaveType, Quota, User } from '../types.ts';
 import type { AuditRow, LeaveSnapshot, NotificationRun } from '../repo/db.ts';
-import { FlashBanner, Layout } from './layout.tsx';
+import type { HolidayGap } from '../domain/holidays.ts';
+import { FlashBanner, HolidaysDueBanner, Layout } from './layout.tsx';
 import { SelectField, TextField } from './fields.tsx';
 import { DeleteIcon } from './icons.tsx';
 import { useLang, useT } from '../i18n/context.tsx';
@@ -17,6 +18,8 @@ interface AdminProps {
 	usage: Map<number, number>;
 	quotas: Quota[];
 	holidays: Holiday[];
+	/** Set when next year's holidays look unentered — see `holidayGap`. */
+	holidaysDue: HolidayGap | null;
 	today: string;
 	line: { enabled: boolean; configured: boolean; groupId: string | null; ready: boolean };
 	log: NotificationRun[];
@@ -35,7 +38,7 @@ export function AdminPage(props: AdminProps) {
 }
 
 function AdminBody(props: AdminProps) {
-	const { year, users, types, usage, quotas, holidays, today, line, log, audit, error, notice } = props;
+	const { year, users, types, usage, quotas, holidays, holidaysDue, today, line, log, audit, error, notice } = props;
 	// Quotas are only edited for types that can still be booked. A retired type's
 	// rows stay in the table; they just stop being something to maintain.
 	const offered = types.filter((type) => type.active);
@@ -191,9 +194,10 @@ function AdminBody(props: AdminProps) {
 				</details>
 			</section>
 
-			<section class="card">
+			<section class="card" id="holidays">
 				<h2>{t('admin.holidays')}</h2>
 				<p class="muted">{t('admin.holidaysHelp')}</p>
+				{holidaysDue ? <HolidaysDueBanner gap={holidaysDue} /> : null}
 				<form method="post" action="/admin/holiday" class="row inline">
 					<TextField id="holiday-date" name="date" label={t('admin.date')} type="date" required />
 					<TextField

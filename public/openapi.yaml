@@ -179,8 +179,12 @@ paths:
       description: |
         The same bookings as `/api/v1/leave`, turned inside out: one entry per
         **date**, listing who is away that day. A booking spanning a range
-        appears under each date it touches, and `period` says which part of
-        that day it covers — a range's middle days are always `full_day`.
+        appears under each working day it covers, and `period` says which part
+        of that day it covers — a range's middle days are always `full_day`.
+        Weekends and public holidays inside a booking are left out, since
+        nobody is on leave on a day nobody works: a Friday-to-Monday booking
+        appears under Friday and Monday only. (Until 2026-10-20 they were
+        included.)
 
         Dates with nobody away are left out, so an empty day and a day outside
         the request cannot be confused.

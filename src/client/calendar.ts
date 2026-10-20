@@ -187,6 +187,39 @@ if (agenda) {
 }
 
 /**
+ * Swipe the month grid sideways to change month, on a touch screen.
+ *
+ * The arrows stay; this only follows their links, so the result is the same
+ * page with the same URL. A swipe has to be clearly sideways — mostly
+ * horizontal, long enough, and quick — so a tap on a day or a vertical scroll
+ * that drifts a little never turns into a month change.
+ */
+const gridView = document.querySelector<HTMLElement>('.grid-view');
+const prevLink = document.querySelector<HTMLAnchorElement>('[data-month-prev]');
+const nextLink = document.querySelector<HTMLAnchorElement>('[data-month-next]');
+if (gridView && prevLink && nextLink && window.matchMedia('(pointer: coarse)').matches) {
+	let start: { x: number; y: number; t: number } | null = null;
+	gridView.addEventListener('touchstart', (e) => {
+		const touch = e.touches.length === 1 ? e.touches[0] : null;
+		start = touch ? { x: touch.clientX, y: touch.clientY, t: e.timeStamp } : null;
+	}, { passive: true });
+	gridView.addEventListener('touchend', (e) => {
+		const touch = e.changedTouches[0];
+		if (!start || !touch) return;
+		const dx = touch.clientX - start.x;
+		const dy = touch.clientY - start.y;
+		const quick = e.timeStamp - start.t < 600;
+		start = null;
+		if (!quick || Math.abs(dx) < 60 || Math.abs(dx) < Math.abs(dy) * 2) return;
+		// Finger moving left brings the next month in from the right.
+		location.href = (dx < 0 ? nextLink : prevLink).href;
+	}, { passive: true });
+	gridView.addEventListener('touchcancel', () => {
+		start = null;
+	}, { passive: true });
+}
+
+/**
  * Follow one person across the page: pointing at any of their bars, Upcoming
  * rows or "+N more" rows lights up all of them and dims everyone else.
  *

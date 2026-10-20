@@ -33,7 +33,7 @@ import {
 	type BookingDraft,
 	type BookingInput,
 } from './domain/leave.ts';
-import { parseHolidayList } from './domain/holidays.ts';
+import { holidayGap, parseHolidayList, type HolidayGap } from './domain/holidays.ts';
 import { parseLeaveTypeForm } from './domain/leaveTypes.ts';
 import { isLang, t, tm, toLang, type Lang, type Message, type StringKey } from './i18n/strings.ts';
 import * as db from './repo/db.ts';
@@ -328,6 +328,21 @@ async function leaveTypesOf(c: Ctx): Promise<LeaveType[]> {
 // Calendar
 // ---------------------------------------------------------------------------
 
+/**
+ * Whether next year's public holidays still need entering — for admins only,
+ * and only in the months the rule looks at, so most page loads pay nothing.
+ * See `holidayGap`.
+ */
+async function holidayReminder(c: Ctx): Promise<HolidayGap | null> {
+	const user = c.get('user');
+	const today = c.get('today');
+	const month = Number(today.slice(5, 7));
+	if (!user.is_admin || (month < 10 && month !== 1)) return null;
+	const year = Number(today.slice(0, 4)) + (month >= 10 ? 1 : 0);
+	const dates = (await db.listHolidays(c.env.DB, `${year}-01-01`, `${year}-12-31`)).map((h) => h.date);
+	return holidayGap(today, () => dates);
+}
+
 app.get('/', async (c) => {
 	const user = c.get('user');
 	const today = c.get('today');
@@ -344,16 +359,13 @@ app.get('/', async (c) => {
 	// range would leave that first column silently empty.
 	const grid = monthGrid(year, month, parseWeekStart(user.week_start) ?? undefined);
 	const from = grid[0];
-	// Seven days past the grid so the "next 7 days" summary always has its full
-	// window, even when today sits in the last row of the month. Rows beyond the
-	// grid are never rendered as cells — the grid only draws dates it lists.
-	const to = addDays(grid[grid.length - 1], 7);
+	const to = grid[grid.length - 1];
 
 	// The sidebar answers "what is coming up", which is not the same question as
 	// "what is in this month" — it stays anchored to today while someone pages
 	// through months, so it is fetched on its own rather than filtered out of
 	// the grid's data.
-	const [entries, holidays, types, upcoming, users] = await Promise.all([
+	const [entries, holidays, types, upcoming, users, holidaysDue] = await Promise.all([
 		db.listLeaveInRange(c.env.DB, from, to),
 		db.listHolidays(c.env.DB, from, to),
 		leaveTypesOf(c),
@@ -361,6 +373,7 @@ app.get('/', async (c) => {
 		// Every user, deactivated ones included, because colours are handed out
 		// in sign-up order and leaving someone out would shift everyone after.
 		db.listUsers(c.env.DB),
+		holidayReminder(c),
 	]);
 
 	return page(
@@ -373,6 +386,7 @@ app.get('/', async (c) => {
 			holidays={holidays}
 			types={types}
 			upcoming={upcoming}
+			holidaysDue={holidaysDue}
 			colors={personColors(users)}
 			today={today}
 			version={c.env.CF_VERSION_METADATA?.id}
@@ -526,8 +540,14 @@ app.get('/api/v1/leave/by-date', async (c) => {
 	// ceiling a single booking has, and the same one the feed applies.
 	if (daysBetween(from, to) > MAX_RANGE_DAYS) return jsonError(c, `range is longer than ${MAX_RANGE_DAYS} days`, 400);
 
-	const entries = await db.listLeaveInRange(c.env.DB, from, to);
-	const byDay = byDate(entries);
+	const [entries, holidays] = await Promise.all([
+		db.listLeaveInRange(c.env.DB, from, to),
+		db.holidaySet(c.env.DB, from, to),
+	]);
+	// Only days someone is actually off: a Friday-to-Monday booking is two
+	// leave days, not four, and an integration reading Saturday should not be
+	// told they are away.
+	const byDay = byDate(entries, holidays);
 
 	const data = [];
 	for (let date = from; date <= to; date = addDays(date, 1)) {
@@ -1304,7 +1324,7 @@ app.get('/admin', async (c) => {
 	const today = c.get('today');
 	const year = clampInt(c.req.query('y'), Number(today.slice(0, 4)), 2000, 2100);
 
-	const [users, types, usage, holidays, groupId, log, audit] = await Promise.all([
+	const [users, types, usage, holidays, groupId, log, audit, holidaysDue] = await Promise.all([
 		db.listUsers(c.env.DB),
 		leaveTypesOf(c),
 		db.leaveTypeUsage(c.env.DB),
@@ -1312,6 +1332,7 @@ app.get('/admin', async (c) => {
 		resolveGroupId(c.env),
 		db.recentNotifications(c.env.DB),
 		db.recentAudit(c.env.DB),
+		holidayReminder(c),
 	]);
 
 	const quotas = await db.listQuotasForYear(c.env.DB, year);
@@ -1328,6 +1349,7 @@ app.get('/admin', async (c) => {
 			usage={usage}
 			quotas={quotas}
 			holidays={holidays}
+			holidaysDue={holidaysDue}
 			audit={audit}
 			today={today}
 			line={{ enabled, configured, groupId, ready: enabled && configured && Boolean(groupId) }}

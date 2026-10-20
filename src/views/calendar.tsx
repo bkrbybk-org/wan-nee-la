@@ -18,7 +18,8 @@ import { byDate, halfOn, visibleNote, weekLanes, type BookingDraft, type WeekSeg
 import { initials, personKey, shortName } from './person.ts';
 import { PersonColorsProvider, useColorOf } from './site.tsx';
 import type { Half, Holiday, LeaveEntry, LeaveType, User } from '../types.ts';
-import { FlashBanner, Layout } from './layout.tsx';
+import { FlashBanner, HolidaysDueBanner, Layout } from './layout.tsx';
+import type { HolidayGap } from '../domain/holidays.ts';
 import { BookingForm } from './booking.tsx';
 import { SelectField } from './fields.tsx';
 import { ChevronDownIcon, ChevronLeftIcon, ChevronRightIcon, CloseIcon, DeleteIcon, EditIcon, PlusIcon } from './icons.tsx';
@@ -32,6 +33,8 @@ interface CalendarProps {
 	entries: LeaveEntry[];
 	/** Everything from today forward, independent of the month being browsed. */
 	upcoming: LeaveEntry[];
+	/** For admins: next year's holidays look unentered — see `holidayGap`. */
+	holidaysDue: HolidayGap | null;
 	/** Each person's badge colour, by email, in sign-up order. */
 	colors: ReadonlyMap<string, string>;
 	holidays: Holiday[];
@@ -424,7 +427,7 @@ export function CalendarPage(props: CalendarProps) {
 
 /** Inside the Layout, so `useT` sees the language the Layout provides. */
 function CalendarBody(props: CalendarProps) {
-	const { user, year, month, entries, upcoming, holidays, types, today, error, errorField, notice, draft, undo } = props;
+	const { user, year, month, entries, upcoming, holidaysDue, holidays, types, today, error, errorField, notice, draft, undo } = props;
 	const t = useT();
 	const lang = useLang();
 	// Presentation only: rotating the columns changes no arithmetic, and Saturday
@@ -433,8 +436,9 @@ function CalendarBody(props: CalendarProps) {
 	const grid = monthGrid(year, month, weekStart);
 	const weekdays = weekdayLabels(weekStart, lang);
 	const weeks = intoWeeks(grid);
-	const map = byDate(entries);
 	const holidayMap = new Map(holidays.map((h) => [h.date, h.label]));
+	// Who is away on each day — weekends and holidays inside a booking left out.
+	const map = byDate(entries, new Set(holidayMap.keys()));
 	const prev = shiftMonth(year, month, -1);
 	const next = shiftMonth(year, month, 1);
 	const monthPrefix = `${year}-${String(month).padStart(2, '0')}`;
@@ -465,6 +469,9 @@ function CalendarBody(props: CalendarProps) {
 	return (
 		<>
 			<FlashBanner error={error} notice={notice} undo={undo} />
+			{/* Admins only. Here as well as on /admin, because nobody opens /admin
+			    in November unless something sends them there. */}
+			{holidaysDue ? <HolidaysDueBanner gap={holidaysDue} link /> : null}
 
 			<div class="month-head">
 				{/* Ahead of the heading, not after it, so stepping through the year
@@ -474,10 +481,10 @@ function CalendarBody(props: CalendarProps) {
 				    every press, which is how a run of clicks lands on the wrong
 				    one. Their own position is now fixed and only the label
 				    changes. */}
-				<a class="icon-btn" href={`/?y=${prev.year}&m=${prev.month}`} aria-label={t('cal.prevMonth')}>
+				<a class="icon-btn" data-month-prev href={`/?y=${prev.year}&m=${prev.month}`} aria-label={t('cal.prevMonth')}>
 					<ChevronLeftIcon />
 				</a>
-				<a class="icon-btn" href={`/?y=${next.year}&m=${next.month}`} aria-label={t('cal.nextMonth')}>
+				<a class="icon-btn" data-month-next href={`/?y=${next.year}&m=${next.month}`} aria-label={t('cal.nextMonth')}>
 					<ChevronRightIcon />
 				</a>
 				{/* The heading is the control. Stepping a month at a time is fine for

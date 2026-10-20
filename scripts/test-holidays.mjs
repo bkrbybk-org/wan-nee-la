@@ -1,7 +1,8 @@
 #!/usr/bin/env node
-// Unit tests for src/domain/holidays.ts — parsing a pasted holiday list.
+// Unit tests for src/domain/holidays.ts — parsing a pasted holiday list, and
+// the reminder to enter next year's.
 // Run: npm run test:holidays
-import { parseHolidayList } from '../src/domain/holidays.ts';
+import { FIXED_DATE_HOLIDAYS, holidayGap, parseHolidayList } from '../src/domain/holidays.ts';
 
 let failures = 0;
 const check = (name, cond, detail) => {
@@ -82,6 +83,22 @@ eq('with one error, not thousands', tooBig.errors.length, 1);
 // carry an unbounded slice of the input.
 const longToken = parseHolidayList('x'.repeat(500) + ' Name');
 check('a long bad token is clamped in the error', longToken.errors[0].reason.length < 120, longToken.errors[0].reason.length);
+
+// --- the reminder to enter next year's list --------------------------------
+
+// What migrations/0002 seeds for a year ahead: only the fixed-date holidays.
+const seeded = (y) => [...FIXED_DATE_HOLIDAYS].map((md) => `${y}-${md}`);
+const withMakhaBucha = (y) => [...seeded(y), `${y}-02-20`];
+const gap = holidayGap('2026-10-20', seeded);
+eq('reminder: October looks at next year', gap?.year, 2027);
+eq('reminder: a seeded-only year is flagged, however many it holds', gap?.have, 15);
+eq('reminder: quiet once anything announced is in', holidayGap('2026-11-02', withMakhaBucha), null);
+eq('reminder: an empty year is flagged too', holidayGap('2026-12-01', () => [])?.have, 0);
+eq('reminder: in January it looks at the year just begun', holidayGap('2027-01-15', seeded)?.year, 2027);
+eq('reminder: quiet from February to September', holidayGap('2027-02-01', () => []), null);
+eq('reminder: September is still quiet', holidayGap('2026-09-30', () => []), null);
+check('reminder: from 1 October', holidayGap('2026-10-01', seeded) !== null, 'quiet on 1 October');
+eq('reminder: the fixed-date list matches the seed', FIXED_DATE_HOLIDAYS.size, 15);
 
 console.log(failures === 0 ? '\nAll holiday tests passed.' : `\n${failures} failure(s).`);
 process.exit(failures === 0 ? 0 : 1);
