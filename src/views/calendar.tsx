@@ -554,9 +554,12 @@ function CalendarBody(props: CalendarProps) {
 				</a>
 				<span class="muted hint">{t('cal.hint')}</span>
 			</p>
-			<a class="fab" href="/book" data-book-link>
+			{/* The label is its own element so the button can fold down to the
+			    icon once the page scrolls (client/calendar.ts) — and the
+			    accessible name stays the label either way. */}
+			<a class="fab" href="/book" data-book-link data-fab aria-label={t('cal.book')}>
 				<PlusIcon />
-				{t('cal.book')}
+				<span class="fab-label">{t('cal.book')}</span>
 			</a>
 
 			{/* Both halves empty is the common case in a quiet week, and two cards
@@ -699,7 +702,12 @@ function CalendarBody(props: CalendarProps) {
 					</table>
 				</section>
 
-				<section class="agenda-view" aria-label={t('cal.byDay')} aria-live="polite" data-agenda>
+				{/* What a screen reader hears when a tap or swipe changes the day:
+				    the day and who is away, said once. Showing one row and hiding
+				    another is not announced reliably on its own, and making the
+				    whole list live would read out every row it holds. */}
+				<p class="visually-hidden" aria-live="polite" data-day-status></p>
+				<section class="agenda-view" aria-label={t('cal.byDay')} data-agenda>
 					{agenda.every((r) => r.entries.length === 0 && !r.holiday) ? (
 						<p class="muted pad agenda-quiet">{t('cal.emptyMonth')}</p>
 					) : null}
@@ -709,7 +717,7 @@ function CalendarBody(props: CalendarProps) {
 							.filter(Boolean)
 							.join(' ');
 						return (
-							<div class={classes} id={`d-${row.date}`} data-day={row.date}>
+							<div class={classes} id={`d-${row.date}`} data-day={row.date} data-label={longDate(row.date, lang)}>
 								<a
 									class="agenda-date"
 									href={`/book?date=${row.date}`}

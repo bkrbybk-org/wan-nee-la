@@ -1,4 +1,5 @@
-import { describeRange, formatDays } from '../domain/dates.ts';
+import { describeRange, formatDays, monthName, monthShort } from '../domain/dates.ts';
+import type { MonthTotals } from '../domain/report.ts';
 import type { BookingDraft } from '../domain/leave.ts';
 import type { Balance, LeaveEntry, LeaveType, User } from '../types.ts';
 import { FlashBanner, Layout, YearNav } from './layout.tsx';
@@ -14,6 +15,8 @@ interface MeProps {
 	minYear: number;
 	maxYear: number;
 	balances: Balance[];
+	/** Days off in each month of `year`, by type — see `monthlyDays`. */
+	months: MonthTotals[];
 	entries: LeaveEntry[];
 	types: LeaveType[];
 	today: string;
@@ -36,7 +39,7 @@ export function MePage(props: MeProps) {
 }
 
 function MeBody(props: MeProps) {
-	const { user, year, minYear, maxYear, balances, entries, types, today, error, errorField, notice, draft, undo } = props;
+	const { user, year, minYear, maxYear, balances, months, entries, types, today, error, errorField, notice, draft, undo } = props;
 	const t = useT();
 	const lang = useLang();
 	const upcoming = entries.filter((e) => e.status === 'confirmed' && e.end_date >= today);
@@ -91,6 +94,8 @@ function MeBody(props: MeProps) {
 					);
 				})}
 			</section>
+
+			<MonthBars months={months} types={types} year={year} />
 
 			<section class="card">
 				<h2>{t('book.submit')}</h2>
@@ -211,5 +216,69 @@ function LeaveRow({ entry }: { entry: LeaveEntry }) {
 				</span>
 			) : null}
 		</li>
+	);
+}
+
+/**
+ * Days off in each month of the year, as twelve small bars split by leave
+ * type, in the types' own colours.
+ *
+ * The balances above say how much is left; this says when it went, which is
+ * the question behind "have I taken a proper break this year". Days are the
+ * ones that fall in each month — a booking crossing a month end is split
+ * across both — so a booking over New Year shows its December days here and
+ * its January days next year, though the balance charges it all to the year
+ * it started in.
+ *
+ * The bars are a picture only; a real table carries the same numbers for a
+ * screen reader.
+ */
+function MonthBars({ months, types, year }: { months: MonthTotals[]; types: LeaveType[]; year: number }) {
+	const t = useT();
+	const lang = useLang();
+	const max = Math.max(...months.map((m) => m.total));
+	const label = (type: LeaveType) => (lang === 'th' ? type.label_th : type.label_en);
+	const used = types.filter((type) => months.some((m) => m.byType.has(type.id)));
+	return (
+		<section class="card month-use">
+			<h2>{t('me.byMonth')}</h2>
+			{max === 0 ? (
+				<p class="muted">{t('me.byMonthNone', { year })}</p>
+			) : (
+				<>
+					<div class="month-bars" aria-hidden="true">
+						{months.map((m) => (
+							<div class="mb-col">
+								<span class="mb-n">{m.total > 0 ? formatDays(m.total) : ''}</span>
+								<span class="mb-stack" style={`height: ${Math.round((m.total / max) * 96)}px`}>
+									{used.filter((type) => m.byType.has(type.id)).map((type) => (
+										<span style={`flex: ${m.byType.get(type.id)}; background: ${type.color}`} title={label(type)} />
+									))}
+								</span>
+								<span class="mb-m">{monthShort(m.month, lang)}</span>
+							</div>
+						))}
+					</div>
+					<table class="visually-hidden">
+						<caption>{t('me.byMonth')}</caption>
+						<thead>
+							<tr>
+								<th scope="col">{t('cal.month')}</th>
+								{used.map((type) => <th scope="col">{label(type)}</th>)}
+							</tr>
+						</thead>
+						<tbody>
+							{months.filter((m) => m.total > 0).map((m) => (
+								<tr>
+									<th scope="row">{monthName(m.month, lang)}</th>
+									{used.map((type) => <td>{formatDays(m.byType.get(type.id) ?? 0)}</td>)}
+								</tr>
+							))}
+						</tbody>
+					</table>
+					<p class="muted mb-help">{t('me.byMonthHelp')}</p>
+				</>
+			)}
+		</section>
 	);
 }

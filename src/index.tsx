@@ -34,6 +34,7 @@ import {
 	type BookingInput,
 } from './domain/leave.ts';
 import { holidayGap, importPlan, parseHolidayList, type HolidayGap } from './domain/holidays.ts';
+import { daysWithin, leaveSummary, monthlyDays, toCsv } from './domain/report.ts';
 import { parseLeaveTypeForm } from './domain/leaveTypes.ts';
 import { isLang, t, tm, toLang, type Lang, type Message, type StringKey } from './i18n/strings.ts';
 import * as db from './repo/db.ts';
@@ -1123,10 +1124,13 @@ app.get('/me', async (c) => {
 	const { minYear, maxYear } = yearNavBounds(nowYear);
 
 	const types = await leaveTypesOf(c);
-	const [balances, entries] = await Promise.all([
+	const [balances, entries, holidays] = await Promise.all([
 		db.balancesFor(c.env.DB, user.email, year, types),
 		db.listUserLeave(c.env.DB, user.email, year),
+		db.holidaySet(c.env.DB, `${year}-01-01`, `${year}-12-31`),
 	]);
+	// Confirmed leave only: a cancelled booking took no days off.
+	const months = monthlyDays(entries.filter((e) => e.status === 'confirmed'), year, holidays);
 
 	return page(
 		c,
@@ -1136,6 +1140,7 @@ app.get('/me', async (c) => {
 			minYear={minYear}
 			maxYear={maxYear}
 			balances={balances}
+			months={months}
 			entries={entries}
 			types={types}
 			today={today}
@@ -1540,6 +1545,58 @@ app.post('/admin/notify/send', async (c) => {
  * government holiday notice is the worst outcome: the calendar looks updated,
  * and the three days that failed silently draw down everyone's quota.
  */
+/**
+ * Leave as a spreadsheet, for HR. Admin only, like everything under /admin.
+ *
+ * Two shapes: `summary`, one row per person per leave type, and `bookings`,
+ * one row per booking. Both count the days that fall inside the range — a
+ * booking crossing its edge is cut there and recounted (`daysWithin`) — and
+ * the bookings sheet also gives each booking's own charged total, so the two
+ * numbers can be told apart. Deactivated people are included: they took the
+ * leave. Notes never are, shared or not. Emails are, since HR needs a stable
+ * key and the admin page already shows them.
+ */
+app.get('/admin/export.csv', async (c) => {
+	const today = c.get('today');
+	const year = today.slice(0, 4);
+	const from = validDateOr(c.req.query('from'), `${year}-01-01`);
+	const to = validDateOr(c.req.query('to'), `${year}-12-31`);
+	const kind = c.req.query('kind') === 'bookings' ? 'bookings' : 'summary';
+	if (from > to) return redirectWithFlash('/admin#export', 'err', say(c, 'flash.exportOrder'));
+	if (daysBetween(from, to) > MAX_RANGE_DAYS) return redirectWithFlash('/admin#export', 'err', say(c, 'flash.exportTooLong', { n: MAX_RANGE_DAYS }));
+
+	const [entries, holidays] = await Promise.all([
+		db.listLeaveInRange(c.env.DB, from, to, undefined, { includeInactive: true }),
+		db.holidaySet(c.env.DB, from, to),
+	]);
+
+	const rows: (string | number)[][] =
+		kind === 'summary'
+			? [
+				['name', 'email', 'leave_type', 'leave_type_th', 'days', 'bookings'],
+				...leaveSummary(entries, from, to, holidays).map((r) => [r.name, r.email, r.typeEn, r.typeTh, r.days, r.bookings]),
+			]
+			: [
+				['name', 'email', 'leave_type', 'leave_type_th', 'start', 'end', 'start_half', 'end_half', 'days_in_range', 'days_charged'],
+				...entries
+					.map((e) => [e, daysWithin(e, from, to, holidays)] as const)
+					.filter(([, days]) => days > 0)
+					.map(([e, days]) => [
+						e.display_name, e.user_email, e.type_label_en, e.type_label_th,
+						e.start_date, e.end_date, e.start_half, e.end_half, days, e.days_total,
+					]),
+			];
+
+	return new Response(toCsv(rows), {
+		headers: {
+			'Content-Type': 'text/csv; charset=utf-8',
+			'Content-Disposition': `attachment; filename="wan-nee-la-${kind}-${from}-to-${to}.csv"`,
+			// Everyone's leave: never left in a shared machine's cache.
+			'Cache-Control': 'private, no-store',
+		},
+	});
+});
+
 /**
  * The holiday import's middle step: parse, compare with what is held, and show
  * whose bookings cross a new holiday. Writes nothing; the page's confirm

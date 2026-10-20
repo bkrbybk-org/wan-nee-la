@@ -302,6 +302,20 @@ async function main() {
 	eq('day card: the URL names the day', await evaluate('location.hash'), `#d-${busy}`);
 	check('day card: the grid rings the same day', await evaluate(`document.querySelector('.cell.selected .cell-day')?.dataset.day === ${JSON.stringify(busy)}`), 'cell not marked');
 
+	const said = await evaluate("document.querySelector('[data-day-status]').textContent");
+	check('screen reader: the new day is announced, with who is away', said.includes('Mai Srisuk') && /\d{4}/.test(said), said);
+	eq('screen reader: from a polite live region', await evaluate("document.querySelector('[data-day-status]').getAttribute('aria-live')"), 'polite');
+
+	// The floating button folds to its icon once the page scrolls.
+	await evaluate('scrollTo(0, 0)');
+	await sleep(100);
+	check('book button: full width at the top', !(await evaluate("document.querySelector('[data-fab]').classList.contains('fab-mini')")), 'folded at the top');
+	await evaluate('scrollTo(0, 400)');
+	await sleep(150);
+	check('book button: folds to its icon once scrolled', await evaluate("document.querySelector('[data-fab]').getBoundingClientRect().width <= 60"), String(await evaluate("document.querySelector('[data-fab]').getBoundingClientRect().width")));
+	eq('book button: and keeps its name', await evaluate("document.querySelector('[data-fab]').getAttribute('aria-label')"), 'Book leave');
+	await evaluate('scrollTo(0, 0)');
+
 	// A day in the middle of the month, so a step either way stays in it.
 	const mid = `${month}-15`;
 	await tap(`.cell-day[data-day="${mid}"]`);
@@ -417,6 +431,18 @@ async function main() {
 		booked = sqlite.prepare("SELECT start_date FROM leave_requests WHERE user_email = ? AND start_date = ? AND status = 'confirmed'").get(ADMIN, freeDay)?.start_date;
 	}
 	eq('book: submitting it books the day', booked, freeDay);
+
+	// --- days off by month, on /me ----------------------------------------------
+	await send('Page.navigate', { url: `${BASE}/me?y=${y}` });
+	await waitFor("document.readyState === 'complete' && Boolean(document.querySelector('.month-bars'))");
+	eq('by month: twelve bars', await evaluate("document.querySelectorAll('.month-bars .mb-col').length"), 12);
+	check(
+		'by month: the month with leave has a bar',
+		await evaluate(`document.querySelectorAll('.month-bars .mb-col')[${m - 1}].querySelector('.mb-stack').getBoundingClientRect().height > 10`),
+		'no bar',
+	);
+	check('by month: and a table a screen reader can read', await evaluate("document.querySelector('.month-use table tbody tr') !== null"), 'no table');
+	await shot('me-by-month');
 
 	// --- in Thai ---------------------------------------------------------------
 	await evaluate("fetch('/me/lang', { method: 'POST', body: new URLSearchParams({ lang: 'th' }) }).then((r) => r.status)");

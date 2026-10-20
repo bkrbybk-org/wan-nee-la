@@ -201,18 +201,37 @@ if (agenda) {
 
 	const rowFor = (date: string) => agenda.querySelector<HTMLElement>(`.agenda-row[data-day="${date}"]`);
 
-	const select = (date: string) => {
+	const status = document.querySelector<HTMLElement>('[data-day-status]');
+
+	/** "Tuesday 20 October 2026: Mai Srisuk (Annual), Nok (Sick)". */
+	const announce = (row: HTMLElement) => {
+		if (!status) return;
+		const people = [...row.querySelectorAll('.agenda-item')].map((item) => {
+			const name = item.querySelector('.agenda-name')?.textContent ?? '';
+			const type = item.querySelector('.agenda-type')?.textContent ?? '';
+			return type ? `${name} (${type})` : name;
+		});
+		const holiday = row.querySelector('.holiday-tag')?.textContent;
+		const none = row.querySelector('.agenda-none')?.textContent ?? '';
+		const said = [holiday, people.length > 0 ? people.join(', ') : none].filter(Boolean).join('. ');
+		status.textContent = `${row.dataset.label ?? row.dataset.day}: ${said}`;
+	};
+
+	const select = (date: string, { speak = true } = {}) => {
 		const row = rowFor(date);
 		if (!row) return false;
 		for (const el of document.querySelectorAll('.agenda-row.selected, .cell.selected')) el.classList.remove('selected');
 		row.classList.add('selected');
 		document.querySelector(`.cell-day[data-day="${date}"]`)?.closest('.cell')?.classList.add('selected');
+		// Said only when the reader changed the day, not on arrival — the page
+		// is already being read from the top then.
+		if (speak) announce(row);
 		return true;
 	};
 
 	// A shared link to a day ("#d-2026-10-20") opens on that day.
 	const fromHash = /^#d-(\d{4}-\d{2}-\d{2})$/.exec(location.hash)?.[1];
-	if (fromHash) select(fromHash);
+	if (fromHash) select(fromHash, { speak: false });
 
 	document.addEventListener('click', (e) => {
 		const cell = (e.target as HTMLElement | null)?.closest<HTMLAnchorElement>('.cell-day[data-day]');
@@ -239,6 +258,15 @@ if (agenda) {
 		const link = dir > 0 ? nextLink : prevLink;
 		if (link) location.href = `${link.href}#d-${target}`;
 	});
+}
+
+// Fold the floating "Book leave" button to its icon once the page has
+// scrolled, so it stops covering the right-hand edge of the rows beneath it.
+const fab = document.querySelector<HTMLElement>('[data-fab]');
+if (fab) {
+	const fold = () => fab.classList.toggle('fab-mini', window.scrollY > 40);
+	window.addEventListener('scroll', fold, { passive: true });
+	fold();
 }
 
 // Swipe the month grid to change month. The arrows stay; this follows their

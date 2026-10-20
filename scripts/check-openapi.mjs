@@ -49,6 +49,7 @@ const NOT_JSON = new Set([
 	'POST /admin/user',
 	'POST /admin/notify/preview',
 	'POST /admin/notify/send',
+	'GET /admin/export.csv',
 	'POST /admin/holidays/preview',
 	'POST /admin/holidays/import',
 	'POST /admin/holiday',

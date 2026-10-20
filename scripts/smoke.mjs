@@ -890,6 +890,45 @@ async function main() {
 		d1(`DELETE FROM leave_audit WHERE leave_id = 'smoke-hol'`);
 	}
 
+	// --- the HR export ------------------------------------------------------
+	//
+	// Someone who has since left, with a name a spreadsheet would run, away
+	// Mon–Fri of the clear week; the export asks for Wednesday to Friday.
+	{
+		d1(`INSERT INTO users (email, display_name, is_admin, active, created_at) VALUES ('gone@example.com', '=GONE()', 0, 0, '2026-01-01')`);
+		d1(
+			`INSERT INTO leave_requests (id, user_email, leave_type_id, start_date, end_date, start_half, end_half, days_total, note, note_private, status, created_at)
+			 VALUES ('smoke-export', 'gone@example.com', 1, '${MON}', '${FRI}', 'full', 'full', 5, 'secret note', 1, 'confirmed', '${MON}')`,
+		);
+		const WED = addDays(MON, 2);
+		const sumRes = await fetch(`${BASE}/admin/export.csv?from=${WED}&to=${FRI}&kind=summary`);
+		// Bytes first: `text()` decodes as UTF-8 and quietly drops the BOM.
+		const sumBytes = new Uint8Array(await sumRes.arrayBuffer());
+		const sum = new TextDecoder().decode(sumBytes);
+		eq('export: a CSV', sumRes.headers.get('content-type'), 'text/csv; charset=utf-8');
+		check('export: downloaded as a file', /attachment; filename="wan-nee-la-summary-/.test(sumRes.headers.get('content-disposition') ?? ''), sumRes.headers.get('content-disposition'));
+		eq('export: never cached', sumRes.headers.get('cache-control'), 'private, no-store');
+		check('export: starts with a byte order mark, for Excel', sumBytes[0] === 0xef && sumBytes[1] === 0xbb && sumBytes[2] === 0xbf, String(sumBytes.slice(0, 3)));
+		check('export: a header row', sum.includes('"name","email","leave_type","leave_type_th","days","bookings"'), sum.slice(0, 120));
+		check('export: someone who has left is still counted, for the days in range', sum.includes('"gone@example.com","Annual Leave","ลาพักร้อน","3","1"') || /"gone@example\.com","[^"]*","[^"]*","3","1"/.test(sum), sum);
+		check('export: a formula in a name is defused', sum.includes('"\'=GONE()"'), sum);
+		check('export: notes never leave', !sum.includes('secret note'), 'note exported');
+
+		const rows = await (await fetch(`${BASE}/admin/export.csv?from=${WED}&to=${FRI}&kind=bookings`)).text();
+		check('export: per booking, days in range beside days charged', new RegExp(`"${MON}","${FRI}","full","full","3","5"`).test(rows), rows);
+
+		const backwards = await fetch(`${BASE}/admin/export.csv?from=${FRI}&to=${MON}`, { redirect: 'manual' });
+		eq('export: a backwards range is refused', backwards.status, 303);
+		d1(`DELETE FROM leave_requests WHERE id = 'smoke-export'`);
+		d1(`DELETE FROM users WHERE email = 'gone@example.com'`);
+	}
+
+	// --- days off by month on /me ---------------------------------------------
+	{
+		const mePage = await (await fetch(`${BASE}/me`)).text();
+		check('me: shows days off by month', mePage.includes('class="card month-use"') && mePage.includes('Days off by month'), 'section missing');
+	}
+
 	// --- language -----------------------------------------------------------
 	res = await post('/me/lang', { lang: 'th' });
 	eq('language can be set to Thai', flashOf(res)?.kind, 'ok');
@@ -984,6 +1023,7 @@ async function main() {
 	eq('second user cannot reach an admin action', (await post('/admin/quotas/bulk', { year: '2027', leaveTypeId: '1', days: '1' })).status, 403);
 	eq('second user cannot import holidays', (await post('/admin/holidays/import', { list: '2030-01-01 Sneaky' })).status, 403);
 	eq('or preview an import', (await post('/admin/holidays/preview', { list: '2030-01-01 Sneaky' })).status, 403);
+	eq('or download the HR export', (await fetch(`${BASE}/admin/export.csv`)).status, 403);
 	eq('and nothing was imported', d1Rows("SELECT COUNT(*) AS n FROM holidays WHERE date LIKE '2030-%'")[0]?.n, 0);
 	eq('second user cannot read balances', (await fetch(`${BASE}/api/v1/balances`)).status, 403);
 	check(

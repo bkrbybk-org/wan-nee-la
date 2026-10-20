@@ -321,16 +321,27 @@ export async function bulkSetQuota(db: D1Database, year: number, leaveTypeId: nu
  * former colleague is not part of "who is out". Their history is still on
  * `/u/:email` for an admin.
  */
-export async function listLeaveInRange(db: D1Database, from: string, to: string, email?: string): Promise<LeaveEntry[]> {
+/**
+ * Confirmed leave overlapping a range. Deactivated people are left out — the
+ * shared surfaces never show them — unless `includeInactive`, which the HR
+ * export sets: someone who left in June still took leave in March.
+ */
+export async function listLeaveInRange(
+	db: D1Database,
+	from: string,
+	to: string,
+	email?: string,
+	opts: { includeInactive?: boolean } = {},
+): Promise<LeaveEntry[]> {
 	const res = await db
 		.prepare(
 			`SELECT ${ENTRY_COLUMNS} ${ENTRY_FROM}
 			 WHERE r.status = 'confirmed' AND r.start_date <= ? AND r.end_date >= ?
-			 AND (u.active IS NULL OR u.active = 1)
+			 AND (?4 = 1 OR u.active IS NULL OR u.active = 1)
 			 AND (?3 IS NULL OR r.user_email = ?3)
 			 ORDER BY r.start_date, display_name`,
 		)
-		.bind(to, from, email ?? null)
+		.bind(to, from, email ?? null, opts.includeInactive ? 1 : 0)
 		.all<LeaveEntry>();
 	return res.results ?? [];
 }

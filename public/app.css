@@ -554,6 +554,11 @@ a { color: var(--md-primary); }
 }
 .fab:hover::before { opacity: var(--md-state-hover); }
 .fab:active::before { opacity: var(--md-state-press); }
+/* Folded to the icon once the page has scrolled, as M3's extended FAB does:
+   at full width it sat over the right edge of the day card and the Upcoming
+   rows — the leave type, mostly. Opens out again near the top. */
+.fab.fab-mini { padding: 0; width: 56px; justify-content: center; gap: 0; }
+.fab.fab-mini .fab-label { display: none; }
 
 /* ---------- cards & surfaces ---------- */
 
@@ -1274,6 +1279,29 @@ form.inline:has(.tf-support) { margin-bottom: 28px; }
 /* ---------- balances ---------- */
 
 .balances { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 12px; margin-bottom: var(--pad); }
+
+/* Days off by month on /me: twelve bars, each split by leave type. */
+.month-bars {
+	display: grid;
+	grid-template-columns: repeat(12, minmax(0, 1fr));
+	gap: 4px;
+	height: 140px;
+	margin: 4px 0 8px;
+}
+.mb-col { display: flex; flex-direction: column; justify-content: flex-end; align-items: center; min-width: 0; }
+.mb-n { font-size: 11px; line-height: 16px; color: var(--md-on-surface-variant); }
+/* Heights are a share of the 96px between the count and the month name. */
+.mb-stack {
+	display: flex;
+	flex-direction: column-reverse;
+	width: min(100%, 22px);
+	max-height: 96px;
+	border-radius: 4px 4px 0 0;
+	overflow: hidden;
+}
+.mb-stack span { min-height: 2px; }
+.mb-m { margin-top: 4px; font-size: 11px; line-height: 16px; color: var(--md-on-surface-variant); white-space: nowrap; }
+.mb-help { margin: 0; font-size: 12px; line-height: 16px; }
 .balance-card {
 	background: var(--md-surface-container-low);
 	border-radius: var(--md-shape-md);
