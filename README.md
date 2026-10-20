@@ -90,11 +90,14 @@ file has to actually run, so a section that dies early fails the suite by name.
 `npm run test:browser` covers what the smoke suite cannot see: the calendar's
 own script. It boots the worker on a scratch database, starts headless Chrome
 and drives it over the DevTools protocol — tapping and swiping the phone's day
-card, swiping months, the notification invitation, the entry popup, and
-dragging a booking to another day. No Playwright or Puppeteer: Node's own
-WebSocket talks to Chrome. Chrome is found at `$CHROME_PATH`, the macOS install
-location, or on `PATH`; with none the run fails rather than passing on nothing.
-CI runs it, and so does `npm run ship`.
+card, the busy-day count, swiping months, the notification invitation, the
+entry popup, dragging a booking to another day, removing one and undoing it,
+booking from an empty day, and the Thai interface. No Playwright or Puppeteer:
+Node's own WebSocket talks to Chrome. Chrome is found at `$CHROME_PATH`, the
+macOS install location, or on `PATH`; with none the run fails rather than
+passing on nothing. CI runs it, and so does `npm run ship`.
+`BROWSER_SHOTS=<dir> npm run test:browser` also saves screenshots of the phone
+calendar, in English and in Thai.
 
 `node scripts/palette.mjs` regenerates the Material 3 colour roles, checks every
 pair the stylesheet paints against WCAG AA, and fails if the values in
