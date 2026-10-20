@@ -3,7 +3,7 @@
 The original build plan (phases 0–5) is delivered and has been removed; what it
 produced is described in [PROGRESS.md](PROGRESS.md). This is the forward plan,
 rewritten 2026-08-16 after a security review and a technical-debt sweep, and
-brought back in line with the code on 2026-09-13, 2026-09-18, 2026-09-19 and 2026-10-18.
+brought back in line with the code on 2026-09-13, 2026-09-18, 2026-09-19, 2026-10-18 and 2026-10-20.
 
 ## How work is assigned
 
@@ -87,7 +87,7 @@ None of these are needed for the app to do its job. Rough value order.
 | # | Feature | Who | Notes |
 | --- | --- | --- | --- |
 | 5.1 | iCal feed | **Opus** then **Sonnet** | Leave appears in Google Calendar or Outlook. Calendar clients cannot do SSO, so it needs a per-user signed-token URL exempted from Access — the auth design is mine, the rest is not. |
-| 5.2 | CSV export for HR | **Sonnet** | Leave taken per person per type over a date range. |
+| ~~5.2~~ | ~~CSV export for HR~~ | — | **Done** (2026-10-20): `/admin` → Export for HR, per person per type or per booking, for a range up to a year. |
 | ~~5.3~~ | ~~Look-ahead in the LINE digest~~ | — | **Done:** a Monday week-ahead post, on both channels. |
 | 5.4 | Team grouping and filtering | **Sonnet** | The calendar shows everyone. Worth doing when the roster makes it unreadable, not before. |
 | ~~5.5~~ | ~~Coverage warnings~~ | — | **Done:** shown under the booking form, roster-wide; see 5.8. |

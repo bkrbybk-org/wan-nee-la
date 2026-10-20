@@ -1,6 +1,6 @@
 # wan-nee-la — Progress
 
-Updated: 2026-10-18
+Updated: 2026-10-20
 
 > This repo is **public**. Every account id, hostname, database id and Access
 > value below is a placeholder; the real ones live in `wrangler.local.jsonc`,
@@ -8,9 +8,9 @@ Updated: 2026-10-18
 
 ## Status
 
-Deployed and serving. Version `def49a9c-27ce-4cd0-b1a3-95f9680b1729`, deployed 2026-10-20 with `npm run ship`, D1 `<database-id>` in APAC, behind Cloudflare Access on `<hostname>`. Production checks passed: the new version serves all traffic, `/health` and `/` both 302 to Access, production D1 answers, and migration 0011 is applied with every type still offered. That deploy also carried the 09:00 weekday schedule — production had still been on the old daily `0 1 * * *` cron until then.
+Deployed and serving. Version `2963107a-6051-4b8c-b57f-e1f30aa542ec`, deployed 2026-10-20 with `npm run ship`, D1 `<database-id>` in APAC, behind Cloudflare Access on `<hostname>`. Production checks passed: the new version serves all traffic, `/health` and `/` both 302 to Access, production D1 answers, and migration 0011 is applied with every type still offered. That deploy also carried the 09:00 weekday schedule — production had still been on the old daily `0 1 * * *` cron until then.
 
-**In real use.** Ten active users, 20 confirmed bookings, 26 holidays, four leave types, 31 rows in the audit trail. That changes what matters here: the shared surfaces now have a real audience, so note visibility, the audit trail and the privacy rules on `/u/:email` are load-bearing rather than theoretical.
+**In real use.** Twelve active users, 24 confirmed bookings, 26 holidays, four leave types, 49 rows in the audit trail (read 2026-10-20). That changes what matters here: the shared surfaces now have a real audience, so note visibility, the audit trail and the privacy rules on `/u/:email` are load-bearing rather than theoretical.
 
 **Browser notifications work in production** (2026-10-14/15): Chrome, iPhone and Safari subscribed, test sends were accepted by Google's and Apple's push services, and the 09:00 digest on 2026-10-15 was the first scheduled notification delivered (ISSUES #23, #31). Each colleague now has to turn the bell on in their own browser; on iPhone, from the Home Screen app.
 
@@ -25,7 +25,7 @@ One optional channel is still inert, needing the owner rather than more code:
 | Area | Choice | Why |
 | --- | --- | --- |
 | Runtime | Cloudflare Workers | Required. |
-| Framework | Hono + Hono JSX, server-rendered | No SPA. Pages are small; SSR is faster on a phone and keeps the client bundle at ~10kb. |
+| Framework | Hono + Hono JSX, server-rendered | No SPA. Pages are small; SSR is faster on a phone and keeps the client bundle at ~15kb. |
 | Data | D1 (SQLite) | Relational: users × quotas × requests. KV cannot do the date-range queries the calendar needs. |
 | Auth | Cloudflare Access, JWT **verified** in the Worker | Never trust the header alone — that assumption breaks the moment a second route exists. |
 | Dates | Bangkok-local `YYYY-MM-DD` strings | Leave is a calendar date, not an instant. UTC timestamps cause off-by-one bugs at the boundary. |
@@ -40,7 +40,7 @@ One optional channel is still inert, needing the owner rather than more code:
 
 ```
 src/domain/    pure functions — date maths, half-days, booking rules, balances,
-               holiday-list parsing. No bindings, no language, no clock but one.
+               holiday-list parsing, leave reports. No bindings, no language, no clock but one.
 src/repo/      every D1 query; no SQL anywhere else
 src/auth/      Access JWT verification
 src/notify/    daily and week-ahead digests, LINE + Web Push, webhook signature
@@ -86,13 +86,13 @@ Two consequences worth remembering:
 | POST | `/me/name` · `/me/week-start` · `/me/lang` | Display name; Monday or Sunday first; English or Thai. |
 | POST | `/api/v1/push/subscribe` · `/api/v1/push/unsubscribe` | This browser's push subscription. Unsubscribe is scoped to its owner. |
 | POST | `/api/v1/push/test` | Sends to the caller's own browsers, so a fresh setup can be proved without waiting for 09:00. |
-| GET | `/admin` | Users, quotas, leave types, holidays, LINE status and run log. Admin only. |
+| GET | `/admin` | Users, quotas, leave types, holidays, LINE status, run log, audit trail, HR export. Admin only. |
 | GET | `/admin/export.csv?from=&to=&kind=` | Leave as a spreadsheet for HR: per person per type, or per booking. Days counted inside the range; people who have left included; notes never. |
 | POST | `/admin/quotas` · `/admin/quotas/bulk` | One person, or every active user at once. |
 | POST | `/admin/user` | Role and active flag. Last admin cannot demote itself. |
 | POST | `/admin/notify/preview` · `/admin/notify/send` | Dry-run and manual send, through the real digest job. |
 | POST | `/admin/holiday` · `/admin/holiday/delete` | |
-| POST | `/admin/holidays/import` | Paste a year's list. All-or-nothing: one bad line rejects the import. |
+| POST | `/admin/holidays/preview` · `/admin/holidays/import` | Paste a year's list, see what it would change, then import. All-or-nothing: one bad line rejects the import. Optionally recounts bookings already charged for a new holiday. |
 | POST | `/admin/type` · `/admin/type/delete` | Add, edit or retire a leave type; delete only one never booked. |
 
 ---
@@ -117,7 +117,7 @@ Two consequences worth remembering:
 
 **Per-person page** — `/u/:email` shows one person's leave for a year. Their schedule is visible to everyone, because it is already on the shared calendar; their balances only to themselves and admins, because "12 of 30 sick days used" is an aggregate the calendar does not reveal; their notes to nobody at all, including themselves and admins ([ISSUES.md](ISSUES.md) #20).
 
-**Accessibility** — the month grid is a real `<table>` with column headers, so a screen reader gets row and column relationships without a JS keyboard model. Each cell announces its full date rather than a bare digit, each entry announces name, type, half-day and date rather than a repeated name, today carries `aria-current="date"`, and there is a skip link. Contrast measured at AA or better in both themes.
+**Accessibility** — the month grid is a real `<table>` with column headers, so a screen reader gets row and column relationships without a JS keyboard model. Each cell announces its full date rather than a bare digit, each entry announces name, type, half-day and date rather than a repeated name, today carries `aria-current="date"`, and there is a skip link. On a phone, changing the day card tells a screen reader the day and who is away, once; the days-off-by-month chart on `/me` has a table behind it. Contrast measured at AA or better in both themes.
 
 **Note visibility, per note** — the booking form asks whether to share each note. Unshared is the default, and an unshared note never reaches another colleague's browser at all: it is filtered in the route, so it is absent from the calendar HTML and from the JSON feed rather than hidden by whatever renders them. Admins and the author can always read it. Notes written before the choice existed were made private, since their authors were never offered one. ([ISSUES.md](ISSUES.md) #17)
 
@@ -127,7 +127,7 @@ Two consequences worth remembering:
 
 **Coverage warning** — the booking form says who else is already away on the busiest day of the range, and marks it as a caution when a third or more of the active roster would be out. Advisory only: the app does not know who covers for whom, so it never refuses a booking.
 
-**Bulk holiday import** — paste a year's public holidays as a list. Dates and names separated by a space, comma, tab or semicolon; `#` comments and blank lines ignored. Nothing is written unless every line parses, because a half-imported holiday notice silently draws down everyone's quota on the days that failed. ([ISSUES.md](ISSUES.md) #10)
+**Bulk holiday import** — paste a year's public holidays as a list. Dates and names separated by a space, comma, tab or semicolon; `#` comments and blank lines ignored. Nothing is written unless every line parses, because a half-imported holiday notice silently draws down everyone's quota on the days that failed. A preview comes first — each line as new, renamed or already held, and the bookings already charged for a new holiday — and the import recounts those bookings, as audited edits, unless unticked. ([ISSUES.md](ISSUES.md) #10)
 
 **Week-ahead digest** — a second post on Monday mornings listing who is away that week, grouped by person. Claims its own row in `notification_runs`, so it and the daily digest cannot suppress one another.
 
@@ -195,7 +195,7 @@ What follows is decisions, unfinished configuration, accepted trade-offs and deb
 
 ### Configuration outstanding
 
-- **Colleagues have to opt in to notifications.** Push is proven in production (#23), but only browsers that turn the bell on receive the 09:00 digest. Do not regenerate the keypair: every subscription is bound to it, and a rotation now costs everyone a reload — the page re-subscribes itself when it notices — rather than nothing.
+- **Colleagues have to opt in to notifications.** Push is proven in production (#23), but only browsers that turn the bell on receive the 09:00 digest — on 2026-10-20 that was one person, on three browsers. The calendar now invites everyone else once. Do not regenerate the keypair: every subscription is bound to it, and a rotation now costs everyone a reload — the page re-subscribes itself when it notices — rather than nothing.
 - **LINE is switched off**, deliberately, by `LINE_ENABLED`. Turning it on needs the channel, the Access Bypass rule on `/line/webhook`, the two secrets, and the flag.
 - **2027's announced holidays need entering now** (#10). Production's 2027 holds only the 15 seeded fixed-date holidays: no Makha, Visakha or Asarnha Bucha, no Khao Phansa, no substitution or company days. Admins see a reminder banner on the calendar and `/admin` until something announced is added; the paste-a-list importer makes it a one-minute job.
 
@@ -222,7 +222,7 @@ Dependencies are clean: `npm audit` reports zero vulnerabilities after bumping H
 3. **Owner** — a rate-limiting rule on `/api/v1/*` (PLAN 3.4).
 4. LINE (#2), only if browser notifications turn out not to be enough.
 
-Features — iCal, CSV export, team grouping, coverage scoped to a team — are in PLAN.md section 5. None are needed for the app to do its job.
+Features — iCal, team grouping, coverage scoped to a team — are in PLAN.md section 5. None are needed for the app to do its job.
 
 ---
 
@@ -255,6 +255,7 @@ Features — iCal, CSV export, team grouping, coverage scoped to a team — are 
 
 ## Change log
 
+- **2026-10-20** — Review and documentation cross-check; no code changed. ARCHITECTURE's route table gained `/api/v1/holidays` and `/api/v1/balances`, and its non-goals now say a payroll *integration* rather than an export, since the HR CSV exists. README counts seven unit suites and 36 routes, and drops a step for removing a "Not enabled yet" Push marker that is already gone. The client bundle is ~15kb now, not ~10kb. PLAN 5.2 (CSV export) closed. Production figures refreshed: twelve active users, and push still reaches only one person.
 - **2026-10-20** — A CSV export for HR on `/admin`: per person per leave type, or one row per booking, for a date range, counting only the days inside it, including people who have left, without notes, and defusing names a spreadsheet would run as formulas. `/me` shows the year's days off month by month, split by type. On a phone the floating Book button folds to its icon once the page scrolls, and a screen reader is told the day and who is away when a tap or swipe changes the day card. `src/domain/report.ts` does the counting for both reports, with its own unit suite.
 - **2026-10-20** — The holiday import can recount for you: with "Also recount these bookings" ticked (the default), bookings already charged for a newly added holiday are recounted through the same write an edit uses, so each is in the audit trail under the admin's name, and the message says how many. On a phone a day with more than three people away shows the number instead of a cluster of dots, and the two standing banners — the notification invitation and the holiday reminder — are compact strips of at most two lines, so the day card stays on an 812px screen with both up; an empty row above the grid is gone too. The browser tests now cover all of that plus remove-then-undo, booking from an empty day, and the Thai interface (33 assertions), and `BROWSER_SHOTS=<dir>` saves screenshots.
 - **2026-10-20** — Browser tests: `npm run test:browser` drives headless Chrome over the DevTools protocol, with no new dependency, through the phone's day card, swiping, the notification invitation, the entry popup and drag-to-move; `ship` and CI run it. On its first run it found drag-to-move broken in Chrome — a native link drag was cancelling the gesture — now fixed (#45). Importing holidays now goes through a preview: new, renamed and already-held lines, errors by line number with the list handed back, and the bookings already charged for a new holiday, linked for re-saving. On a phone, swiping the day card steps a day at a time, into the next month off the end. Desktop bars break at weekends and holidays inside a booking, matching the phone.

@@ -4,13 +4,14 @@
 
 Employee leave tracker on Cloudflare Workers. "wan nee la" is Thai for *on leave today*.
 
-- Global calendar — who is out, which day. A month grid at every width: names on a laptop, dots on a phone. Click a day to book it, click an entry to open it, drag an entry to move it.
+- Global calendar — who is out, which day. A month grid at every width: names on a laptop, dots on a phone with one day's card beneath. Click a day to book it, click an entry to open it, drag an entry to move it.
 - Self-serve booking with half-day granularity, and a note that is private unless you share it. Edit or remove afterwards, undo a cancel or a move within ten minutes; every change is recorded. A refused booking comes back to the form with what you typed and the offending field marked.
-- Personal dashboard — days remaining per leave type. An upcoming sidebar on the calendar, and a month/year jump for planning further out.
+- Personal dashboard — days remaining per leave type, and the year's days off month by month. An upcoming sidebar on the calendar, and a month/year jump for planning further out.
 - A 09:00 Asia/Bangkok notification on weekdays, only on days someone is away — "วันนี้ Mai, Nok ลา" — to subscribed browsers (free). A LINE group post is built too but off by default (billed per member). A week-ahead post on Mondays.
+- For admins: quotas, leave types, public holidays (paste a year's list), and a CSV export for HR.
 - Behind Cloudflare Access. Material 3 interface in English or Thai, mobile and laptop layouts, System/Light/Dark themes.
 
-Hono + Hono JSX (SSR) + D1. No frontend framework; the client bundle is ~10kb of progressive enhancement and every page works without it.
+Hono + Hono JSX (SSR) + D1. No frontend framework; the client bundle is ~15kb of progressive enhancement and every page works without it.
 
 ## Setup
 
@@ -70,9 +71,9 @@ as the main checkout.
 npm run typecheck && npm run lint && npm test
 ```
 
-`npm test` runs six suites — date arithmetic, booking rules, the LINE digest,
-Web Push against RFC 8291's worked example, holiday-list parsing, and the
-string catalogue's own health — then checks that `public/openapi.yaml` accounts
+`npm test` runs seven suites — date arithmetic, booking rules, the LINE digest,
+Web Push against RFC 8291's worked example, holiday-list parsing, the leave
+reports behind the HR export, and the string catalogue's own health — then checks that `public/openapi.yaml` accounts
 for every route, that the committed `public/openapi.json` still matches it
 (`npm run build:spec` regenerates it), and that the API Shield copy still
 builds from it.
@@ -81,7 +82,7 @@ builds from it.
 CI runs it.
 
 `npm run test:smoke` additionally boots a worker against a scratch database and
-exercises the HTTP layer over all 32 routes — CSRF, ownership checks, note
+exercises the HTTP layer over all 36 routes — CSRF, ownership checks, note
 visibility across two identities, booking rules, the audit trail, security
 headers, the digest's decisions and the LINE webhook signature. It needs no
 secrets and makes no outbound calls. Every `check(` and `eq(` written in the
@@ -202,8 +203,6 @@ Optional, free, and independent of LINE: subscribers get a notification at 09:00
 4. Deploy, then click the **bell** beside the light/dark toggle and turn notifications on. **Send a test** proves the whole path without waiting for 09:00.
 
 Leave `VAPID_PUBLIC_KEY` empty to keep the feature off: the bell disappears from the header and the digest skips the channel.
-
-Once notifications actually reach a phone, drop the "Not enabled yet" wording from the Push tag and its three operations in `public/openapi.yaml` and run `npm run build:spec`.
 
 **On iPhone and iPad** this only works from an installed web app — Share → *Add to Home Screen*, then turn notifications on from there. Safari tabs have no Push API at all (docs/ISSUES.md #21). Android Chrome works in an ordinary tab.
 

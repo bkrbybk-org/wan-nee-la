@@ -43,7 +43,7 @@ An Access service token carries `common_name`, not `email`, so it is nobody's em
 
 Two zone-level layers run at the edge **before** Access, so they see anonymous traffic too (both verified 2026-09-19):
 
-- **API Shield schema validation.** The ten JSON operations are uploaded as an OpenAPI 3.0.3 schema derived from `public/openapi.yaml` (`npm run openapi:shield`), and a WAF custom rule blocks on `cf.schema_validation.uploaded.violated`. The other 24 routes are not in the schema and are not checked; there is no fallthrough rule, and there must not be one. A change to what one of those operations *accepts* needs the schema regenerated and re-uploaded in the same change, or real requests start getting 403s. `npm run shield:probe` checks enforcement from outside.
+- **API Shield schema validation.** The ten JSON operations are uploaded as an OpenAPI 3.0.3 schema derived from `public/openapi.yaml` (`npm run openapi:shield`), and a WAF custom rule blocks on `cf.schema_validation.uploaded.violated`. The other 26 routes are not in the schema and are not checked; there is no fallthrough rule, and there must not be one. A change to what one of those operations *accepts* needs the schema regenerated and re-uploaded in the same change, or real requests start getting 403s. `npm run shield:probe` checks enforcement from outside.
 - **A rule refusing `*.yaml` and `*.yml`.** Which is why `/docs` reads `/openapi.json`, not the YAML (ISSUES #42).
 
 ## Data model (D1)
@@ -161,10 +161,12 @@ Self-serve model (owner's decision): a POST creates a `confirmed` row directly. 
 | --- | --- | --- |
 | GET | `/health` | Above the app's auth, still behind Access. Version, deploy time, D1 ping, Bangkok date, `accessConfigured`, `devAuthBypass`. 503 when D1 is unreachable. |
 | POST | `/line/webhook` | Above auth. Verifies `X-Line-Signature` (HMAC-SHA256 of the raw body); only writes the group id. |
-| GET | `/` | Calendar. A month grid at every width — names on a laptop, dots on a phone with the day list beneath. Upcoming list, month/year jump. |
+| GET | `/` | Calendar. A month grid at every width — bars with names on a laptop, dots on a phone with one day's card beneath. Upcoming list, month/year jump. |
 | GET | `/book?date=` | Booking page, prefilled. The no-JS destination for a day cell. |
 | GET | `/docs` | API reference, Swagger UI over `/openapi.json` — the committed JSON copy of `public/openapi.yaml`, because the zone refuses `*.yaml` at the edge. "Try it out" targets the page's own origin. A Worker route rather than an asset, so it carries the CSP. |
 | GET | `/api/v1/leave/by-date?from=&to=` | The same leave grouped by date: one entry per date, each listing who is away and which part of the day (`full_day`/`morning`/`afternoon`). **Carries email addresses** — a deliberate exception, see below. Max 366 days. |
+| GET | `/api/v1/holidays?from=&to=` | Public holidays in a range. About nobody, so any signed-in caller or named service token. |
+| GET | `/api/v1/balances?year=&user=` | Entitlement, taken and remaining per person per type. Admins and service tokens only. |
 | GET | `/api/v1/leave?from=&to=&user=` | JSON feed, active users only. No email addresses in the response; notes filtered per viewer. `user` takes an address as *input* to narrow the feed to one person — the rows `/u/:email` renders as a page. |
 | GET | `/api/v1/leave/preview` | Server-side day count and coverage for the form's live preview. |
 | POST | `/api/v1/leave` | Book. Server computes days, checks overlap and the start year's balance. A refusal carries the submission and the offending field back to the form. |
@@ -213,7 +215,7 @@ The browser notification's **title** is the message on its own: `วันนี
 | `CF_VERSION_METADATA` | version metadata | footer + `/health`, same as a sibling Workers project |
 | `ACCESS_TEAM_DOMAIN` | var | e.g. `acme.cloudflareaccess.com` |
 | `ACCESS_AUD` | var | Access application AUD tag |
-| `SERVICE_TOKENS` | var | Access service tokens allowed to read the two feeds, comma-separated by name. Empty = no machine callers |
+| `SERVICE_TOKENS` | var | Access service tokens allowed to read the four feeds, comma-separated by name. Empty = no machine callers |
 | `LINE_CHANNEL_ACCESS_TOKEN` | secret | `wrangler secret put` |
 | `LINE_CHANNEL_SECRET` | secret | webhook signature verification |
 | `LINE_GROUP_ID` | var or app_config | normally captured by the webhook |
@@ -404,4 +406,4 @@ Delete is offered only for a type with no bookings in any status, and the `DELET
 
 ## Non-goals (v1)
 
-Approval workflow, carry-over quota, attachments/medical certs, half-hour granularity, per-team filtering, export to payroll.
+Approval workflow, carry-over quota, attachments/medical certs, half-hour granularity, per-team filtering, a payroll integration (`/admin/export.csv` is a file an admin downloads; nothing is pushed to a payroll system).
