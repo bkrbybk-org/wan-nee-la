@@ -1699,10 +1699,12 @@ form.inline:has(.tf-support) { margin-bottom: 28px; }
 	body.fit-viewport .grid { height: 100%; }
 	body.fit-viewport .cell { height: auto; }
 
-	/* The sidebar scrolls on its own; the page behind it does not. */
+	/* The sidebar scrolls on its own; the page behind it does not. Never
+	   sideways: a long name or a wider font wraps or ellipsises instead. */
 	.cal-side {
 		min-height: 0;
 		overflow-y: auto;
+		overflow-x: hidden;
 		padding-right: 4px;
 	}
 }
@@ -2037,9 +2039,11 @@ a.my-link:focus-visible { outline: 2px solid var(--md-primary); outline-offset: 
 	.cell .holiday-tag { white-space: normal; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; font-size: 10px; line-height: 12px; }
 	.legend { margin: 8px 0 0; }
 }
-/* A device without hover cannot reveal the +, so it is always there. */
-@media (min-width: 768px) and (hover: none) {
-	.cell-plus { opacity: 1; }
+/* The chosen day always shows its +, so a device without hover — a tablet —
+   has one to press: choose the day, then book it. Every day showing one
+   was a grid of thirty circles. */
+@media (min-width: 768px) {
+	.cell.selected .cell-plus { opacity: 1; }
 }
 
 /* The day panel. Its card is the day chosen; a day with people away is the

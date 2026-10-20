@@ -8,7 +8,7 @@ Updated: 2026-10-20
 
 ## Status
 
-Deployed and serving. Version `f779030f-3658-47b5-845c-505267a876d6`, deployed 2026-10-20 with `npm run ship`, D1 `<database-id>` in APAC, behind Cloudflare Access on `<hostname>`. Production checks passed: the new version serves all traffic, `/health` and `/` both 302 to Access, production D1 answers, and migration 0011 is applied with every type still offered. That deploy also carried the 09:00 weekday schedule — production had still been on the old daily `0 1 * * *` cron until then.
+Deployed and serving. Version `d9a81d89-8a05-469a-bfb7-27f074797e86`, deployed 2026-10-20 with `npm run ship`, D1 `<database-id>` in APAC, behind Cloudflare Access on `<hostname>`. Production checks passed: the new version serves all traffic, `/health` and `/` both 302 to Access, production D1 answers, and migration 0011 is applied with every type still offered. That deploy also carried the 09:00 weekday schedule — production had still been on the old daily `0 1 * * *` cron until then.
 
 **In real use.** Twelve active users, 24 confirmed bookings, 26 holidays, four leave types, 49 rows in the audit trail (read 2026-10-20). That changes what matters here: the shared surfaces now have a real audience, so note visibility, the audit trail and the privacy rules on `/u/:email` are load-bearing rather than theoretical.
 

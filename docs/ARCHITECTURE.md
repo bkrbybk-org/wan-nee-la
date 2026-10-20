@@ -272,7 +272,7 @@ Dark tokens are duplicated between the media query and the `[data-theme="dark"]`
 Click a day to see it in the day panel; click its **+**, or the panel's "Book this day", to book it; click an entry to open it. All of them are **links first**:
 
 - a day cell is covered by `<a class="cell-day" href="#d-…">` (or `/book?date=…` for an empty day), which the script turns into "select this day"; under it `.cell-add`, the same link to `/book`, stays for drag-to-move and is out of the tab order
-- each day of the month has a `.cell-plus`, `<a href="/book?date=…">`, shown on hover and focus — always, on a device that cannot hover
+- each day of the month has a `.cell-plus`, `<a href="/book?date=…">`, shown on hover and focus, and always on the chosen day — so a tablet, which cannot hover, chooses the day and then books it. Shown on every day at once, the first version was a grid of thirty circles on a device without hover; the Linux screenshot in CI caught it
 - an entry is an `<a href="/leave/:id/edit">` sitting above those, so a click on an entry opens the entry
 
 Until 2026-10-20 a click on a laptop's empty day booked it, and a phone's tap selected it. Both select now, so the two read the same way and the panel answers "who is out that day" without a dialog.
