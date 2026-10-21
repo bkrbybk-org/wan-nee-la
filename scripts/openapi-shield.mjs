@@ -108,7 +108,6 @@ export function fingerprintOf(spec) {
 
 export const UPLOADED_RECORD = 'scripts/shield-uploaded.json';
 
-/** The fingerprint last recorded as uploaded, or null. */
 /**
  * Where the Shield copy is written: `dist/wan-nee-la-openapi-<fingerprint>.json`.
  * Every upload used to be called the same thing, so the dashboard's list could
@@ -130,6 +129,7 @@ export function shieldFiles() {
 		.map((f) => join(SHIELD_DIR, f));
 }
 
+/** The fingerprint last recorded as uploaded, or null. */
 export function recordedFingerprint() {
 	if (!existsSync(UPLOADED_RECORD)) return null;
 	return JSON.parse(readFileSync(UPLOADED_RECORD, 'utf8')).fingerprint ?? null;
@@ -243,7 +243,7 @@ function audit(spec) {
 // ---------------------------------------------------------------------------
 
 /** The route's hostname from wrangler.local.jsonc, here or in the main checkout. */
-function hostFromConfig() {
+export function hostFromConfig() {
 	const main = spawnSync('git', ['worktree', 'list', '--porcelain'], { encoding: 'utf8' }).stdout?.split('\n')[0]?.replace(/^worktree /, '');
 	for (const file of ['wrangler.local.jsonc', main && join(main, 'wrangler.local.jsonc')]) {
 		if (!file || !existsSync(file)) continue;

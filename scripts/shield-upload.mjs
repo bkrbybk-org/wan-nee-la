@@ -26,9 +26,9 @@
  */
 
 import { existsSync, readFileSync } from 'node:fs';
+import { cfApi, findZoneId } from './cloudflare-api.mjs';
 import { fingerprintOf, recordUploaded, shieldFileName, shieldFiles } from './openapi-shield.mjs';
 
-const API = 'https://api.cloudflare.com/client/v4';
 const NAME_PREFIX = 'wan-nee-la-';
 const args = process.argv.slice(2);
 const flag = (name) => args.includes(name);
@@ -54,33 +54,8 @@ if (!host) {
 	process.exit(1);
 }
 
-async function api(path, init = {}) {
-	const res = await fetch(API + path, {
-		...init,
-		headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json', ...(init.headers ?? {}) },
-	});
-	const body = await res.json().catch(() => ({}));
-	if (!res.ok || body.success === false) {
-		const why = (body.errors ?? []).map((e) => `${e.code} ${e.message}`).join('; ') || `HTTP ${res.status}`;
-		throw new Error(`${init.method ?? 'GET'} ${path} failed: ${why}`);
-	}
-	return body.result;
-}
-
-/** The zone whose name is the longest suffix of the hostname — api.x.example.com lives in example.com. */
-async function findZone() {
-	const given = value('--zone');
-	if (given) return given;
-	const parts = host.split('.');
-	for (let i = 0; i < parts.length - 1; i++) {
-		const candidate = parts.slice(i).join('.');
-		const zones = await api(`/zones?name=${encodeURIComponent(candidate)}`);
-		if (zones.length > 0) return zones[0].id;
-	}
-	throw new Error(`no zone found for ${host}. Pass --zone <id>.`);
-}
-
-const zone = await findZone();
+const zone = await findZoneId(token, host, value('--zone'));
+const api = (path, init) => cfApi(token, path, init);
 // The same name a dashboard upload of the file would get, fingerprint and all,
 // so both routes leave rows that say which schema they are.
 const name = shieldFileName(fingerprintOf(spec));

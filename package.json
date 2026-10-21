@@ -36,6 +36,7 @@
     "build:spec": "node scripts/spec-json.mjs",
     "shield:probe": "node scripts/shield-probe.mjs",
     "shield:upload": "node scripts/shield-upload.mjs",
+    "shield:check": "node scripts/shield-check.mjs",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
     "format": "eslint . --fix",

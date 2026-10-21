@@ -317,6 +317,20 @@ the one in `scripts/shield-uploaded.json`, the schema last known to be
 uploaded. `shield:upload` updates that file; after a dashboard upload, run
 `npm run openapi:shield -- --mark-uploaded`. Either way, commit it.
 
+That file is only a record. To check what API Shield actually holds, fingerprint
+the schema itself:
+
+```bash
+npm run shield:check -- ~/Downloads/wan-nee-la-openapi-<fingerprint>.json
+```
+
+with the file downloaded from the dashboard (**Uploaded schemas → ⋯ →
+Download**), or with no arguments and `CLOUDFLARE_API_TOKEN` set (API Gateway:
+Read), which fetches every upload in the zone. It prints each schema's
+fingerprint beside the repo's, flags a file whose name claims a fingerprint its
+content does not have, and exits non-zero when the repo's spec is not among
+them. With a token in the environment, `ship` runs it too.
+
 After a dashboard upload, check **API Shield → Schema validation** filtered to
 this schema: all ten endpoints listed, a **new** endpoint added to Endpoint
 Management (the upload offers it, and skipping that leaves it unvalidated), and

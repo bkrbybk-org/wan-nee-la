@@ -253,8 +253,16 @@ const schemaStale = schemaPrint !== uploadedPrint;
 if (schemaStale) {
 	console.log(`\n⚠ API Shield: the spec now validates differently (${schemaPrint}) from the schema recorded as uploaded (${uploadedPrint ?? 'none'}).`);
 	console.log(`  After this deploy: npm run openapi:shield && npm run shield:upload — or upload by hand, then npm run openapi:shield -- --mark-uploaded. Commit ${UPLOADED_RECORD}.`);
+	console.log('  To confirm what the edge really holds: npm run shield:check (with a token, or -- <the file downloaded from the dashboard>).');
 } else {
+	// The record agrees. Whether the edge does is shield:check's question; with
+	// a token it can be asked here, without one it is a dashboard download away.
 	console.log('✓ the API Shield schema recorded as uploaded matches the spec');
+	if (process.env.CLOUDFLARE_API_TOKEN) {
+		const check = spawnSync('node', ['scripts/shield-check.mjs'], { encoding: 'utf8' });
+		if (check.status === 0) console.log('✓ API Shield holds that schema (shield:check)');
+		else console.log(`⚠ API Shield does not hold the repo's schema:\n${check.stdout}`);
+	}
 }
 
 const deployOut = spawnSync('npm', ['run', 'deploy'], { encoding: 'utf8', env: { ...process.env, WRANGLER_SEND_METRICS: 'false' } });
