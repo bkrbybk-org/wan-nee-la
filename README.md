@@ -326,7 +326,9 @@ npm run shield:check -- ~/Downloads/wan-nee-la-openapi-<fingerprint>.json
 
 with the file downloaded from the dashboard (**Uploaded schemas → ⋯ →
 Download**), or with no arguments and `CLOUDFLARE_API_TOKEN` set (API Gateway:
-Read), which fetches every upload in the zone. It prints each schema's
+Read), which fetches every upload in the zone. With no arguments and no token
+it checks the file this checkout would upload, and prints its full path — the
+quickest way to find what to upload; it says nothing about the edge. It prints each schema's
 fingerprint beside the repo's, flags a file whose name claims a fingerprint its
 content does not have, and exits non-zero when the repo's spec is not among
 them. With a token in the environment, `ship` runs it too.

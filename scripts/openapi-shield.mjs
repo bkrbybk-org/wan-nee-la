@@ -106,7 +106,7 @@ export function fingerprintOf(spec) {
 	return createHash('sha256').update(canonical).digest('hex').slice(0, 16);
 }
 
-export const UPLOADED_RECORD = 'scripts/shield-uploaded.json';
+export const UPLOADED_RECORD = fileURLToPath(new URL('./shield-uploaded.json', import.meta.url));
 
 /**
  * Where the Shield copy is written: `dist/wan-nee-la-openapi-<fingerprint>.json`.
@@ -114,7 +114,7 @@ export const UPLOADED_RECORD = 'scripts/shield-uploaded.json';
  * not say which was current; with the fingerprint in the name, its row matches
  * scripts/shield-uploaded.json at a glance, and the old ones are plain to see.
  */
-export const SHIELD_DIR = 'dist';
+export const SHIELD_DIR = fileURLToPath(new URL('../dist/', import.meta.url));
 export const SHIELD_PREFIX = 'wan-nee-la-openapi-';
 
 export function shieldFileName(print) {

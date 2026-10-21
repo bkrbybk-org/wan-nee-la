@@ -10,13 +10,18 @@
  * spec — paths and components only, so the hostname and the prose do not
  * matter — and says whether they agree.
  *
- * Two ways in:
+ * Three ways in:
  *
+ *   npm run shield:check                the file openapi:shield wrote to this
+ *                                       checkout's dist/ — the one to upload,
+ *                                       printed with its full path. Says the
+ *                                       local file is right, not that the edge
+ *                                       has it.
  *   npm run shield:check -- <file>...   schemas downloaded from the dashboard
  *                                       (Security → Settings → Uploaded schemas
- *                                       → ⋯ → Download). No token needed.
+ *                                       → ⋯ → Download): what the edge holds.
  *   npm run shield:check                with CLOUDFLARE_API_TOKEN set (API
- *                                       Gateway: Read), every upload in the
+ *                                       Gateway: Read): every upload in the
  *                                       zone, fetched. --zone <id> to name it.
  *
  * Exits 0 when the repo's spec is among what was checked, 1 when it is not.
@@ -25,16 +30,20 @@
  */
 
 import { existsSync, readFileSync } from 'node:fs';
-import { basename } from 'node:path';
+import { basename, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { parse } from 'yaml';
 import { cfApi, findZoneId } from './cloudflare-api.mjs';
-import { fingerprint, fingerprintOf, hostFromConfig, recordedFingerprint, SHIELD_PREFIX, UPLOADED_RECORD } from './openapi-shield.mjs';
+import { fingerprint, fingerprintOf, hostFromConfig, recordedFingerprint, SHIELD_DIR, SHIELD_PREFIX, shieldFileName, shieldFiles, UPLOADED_RECORD } from './openapi-shield.mjs';
 
 const args = process.argv.slice(2);
 const value = (name) => (args.indexOf(name) >= 0 ? args[args.indexOf(name) + 1] : undefined);
 const files = args.filter((a, i) => !a.startsWith('--') && args[i - 1] !== '--zone');
 
-const repo = fingerprint(readFileSync('public/openapi.yaml', 'utf8'));
+const SPEC = fileURLToPath(new URL('../public/openapi.yaml', import.meta.url));
+const repo = fingerprint(readFileSync(SPEC, 'utf8'));
+/** The file to upload for the repo's spec, where openapi:shield writes it in this checkout. */
+const toUpload = resolve(SHIELD_DIR, shieldFileName(repo));
 const recorded = recordedFingerprint();
 
 /** A schema's fingerprint, from JSON or YAML text. */
@@ -60,25 +69,22 @@ if (files.length > 0) {
 	}
 	for (const f of files) {
 		try {
-			rows.push({ name: basename(f), print: printOf(readFileSync(f, 'utf8')), from: 'file' });
+			rows.push({ name: basename(f), path: resolve(f), print: printOf(readFileSync(f, 'utf8')), from: 'file' });
 		} catch (err) {
 			console.error(`${f} is not a JSON or YAML schema: ${err instanceof Error ? err.message : err}`);
 			process.exit(2);
 		}
 	}
-} else {
-	const token = process.env.CLOUDFLARE_API_TOKEN;
-	if (!token) {
-		console.error(
-			[
-				'Nothing to check. Either:',
-				'  download the schema from the dashboard (Uploaded schemas → ⋯ → Download) and run',
-				'    npm run shield:check -- <downloaded file>',
-				'  or set CLOUDFLARE_API_TOKEN (API Gateway: Read) and run it again.',
-			].join('\n'),
-		);
+} else if (!process.env.CLOUDFLARE_API_TOKEN) {
+	// No download and no token: check the file this checkout would upload.
+	const local = shieldFiles();
+	if (local.length === 0) {
+		console.error(`No Shield schema in ${SHIELD_DIR}. Run: npm run openapi:shield`);
 		process.exit(2);
 	}
+	for (const f of local) rows.push({ name: basename(f), path: f, print: printOf(readFileSync(f, 'utf8')), from: 'local' });
+} else {
+	const token = process.env.CLOUDFLARE_API_TOKEN;
 	const host = hostFromConfig();
 	if (!host && !value('--zone')) {
 		console.error('No hostname to find the zone from: have wrangler.local.jsonc here or in the main checkout, or pass --zone <id>.');
@@ -98,7 +104,7 @@ if (files.length > 0) {
 	}
 }
 
-console.log(`repo spec  ${repo}   (public/openapi.yaml)`);
+console.log(`repo spec  ${repo}   (${SPEC})`);
 console.log(`recorded   ${recorded ?? 'none'}   (${UPLOADED_RECORD})${recorded && recorded !== repo ? '  ← differs from the repo: upload the new schema' : ''}`);
 console.log('');
 for (const r of rows) {
@@ -106,14 +112,23 @@ for (const r of rows) {
 	const claim = claimedBy(r.name);
 	const renamed = claim && claim !== r.print ? `  ⚠ named ${claim} but holds ${r.print}` : '';
 	const meta = r.from === 'api' ? `  ${r.created}  validation ${r.enabled ? 'on ' : 'off'}` : '';
-	console.log(`${r.print}  ${verdict.padEnd(36)}${meta}  ${r.name}${renamed}`);
+	console.log(`${r.print}  ${verdict.padEnd(36)}${meta}  ${r.path ?? r.name}${renamed}`);
 }
 
 const matches = rows.filter((r) => r.print === repo);
 console.log('');
 if (matches.length === 0) {
-	console.log(`✗ nothing checked holds the repo's spec (${repo}). Upload dist/${SHIELD_PREFIX}${repo}.json (npm run openapi:shield).`);
+	console.log(`✗ nothing checked holds the repo's spec (${repo}).`);
+	console.log(`  The file to upload: ${toUpload}${existsSync(toUpload) ? '' : '  (not there yet: npm run openapi:shield)'}`);
 	process.exit(1);
+}
+if (rows.every((r) => r.from === 'local')) {
+	// Only the local file was looked at: right to upload, but whether the edge
+	// has it is a download (or a token) away.
+	console.log(`✓ the file to upload is current: ${toUpload}`);
+	console.log('  To check what the edge holds: download the row (Uploaded schemas → ⋯ → Download) and run');
+	console.log('    npm run shield:check -- <the downloaded file>');
+	process.exit(0);
 }
 if (rows.length > 1 && rows.some((r) => r.print !== repo && r.name?.startsWith('wan-nee-la'))) {
 	console.log('✓ the repo\'s spec is uploaded. Older wan-nee-la uploads are still there; delete them once the probe passes.');
