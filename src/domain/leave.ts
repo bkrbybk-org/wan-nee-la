@@ -37,7 +37,11 @@ export interface BookingInput {
  * "not carried" and leaves whatever the form already had; an empty string means
  * the reader cleared the note, which is a different thing.
  */
-export type BookingDraft = Omit<BookingInput, 'note'> & { note?: string };
+export type BookingDraft = Omit<BookingInput, 'note'> & {
+	note?: string;
+	/** Whose booking it was to be (their `personKey`), when an admin was booking for someone else. */
+	forKey?: string;
+};
 
 export interface ExistingRange {
 	id: string;
@@ -145,6 +149,7 @@ export function draftPayload(draft: BookingDraft): Record<string, unknown> {
 		// Omitted rather than sent empty when the note was dropped, so the form
 		// can tell "not carried" from "cleared".
 		...(draft.note === undefined ? {} : { n: draft.note }),
+		...(draft.forKey === undefined ? {} : { f: draft.forKey }),
 	};
 }
 
@@ -171,6 +176,9 @@ export function parseDraft(value: unknown): BookingDraft | null {
 	if (!startHalf || !endHalf) return null;
 
 	if (v.n !== undefined && typeof v.n !== 'string') return null;
+	// Only ever used to choose among the form's own options, but bounded like
+	// any other input from the cookie.
+	const forKey = typeof v.f === 'string' && /^[0-9a-z]{1,16}$/.test(v.f) ? v.f : undefined;
 
 	return {
 		leaveTypeId,
@@ -182,6 +190,7 @@ export function parseDraft(value: unknown): BookingDraft | null {
 		// Private unless the payload says otherwise — the same safe direction
 		// `parseBooking` takes with a missing checkbox.
 		notePrivate: v.p !== false,
+		...(forKey ? { forKey } : {}),
 	};
 }
 

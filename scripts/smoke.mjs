@@ -1132,6 +1132,39 @@ async function main() {
 		d1("DELETE FROM leave_audit WHERE leave_id = 'pg-owner'");
 	}
 
+	// --- an admin books for someone else ----------------------------------------
+	{
+		const FOR = clearFutureMonday(24);
+		d1(`INSERT OR IGNORE INTO users (email, display_name, is_admin, active, created_at) VALUES ('left@example.com', 'Left Already', 0, 0, '2026-01-01')`);
+		// The second session's user, before they have signed in, under the name a
+		// first sign-in would give them.
+		d1(`INSERT OR IGNORE INTO users (email, display_name, is_admin, active, created_at) VALUES ('${OTHER}', 'Other', 0, 1, '2026-01-01')`);
+		const bookHtml = await (await fetch(`${BASE}/book?date=${FOR}`)).text();
+		check('book for: an admin\'s form asks who it is for, themselves first', /<select[^>]*name="for"[^>]*>\s*<option value="[0-9a-z]+" selected="">Me \(/.test(bookHtml), 'no For field');
+		check('book for: everyone active is offered, nobody who has left', bookHtml.includes('>Pane Owner</option>') && !bookHtml.includes('>Left Already<'), 'wrong people');
+		check('book for: by key, never by address', !/<option value="[^"]*@/.test(bookHtml), 'an address in the options');
+		const keyOf = (name) => new RegExp(`<option value="([0-9a-z]+)">${name}</option>`).exec(bookHtml)?.[1];
+		const otherKey = keyOf('Other');
+		check('book for: the calendar\'s dialog has it too', /data-create-dialog[^]*?name="for"/.test(await (await fetch(`${BASE}/`)).text()), 'not in the dialog');
+
+		const pv = await (await fetch(`${BASE}/api/v1/leave/preview?leaveTypeId=1&start=${FOR}&end=${FOR}&for=${otherKey}`)).json();
+		check('book for: the preview is the other person\'s', pv.balance?.type === 'Annual' && pv.balance.remaining !== undefined, JSON.stringify(pv));
+		const nobody = await (await fetch(`${BASE}/api/v1/leave/preview?leaveTypeId=1&start=${FOR}&end=${FOR}&for=zzzz`)).json();
+		check('book for: a key that is nobody is ignored in the preview', !nobody.coverage?.with, JSON.stringify(nobody.coverage));
+
+		res = await post('/api/v1/leave', { for: otherKey, leaveTypeId: '1', mode: 'one', startDate: FOR, dayPart: 'full' });
+		check('book for: says who it was booked for', /for Other\./.test(flashOf(res)?.message ?? ''), flashOf(res)?.message);
+		const made = d1Rows(`SELECT r.user_email, a.actor_email FROM leave_requests r JOIN leave_audit a ON a.leave_id = r.id AND a.action = 'created' WHERE r.start_date = '${FOR}' AND r.status = 'confirmed'`);
+		eq('book for: it is theirs, and the history says the admin did it', made.map((r) => `${r.user_email} by ${r.actor_email}`).join(), `${OTHER} by ${ADMIN}`);
+
+		res = await post('/api/v1/leave', { for: 'zzzz', leaveTypeId: '1', mode: 'one', startDate: addDays(FOR, 1), dayPart: 'full' });
+		const refused = flashOf(res);
+		eq('book for: not for a key that is nobody active', refused?.field, 'for');
+		eq('book for: and the form comes back holding who it was for', refused?.draft?.f, 'zzzz');
+		res = await post('/api/v1/leave', { for: otherKey, leaveTypeId: '1', mode: 'one', startDate: FOR, dayPart: 'full' });
+		check('book for: checked against their bookings, not the admin\'s', /overlap|already/i.test(flashOf(res)?.message ?? ''), flashOf(res)?.message);
+	}
+
 	await stopServer();
 
 	// -----------------------------------------------------------------------
@@ -1170,6 +1203,20 @@ async function main() {
 	check('and never their note', !otherViewsAdmin.includes('smoke-private-note'), 'note leaked');
 
 	const ownPage = await (await fetch(`${BASE}/u/${encodeURIComponent(OTHER)}`)).text();
+
+	// --- leave an admin booked for them ---------------------------------------
+	{
+		const bookedFor = d1Rows(`SELECT id FROM leave_requests WHERE user_email = '${OTHER}' AND status = 'confirmed' AND id IN (SELECT leave_id FROM leave_audit WHERE actor_email = '${ADMIN}')`)[0]?.id;
+		const theirs = await (await fetch(`${BASE}/leave/${bookedFor}/edit`)).text();
+		check('book for: the owner\'s page says who booked it for them', /data-by-other[^>]*>[^<]*booked this for you/.test(theirs), theirs.slice(theirs.indexOf('booking-head'), theirs.indexOf('booking-head') + 900));
+		check('book for: a non-admin\'s form has no For field', !(await (await fetch(`${BASE}/book`)).text()).includes('name="for"'), 'For field shown');
+		// Anyone's key but their own: refused before it is even looked up.
+		const adminKey = 'zzzz';
+		res = await post('/api/v1/leave', { for: adminKey, leaveTypeId: '1', mode: 'one', startDate: clearFutureMonday(25), dayPart: 'full' });
+		check('book for: only an admin may book for someone else', /only an admin/i.test(flashOf(res)?.message ?? ''), flashOf(res)?.message);
+		const pv = await (await fetch(`${BASE}/api/v1/leave/preview?leaveTypeId=1&start=${clearFutureMonday(25)}&for=${adminKey}`)).json();
+		check('book for: and a non-admin\'s preview stays their own', !pv.coverage?.with, JSON.stringify(pv.coverage));
+	}
 	check('a person sees their own balances', ownPage.includes('class="balances"'), 'own balances missing');
 
 	eq('unknown person 404s', (await fetch(`${BASE}/u/nobody%40example.com`)).status, 404);

@@ -87,6 +87,9 @@ export const STRINGS = {
 
 	// --- booking form ---------------------------------------------------
 	'book.type': { en: 'Leave type', th: 'ประเภทการลา' },
+	'book.for': { en: 'Booking for', th: 'แจ้งลาให้' },
+	'book.forMe': { en: 'Me ({name})', th: 'ตัวเอง ({name})' },
+	'book.forHelp': { en: 'Counted against their allowance. They get a notification if they have them on.', th: 'หักจากวันลาของคนนั้น และจะได้รับการแจ้งเตือนหากเปิดไว้' },
 	'book.from': { en: 'From', th: 'ตั้งแต่' },
 	'book.to': { en: 'To', th: 'ถึง' },
 	'book.balanceShort': { en: '{type}: only {remaining} left — not enough for this', th: '{type}: เหลือเพียง {remaining} วัน ไม่พอสำหรับการลานี้' },
@@ -208,6 +211,8 @@ export const STRINGS = {
 	'edit.remove': { en: 'Remove', th: 'ลบ' },
 	'edit.removeHelp': { en: 'Cancelling returns {days} day to the balance|Cancelling returns {days} days to the balance and takes the entry off the shared calendar. The record is kept, marked cancelled, rather than deleted.', th: 'การยกเลิกจะคืนโควตา {days} วัน และนำรายการออกจากปฏิทินส่วนกลาง ระบบจะเก็บประวัติไว้โดยทำเครื่องหมายว่ายกเลิก ไม่ได้ลบทิ้ง' },
 	'edit.removeButton': { en: 'Remove this leave', th: 'ลบการลานี้' },
+	'edit.byOtherCreated': { en: '{name} booked this for you · {when}', th: '{name} แจ้งลานี้ให้คุณ · {when}' },
+	'edit.byOtherChanged': { en: 'Last changed by {name} · {when}', th: '{name} แก้ไขล่าสุด · {when}' },
 	'edit.onBehalf': { en: 'You are looking at {name}\'s booking as an admin.', th: 'คุณกำลังดูการลาของ {name} ในฐานะผู้ดูแลระบบ' },
 	'edit.days': { en: '{days} day|{days} days', th: '{days} วัน' },
 
@@ -340,6 +345,14 @@ export const STRINGS = {
 	'audit.noChange': { en: 'no visible change', th: 'ไม่มีการเปลี่ยนแปลงที่เห็นได้' },
 	'audit.onBehalf': { en: "{actor} → {subject}'s booking", th: '{actor} → การลาของ {subject}' },
 
+	// --- telling a booking's owner what someone else did to it ------------
+	// A push in the owner's own language, unlike the digest: it is one message
+	// to one person.
+	'notice.created': { en: '{actor} booked leave for you', th: '{actor} แจ้งลาให้คุณ' },
+	'notice.edited': { en: '{actor} changed your leave', th: '{actor} แก้ไขการลาของคุณ' },
+	'notice.cancelled': { en: '{actor} removed your leave', th: '{actor} ยกเลิกการลาของคุณ' },
+	'notice.restored': { en: '{actor} put your leave back', th: '{actor} กู้คืนการลาของคุณ' },
+
 	// --- flashes and validation -------------------------------------------
 	// {type} is the English leave-type name and {typeTh} the Thai one; each
 	// language picks the label that belongs with the rest of its sentence.
@@ -356,6 +369,9 @@ export const STRINGS = {
 	'flash.cancelledNoEdit': { en: 'That booking is cancelled and cannot be edited.', th: 'การลานี้ถูกยกเลิกแล้ว จึงแก้ไขไม่ได้' },
 	'flash.gone': { en: 'That booking no longer exists.', th: 'ไม่พบการลานี้แล้ว' },
 	'flash.notYours': { en: 'That is not your booking.', th: 'นี่ไม่ใช่การลาของคุณ' },
+	'flash.bookedFor': { en: 'Booked {days} day of {type} leave for {name}.|Booked {days} days of {type} leave for {name}.', th: 'บันทึก{typeTh}ให้ {name} {days} วันแล้ว' },
+	'flash.forAdminsOnly': { en: 'Only an admin can book leave for someone else.', th: 'เฉพาะผู้ดูแลระบบเท่านั้นที่แจ้งลาให้ผู้อื่นได้' },
+	'flash.forUnknown': { en: 'Pick someone from the list.', th: 'กรุณาเลือกคนจากรายการ' },
 	'flash.cancelledWhileEditing': { en: 'That booking was cancelled while you were editing it.', th: 'การลานี้ถูกยกเลิกระหว่างที่คุณกำลังแก้ไข' },
 	'flash.nameUpdated': { en: 'Name updated.', th: 'อัปเดตชื่อแล้ว' },
 	'flash.nameEmpty': { en: 'Display name cannot be empty.', th: 'ชื่อที่แสดงต้องไม่ว่าง' },

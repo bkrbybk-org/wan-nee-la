@@ -19,6 +19,7 @@ import { t as translate, toLang } from '../i18n/strings.ts';
 export function BookPage({
 	user,
 	types,
+	people,
 	today,
 	date,
 	version,
@@ -30,6 +31,8 @@ export function BookPage({
 }: {
 	user: User;
 	types: LeaveType[];
+	/** For an admin, who they may book for; see `BookingForm`. */
+	people?: { key: string; name: string }[];
 	today: string;
 	date?: string;
 	version?: string;
@@ -43,13 +46,14 @@ export function BookPage({
 }) {
 	return (
 		<Layout title={translate(toLang(user.lang), 'book.pageTitle')} user={user} active="calendar" version={version}>
-			<BookBody {...{ user, types, today, date, error, errorField, notice, draft, undo }} />
+			<BookBody {...{ user, types, people, today, date, error, errorField, notice, draft, undo }} />
 		</Layout>
 	);
 }
 
 function BookBody({
 	types,
+	people,
 	today,
 	date,
 	error,
@@ -60,6 +64,7 @@ function BookBody({
 }: {
 	user: User;
 	types: LeaveType[];
+	people?: { key: string; name: string }[];
 	today: string;
 	date?: string;
 	error?: string;
@@ -83,7 +88,7 @@ function BookBody({
 			</div>
 
 			<section class="card">
-				<BookingForm types={types} today={today} defaultDate={date} errorField={errorField} draft={draft} compact />
+				<BookingForm types={types} today={today} defaultDate={date} errorField={errorField} draft={draft} people={people} compact />
 			</section>
 
 			<p>

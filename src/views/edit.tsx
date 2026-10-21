@@ -63,6 +63,11 @@ function EditBody(props: EditProps) {
 	const lang = useLang();
 	const typeName = lang === 'th' ? entry.type_label_th : entry.type_label_en;
 	const self = `/leave/${entry.id}/edit`;
+	// Told to the owner when the last thing done to their booking was done by
+	// someone else — an admin booked it for them, or moved it. The push said so
+	// too, if they have notifications on; this is the version that stays.
+	const last = history[0];
+	const byOther = !onBehalfOf && last && last.actor_email !== entry.user_email ? last : null;
 
 	let status: string;
 	if (entry.end_date < today) status = t('edit.statusPast');
@@ -95,6 +100,14 @@ function EditBody(props: EditProps) {
 					<span class={`tag ${entry.end_date < today ? '' : 'good'}`}>{status}</span>
 				</div>
 				{onBehalfOf ? <p class="booking-admin muted">{t('edit.onBehalf', { name: onBehalfOf })}</p> : null}
+				{byOther ? (
+					<p class="booking-admin muted" data-by-other>
+						{t(byOther.action === 'created' ? 'edit.byOtherCreated' : 'edit.byOtherChanged', {
+							name: names.get(byOther.actor_email) ?? byOther.actor_email,
+							when: `${shortDate(byOther.at.slice(0, 10), lang)}, ${byOther.at.slice(11, 16)}`,
+						})}
+					</p>
+				) : null}
 
 				<dl class="booking-facts">
 					<dt>{t('edit.factDays')}</dt>

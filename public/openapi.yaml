@@ -443,6 +443,16 @@ paths:
             so the booking being changed is not reported as somebody else
             already away on those days.
           schema: { type: string, format: uuid }
+        - name: for
+          in: query
+          description: |
+            Admins only, for a new booking: who it is for, when an admin is
+            booking leave on someone else's behalf — the person key the booking
+            form's "Booking for" field carries, not an address. The balance and
+            coverage are then theirs, and `coverage.with` names them. Ignored
+            for anyone else, when `exclude` is set, and for a key that is not
+            an active person.
+          schema: { type: string, pattern: '^[0-9a-z]{1,16}$' }
       responses:
         '200':
           description: |
@@ -896,7 +906,8 @@ components:
                   type: string
                   description: |
                     The booking's owner, present only when that is not the
-                    caller — an admin editing someone else's booking (`exclude`).
+                    caller — an admin editing someone else's booking (`exclude`), or
+                    booking for someone (`for`).
                     Coverage is then counted from the owner: `out` includes
                     them, and `names` leaves them out.
         balance:

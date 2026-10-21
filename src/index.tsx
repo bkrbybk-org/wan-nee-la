@@ -46,7 +46,7 @@ import { ErrorPage, Layout, THEME_SCRIPT } from './views/layout.tsx';
 import { MePage, MeSettingsPage } from './views/me.tsx';
 import { UserPage } from './views/user.tsx';
 import { PushKeyProvider } from './views/site.tsx';
-import { personColors } from './views/person.ts';
+import { personColors, personKey } from './views/person.ts';
 import { groupIdFromWebhook, verifyLineSignature } from './notify/line.ts';
 import {
 	GROUP_ID_KEY,
@@ -59,6 +59,7 @@ import {
 	vapidKeys,
 } from './notify/digest.ts';
 import { parseSubscription, sendPush } from './notify/push.ts';
+import { shouldTellOwner, tellOwner, type OwnerNoticeAction } from './notify/owner.ts';
 import type { Env, LeaveRequest, LeaveType, User } from './types.ts';
 
 // `leaveTypes` caches db.listLeaveTypes() for the lifetime of one request. It
@@ -317,6 +318,55 @@ function sayMessage(c: Ctx, m: Message): string {
  * repeat calls were pure waste. See the comment on `Vars` for why this is a
  * per-request cache and not a module-level one.
  */
+/**
+ * The people an admin may book for: everyone active, the admin first. Empty
+ * for anyone else, and the booking form then has no "Booking for" field.
+ */
+async function bookablePeople(c: Ctx): Promise<{ key: string; name: string }[]> {
+	const user = c.get('user');
+	return user.is_admin ? peopleFor(user, await db.listUsers(c.env.DB)) : [];
+}
+
+function peopleFor(user: User, users: User[]): { key: string; name: string }[] {
+	const others = users.filter((u) => u.active && u.email !== user.email);
+	return [user, ...others].map((u) => ({ key: personKey(u.email), name: u.display_name }));
+}
+
+/**
+ * The person a `personKey` from the booking form names, if they are active.
+ * Null when it names nobody, or — the key being a short hash — more than one.
+ */
+async function personByKey(c: Ctx, key: string): Promise<User | null> {
+	const matches = (await db.listUsers(c.env.DB)).filter((u) => u.active && personKey(u.email) === key);
+	return matches.length === 1 ? matches[0] : null;
+}
+
+/**
+ * When someone changes a booking that is not theirs, tell its owner. After the
+ * response, so a slow push service never holds up the page.
+ */
+function notifyOwner(
+	c: Ctx,
+	action: OwnerNoticeAction,
+	booking: { id: string; user_email: string; start_date: string; end_date: string; start_half: Half; end_half: Half },
+	type: { label_en: string; label_th: string } | undefined,
+) {
+	const actor = c.get('user');
+	if (!type || !shouldTellOwner(actor.email, booking.user_email)) return;
+	c.executionCtx.waitUntil(
+		tellOwner(c.env, booking.user_email, {
+			action,
+			actorName: actor.display_name,
+			leaveId: booking.id,
+			type,
+			start_date: booking.start_date,
+			end_date: booking.end_date,
+			start_half: booking.start_half,
+			end_half: booking.end_half,
+		}),
+	);
+}
+
 async function leaveTypesOf(c: Ctx): Promise<LeaveType[]> {
 	const cached = c.get('leaveTypes');
 	if (cached) return cached;
@@ -376,6 +426,8 @@ app.get('/', async (c) => {
 		db.listUsers(c.env.DB),
 		holidayReminder(c),
 	]);
+	// The same list `bookablePeople` builds, from the users already fetched.
+	const people = user.is_admin ? peopleFor(user, users) : [];
 
 	return page(
 		c,
@@ -388,6 +440,7 @@ app.get('/', async (c) => {
 			types={types}
 			upcoming={upcoming}
 			holidaysDue={holidaysDue}
+			people={people}
 			colors={personColors(users)}
 			today={today}
 			version={c.env.CF_VERSION_METADATA?.id}
@@ -447,13 +500,14 @@ app.get('/book', async (c) => {
 	const user = c.get('user');
 	const today = c.get('today');
 	const raw = c.req.query('date');
-	const types = await leaveTypesOf(c);
+	const [types, people] = await Promise.all([leaveTypesOf(c), bookablePeople(c)]);
 
 	return page(
 		c,
 		<BookPage
 			user={user}
 			types={types}
+			people={people}
 			today={today}
 			date={raw && isValidDate(raw) ? raw : undefined}
 			version={c.env.CF_VERSION_METADATA?.id}
@@ -679,7 +733,12 @@ app.get('/api/v1/leave/preview', async (c) => {
 	// Coverage and balance are both theirs — counting from the admin had left
 	// the admin's own days out and put the owner among "someone else".
 	const mayEdit = editing && (editing.user_email === viewer.email || viewer.is_admin);
-	const owner = mayEdit ? editing.user_email : viewer.email;
+	// A new booking an admin is making for someone else: `for` names them by
+	// the booking form's person key. Ignored for anyone else, and for a key
+	// that is nobody active.
+	const forKey = !editing && viewer.is_admin ? c.req.query('for') : undefined;
+	const forUser = forKey ? await personByKey(c, forKey) : null;
+	const owner = mayEdit ? editing.user_email : (forUser?.email ?? viewer.email);
 	const [coverage, headcount, ownerUser] = await Promise.all([
 		db.coverageInRange(c.env.DB, parsed.startDate, parsed.endDate, owner, excludeId),
 		db.activeUserCount(c.env.DB),
@@ -857,15 +916,28 @@ app.post('/api/v1/leave', async (c) => {
 		return redirectWithFlash(back, 'err', sayMessage(c, parsed.error), { field: fieldForError(parsed.error) });
 	}
 
-	const ctx = await buildBookingContext(c.env, user.email, parsed, today);
+	// Whose booking this is. An admin may book for anyone active — someone off
+	// sick who phoned in — and it is checked against that person's allowance
+	// and other bookings, exactly as if they had booked it themselves.
+	const forKey = typeof form.for === 'string' && form.for !== '' ? form.for : personKey(user.email);
+	let owner: User = user;
+	if (forKey !== personKey(user.email)) {
+		if (!user.is_admin) return redirectWithFlash(back, 'err', say(c, 'flash.forAdminsOnly'));
+		const target = await personByKey(c, forKey);
+		if (!target) return redirectWithFlash(back, 'err', say(c, 'flash.forUnknown'), { field: 'for', draft: { ...parsed, forKey } });
+		owner = target;
+	}
+	const draft = owner === user ? parsed : { ...parsed, forKey };
+
+	const ctx = await buildBookingContext(c.env, owner.email, parsed, today);
 	const check = validateBooking(parsed, ctx);
 	if (!check.ok) {
-		return redirectWithFlash(back, 'err', sayMessage(c, check.error), { field: fieldForError(check.error), draft: parsed });
+		return redirectWithFlash(back, 'err', sayMessage(c, check.error), { field: fieldForError(check.error), draft });
 	}
 
 	const row: LeaveRequest = {
 		id: crypto.randomUUID(),
-		user_email: user.email,
+		user_email: owner.email,
 		leave_type_id: parsed.leaveTypeId,
 		start_date: parsed.startDate,
 		end_date: parsed.endDate,
@@ -879,15 +951,17 @@ app.post('/api/v1/leave', async (c) => {
 		cancelled_at: null,
 	};
 	await db.insertLeave(c.env.DB, row, user.email);
+	notifyOwner(c, 'created', row, check.type);
 
 	return redirectWithFlash(
 		back,
 		'ok',
-		say(c, 'flash.booked', {
+		say(c, owner === user ? 'flash.booked' : 'flash.bookedFor', {
 			count: check.days,
 			days: check.days,
 			type: check.type.label_en.toLowerCase(),
 			typeTh: check.type.label_th,
+			name: owner.display_name,
 		}),
 	);
 });
@@ -1018,6 +1092,7 @@ app.post('/api/v1/leave/:id/edit', async (c) => {
 		note_private: parsed.notePrivate ? 1 : 0,
 	}, c.get('user').email);
 	if (!changed) return redirectWithFlash(done, 'err', say(c, 'flash.cancelledWhileEditing'));
+	notifyOwner(c, 'edited', { ...owned.row, start_date: parsed.startDate, end_date: parsed.endDate, start_half: parsed.startHalf, end_half: parsed.endHalf }, check.type);
 
 	return redirectWithFlash(
 		done,
@@ -1042,6 +1117,10 @@ app.post('/api/v1/leave/:id/cancel', async (c) => {
 	if (!owned.ok) return redirectWithFlash(back, 'err', owned.error);
 
 	const done = await db.cancelLeave(c.env.DB, id, c.get('user').email);
+	if (done) {
+		const types = await leaveTypesOf(c);
+		notifyOwner(c, 'cancelled', owned.row, types.find((t) => t.id === owned.row.leave_type_id));
+	}
 	return done
 		? redirectWithFlash(back, 'ok', say(c, 'flash.cancelled'), { undo: id })
 		: redirectWithFlash(back, 'err', say(c, 'flash.alreadyCancelled'));
@@ -1123,6 +1202,7 @@ app.post('/api/v1/leave/:id/undo', async (c) => {
 	const actor = c.get('user').email;
 	if (last.action === 'cancelled') {
 		const done = await db.restoreLeave(c.env.DB, id, actor);
+		if (done) notifyOwner(c, 'restored', row, check.type);
 		return done
 			? redirectWithFlash(back, 'ok', say(c, 'flash.restored'))
 			: redirectWithFlash(back, 'err', say(c, 'flash.nothingToUndo'));
@@ -1143,6 +1223,9 @@ app.post('/api/v1/leave/:id/undo', async (c) => {
 		},
 		actor,
 	);
+	if (changed) {
+		notifyOwner(c, 'edited', { ...row, start_date: restoring.startDate, end_date: restoring.endDate, start_half: restoring.startHalf, end_half: restoring.endHalf }, check.type);
+	}
 	return changed
 		? redirectWithFlash(back, 'ok', say(c, 'flash.undone'))
 		: redirectWithFlash(back, 'err', say(c, 'flash.nothingToUndo'));

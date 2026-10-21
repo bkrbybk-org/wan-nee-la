@@ -127,6 +127,9 @@ function enhance(form: HTMLFormElement) {
 			endHalf: several ? radio('endHalf', 'full') : severalDays() ? radio('startHalf', 'full') : part,
 		});
 		if (excludeId) params.set('exclude', excludeId);
+		// An admin booking for someone else: their balance and their coverage.
+		const forWhom = form.querySelector<HTMLSelectElement>('[data-for]');
+		if (forWhom && forWhom.selectedIndex > 0) params.set('for', forWhom.value);
 
 		// Responses can land out of order; only the newest one may paint.
 		const mine = ++seq;

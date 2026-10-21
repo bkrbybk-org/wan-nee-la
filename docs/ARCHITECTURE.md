@@ -170,8 +170,8 @@ Self-serve model (owner's decision): a POST creates a `confirmed` row directly. 
 | GET | `/api/v1/holidays?from=&to=` | Public holidays in a range. About nobody, so any signed-in caller or named service token. |
 | GET | `/api/v1/balances?year=&user=` | Entitlement, taken and remaining per person per type. Admins and service tokens only. |
 | GET | `/api/v1/leave?from=&to=&user=` | JSON feed, active users only. No email addresses in the response; notes filtered per viewer. `user` takes an address as *input* to narrow the feed to one person — the rows `/u/:email` renders as a page. |
-| GET | `/api/v1/leave/preview` | Server-side day count, coverage and balance for the form's summary: `balance` is what the booking leaves of its type's allowance in the year it starts — the owner's when an admin edits someone else's, with the booking's own days credited back when it is that type in that year, the rule the save applies. |
-| POST | `/api/v1/leave` | Book. Server computes days, checks overlap and the start year's balance. A refusal carries the submission and the offending field back to the form. |
+| GET | `/api/v1/leave/preview` | Server-side day count, coverage and balance for the form's summary: `balance` is what the booking leaves of its type's allowance in the year it starts — the owner's when an admin edits someone else's, with the booking's own days credited back when it is that type in that year, the rule the save applies. `for` (admins, new bookings) makes it the balance and coverage of the person being booked for. |
+| POST | `/api/v1/leave` | Book. Server computes days, checks overlap and the start year's balance. A refusal carries the submission and the offending field back to the form. An admin may send `for` — a person key from the form's "Booking for" field — to book for someone active, checked against that person's allowance and bookings; anyone else sending another key is refused. |
 | GET | `/leave/:id/edit` | A booking's page, for its owner or an admin; the no-JS destination for an entry. The booking first — dates, owner, type, a status ("in 12 days", "on leave now", "taken"), days, note, the owner's balance in its start year, who else is away during it (`coverageInRange`, from the owner), and its history from `leave_audit` — then Edit, a `<details>` holding the booking form (open by itself after a refused save), and Remove…, a `<details>` that asks once. Back goes to the page the reader came from (`referrerPath`), unless that was this page or a form it posted to. |
 | POST | `/api/v1/leave/:id/edit` | Save an edit, and offer undo. Also the drag-to-move target, which carries `returnTo` and so gets no form prefill. |
 | POST | `/api/v1/leave/:id/cancel` | Soft cancel, idempotent. Offers undo. |
@@ -324,6 +324,14 @@ Both are rendered on every page and chosen by CSS, so there is no JS in the navi
 
 An overview and six section pages (`src/views/admin.tsx`), replacing one page that had grown to 6,000px on a laptop and 10,000 on a phone with 242 controls and two forms per person. The overview is for "is anything wrong": the holiday reminder, four figures, a tile per section with a one-line state. Each section page carries a row of chips — the way back to the overview and across to the others — that scrolls sideways on a phone instead of wrapping. Everything is still a plain form or link, and every section has its own URL, so a flash from a POST lands on the page the form was on. On a phone the People table stays a table: the type headings wrap, the email and the pencil drop out (the name is the same link), and it fits 375px with four types.
 
+### Booking for someone
+
+An admin's booking form opens with **Booking for**: themselves first, then everyone active. Someone off sick phones in, and the admin books it for them. The booking is the other person's in every respect — their allowance, their other bookings for the overlap check, their coverage in the summary ("with Ploy") — and the audit trail records the admin as the actor, so the booking's history reads "Pim → Ploy's booking". A note under the field, shown only once someone else is chosen, says it counts against their allowance and that they are told.
+
+The options are `personKey`s, not addresses: the calendar, where the dialog lives, keeps addresses out of its HTML (see *Following one person*). The server maps a key back by hashing every active user, and refuses a key that names nobody, or more than one. Only the create form has the field — a booking's owner never changes.
+
+**The owner is told** (`src/notify/owner.ts`). When anyone other than the owner books, edits, removes or restores a booking — through the form, a drag, or undo — the owner's browsers get a push in the owner's language: "Pim changed your leave", "Annual · 3 Nov – 6 Nov". It is tagged per booking, so a second change replaces the first on the lock screen. It is sent with `waitUntil`, after the response, and is best effort: no subscription, no keys or a refusing push service are silent, and the change is already saved. The booking's page says the same thing to the owner for as long as it is true — "Pim booked this for you" or "Last changed by Pim", from the latest audit row — for the owner who has notifications off.
+
 ## Response headers
 
 Every response the Worker returns carries `nosniff`, `X-Frame-Options: DENY`, `X-Robots-Tag: noindex, nofollow` and `Referrer-Policy: same-origin`; HTML additionally carries a Content-Security-Policy and `Cache-Control: private, no-store`.
@@ -334,6 +342,8 @@ Two choices worth knowing:
 - **CSP is strict about scripts, permissive about styles.** `script-src 'self' 'sha256-…'` — the hash is of the inline theme switcher, which must run before first paint. Styles need `'unsafe-inline'` because leave-type colours are rendered as `style="--chip: …"` on hundreds of elements. Script execution is what turns an escaping mistake into an account takeover; an inline style is not.
 
 `Strict-Transport-Security` is deliberately absent: it belongs to the zone, not the Worker (#13).
+
+**Static files carry the build.** Pages link `/app.css?v=…` and `/app.js?v=…`, the first eight characters of the deployment id (`asset()` in `src/views/layout.tsx`), so a deploy changes their addresses and a page can never pick up a script or stylesheet from another build — a page restored from the back-forward cache, say, or one loaded while a deploy rolls out. The assets themselves are still served with `max-age=0, must-revalidate`; the query string changes which file is asked for, not how long it is kept. Plain paths when the build is unknown, as in local development.
 
 ## Language
 

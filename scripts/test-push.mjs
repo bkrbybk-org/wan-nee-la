@@ -10,6 +10,7 @@
 // Run: npm run test:push
 import { b64urlToBytes, bytesToB64url, encryptPayload, vapidAuthorization } from '../src/notify/push.ts';
 import { buildPushTitle, buildWeekTitle } from '../src/notify/digest.ts';
+import { ownerNotice, shouldTellOwner } from '../src/notify/owner.ts';
 
 let failures = 0;
 const check = (name, cond, detail) => {
@@ -169,6 +170,31 @@ check('title: an empty day names nobody', !buildPushTitle([]).includes('แล�
 
 eq('week title: one person', buildWeekTitle(1), 'Away this week · 1 person');
 eq('week title: several', buildWeekTitle(4), 'Away this week · 4 people');
+
+// ---------------------------------------------------------------------------------------
+// Telling a booking's owner what someone else did to it
+// ---------------------------------------------------------------------------------------
+
+const moved = {
+	action: 'edited',
+	actorName: 'Pim',
+	leaveId: '11111111-2222-3333-4444-555555555555',
+	type: { label_en: 'Annual', label_th: 'ลาพักร้อน' },
+	start_date: '2026-11-03',
+	end_date: '2026-11-06',
+	start_half: 'full',
+	end_half: 'am',
+};
+eq('owner notice: who did what', ownerNotice(moved, 'en').title, 'Pim changed your leave');
+eq('owner notice: the type and the dates', ownerNotice(moved, 'en').body, 'Annual · 3 Nov – 6 Nov (AM)');
+eq('owner notice: in the owner\'s language', ownerNotice(moved, 'th').title, 'Pim แก้ไขการลาของคุณ');
+check('owner notice: Thai names the Thai type', ownerNotice(moved, 'th').body.startsWith('ลาพักร้อน · '), ownerNotice(moved, 'th').body);
+eq('owner notice: opens the booking', ownerNotice(moved, 'en').url, '/leave/11111111-2222-3333-4444-555555555555/edit');
+eq('owner notice: a removed booking opens My leave', ownerNotice({ ...moved, action: 'cancelled' }, 'en').url, '/me');
+eq('owner notice: booked for them', ownerNotice({ ...moved, action: 'created' }, 'en').title, 'Pim booked leave for you');
+eq('owner notice: one tag per booking, so changes replace each other', ownerNotice(moved, 'en').tag, ownerNotice({ ...moved, action: 'cancelled' }, 'en').tag);
+eq('owner notice: not for your own change', shouldTellOwner('a@example.com', 'a@example.com'), false);
+eq('owner notice: for someone else\'s', shouldTellOwner('admin@example.com', 'a@example.com'), true);
 
 console.log(failures === 0 ? '\nAll push tests passed.' : `\n${failures} failure(s).`);
 process.exit(failures === 0 ? 0 : 1);

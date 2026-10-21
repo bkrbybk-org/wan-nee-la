@@ -431,6 +431,12 @@ eq('draft round-trip: note stays shared', roundTrip.notePrivate, false);
 eq('a dropped note comes back undefined', parseDraft(draftPayload({ ...rejected, note: undefined })).note, undefined);
 eq('a cleared note comes back empty', parseDraft(draftPayload({ ...rejected, note: '' })).note, '');
 
+// Whose booking an admin was making comes back too, as a person key.
+eq('draft round-trip: booked for', parseDraft(draftPayload({ ...rejected, forKey: '1x9k2a' })).forKey, '1x9k2a');
+eq('a draft for oneself carries nobody', 'forKey' in parseDraft(draftPayload(rejected)), false);
+eq('a booked-for that is not a key is dropped', parseDraft({ ...draftPayload(rejected), f: 'a@example.com' }).forKey, undefined);
+eq('a booked-for that is not a string is dropped', parseDraft({ ...draftPayload(rejected), f: 7 }).forKey, undefined);
+
 // The cookie round-trips through the client, so what comes back is untrusted.
 eq('a draft that is not an object is rejected', parseDraft('not a draft'), null);
 eq('a null draft is rejected', parseDraft(null), null);

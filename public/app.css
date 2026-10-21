@@ -2098,6 +2098,11 @@ a.my-link:focus-visible { outline: 2px solid var(--md-primary); outline-offset: 
 .booking:has(input[name="mode"][value="one"]:checked) .range-only { display: none; }
 .booking:has(input[name="mode"][value="range"]:checked) .one-only { display: none; }
 
+/* An admin's "Booking for". What booking for someone means is said only once
+   someone else is chosen; booking for oneself, the usual case, needs no note. */
+.booking-for { margin-bottom: 16px; }
+.booking-for:has(option:first-child:checked) .tf-support { display: none; }
+
 /* Leave types as chips, each in its calendar colour. */
 .type-chips { display: flex; flex-wrap: wrap; gap: 8px; margin: 0 0 16px; padding: 0; border: 0; }
 .type-chips.invalid .type-chip { border-color: var(--md-error); }

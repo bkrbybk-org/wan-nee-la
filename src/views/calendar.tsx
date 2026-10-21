@@ -35,6 +35,8 @@ interface CalendarProps {
 	upcoming: LeaveEntry[];
 	/** For admins: next year's holidays look unentered — see `holidayGap`. */
 	holidaysDue: HolidayGap | null;
+	/** For an admin, who they may book for; see `BookingForm`. */
+	people?: { key: string; name: string }[];
 	/** Each person's badge colour, by email, in sign-up order. */
 	colors: ReadonlyMap<string, string>;
 	holidays: Holiday[];
@@ -835,7 +837,7 @@ function CalendarBody(props: CalendarProps) {
 						<CloseIcon />
 					</button>
 				</div>
-				<BookingForm types={types} today={today} errorField={errorField} draft={draft} compact />
+				<BookingForm types={types} today={today} errorField={errorField} draft={draft} people={props.people} compact />
 			</dialog>
 
 			<dialog class="popup" data-entry-dialog aria-label={t('popup.details')}>

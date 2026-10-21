@@ -1,6 +1,6 @@
 import type { BookingDraft } from '../domain/leave.ts';
 import type { LeaveEntry, LeaveType } from '../types.ts';
-import { TextField } from './fields.tsx';
+import { SelectField, TextField } from './fields.tsx';
 import { CheckIcon } from './icons.tsx';
 import { useLang, useT } from '../i18n/context.tsx';
 import { tRaw } from '../i18n/strings.ts';
@@ -28,6 +28,11 @@ interface BookingFormProps {
 	draft?: BookingDraft;
 	/** Where Discard goes when editing. The booking's own page, which closes the form. */
 	discardHref?: string;
+	/**
+	 * Who an admin may book for, themselves first. Empty or absent for anyone
+	 * else, and when editing: a booking's owner never changes.
+	 */
+	people?: readonly { key: string; name: string }[];
 }
 
 /**
@@ -51,7 +56,7 @@ interface BookingFormProps {
  * `type="date"` gives the native picker on both iOS and Android, which is a far
  * better mobile experience than any date-picker library and costs nothing.
  */
-export function BookingForm({ types, today, compact, entry, defaultDate, errorField, draft, discardHref }: BookingFormProps) {
+export function BookingForm({ types, today, compact, entry, defaultDate, errorField, draft, discardHref, people }: BookingFormProps) {
 	const editing = Boolean(entry);
 	const action = entry ? `/api/v1/leave/${entry.id}/edit` : '/api/v1/leave';
 
@@ -74,6 +79,8 @@ export function BookingForm({ types, today, compact, entry, defaultDate, errorFi
 	const endHalf = draft?.endHalf ?? entry?.end_half ?? 'full';
 
 	const bad = (name: string) => errorField === name;
+	const forList = !entry && people && people.length > 1 ? people : null;
+	const forValue = forList?.some((p) => p.key === draft?.forKey) ? draft!.forKey : forList?.[0].key;
 
 	const t = useT();
 	const lang = useLang();
@@ -102,6 +109,28 @@ export function BookingForm({ types, today, compact, entry, defaultDate, errorFi
 				coverageMore: t('book.coverageMore'),
 			})}
 		>
+			{/* Admins only: whose leave this is. Someone off sick phones in, and
+			    the admin books it for them — against their allowance, and they
+			    are told. Themselves first, so the usual case needs no change.
+			    Each person is their `personKey`, not their address: the
+			    calendar keeps addresses out of its HTML. */}
+			{forList ? (
+				<SelectField
+					id={`for-${uid}`}
+					name="for"
+					label={t('book.for')}
+					support={t('book.forHelp')}
+					invalid={bad('for')}
+					class="booking-for"
+					extra={{ 'data-for': '' }}
+				>
+					{forList.map((p, i) => (
+						<option value={p.key} selected={p.key === forValue}>
+							{i === 0 ? t('book.forMe', { name: p.name }) : p.name}
+						</option>
+					))}
+				</SelectField>
+			) : null}
 			{/* Chips, not a dropdown: four choices fit on one line, each in the
 			    colour it will have on the calendar. Radios, so it is still one
 			    field the form submits. A retired type is offered only to the

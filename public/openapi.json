@@ -586,6 +586,15 @@
 							"type": "string",
 							"format": "uuid"
 						}
+					},
+					{
+						"name": "for",
+						"in": "query",
+						"description": "Admins only, for a new booking: who it is for, when an admin is\nbooking leave on someone else's behalf — the person key the booking\nform's \"Booking for\" field carries, not an address. The balance and\ncoverage are then theirs, and `coverage.with` names them. Ignored\nfor anyone else, when `exclude` is set, and for a key that is not\nan active person.\n",
+						"schema": {
+							"type": "string",
+							"pattern": "^[0-9a-z]{1,16}$"
+						}
 					}
 				],
 				"responses": {
@@ -1298,7 +1307,7 @@
 									},
 									"with": {
 										"type": "string",
-										"description": "The booking's owner, present only when that is not the\ncaller — an admin editing someone else's booking (`exclude`).\nCoverage is then counted from the owner: `out` includes\nthem, and `names` leaves them out.\n"
+										"description": "The booking's owner, present only when that is not the\ncaller — an admin editing someone else's booking (`exclude`), or\nbooking for someone (`for`).\nCoverage is then counted from the owner: `out` includes\nthem, and `names` leaves them out.\n"
 									}
 								}
 							}

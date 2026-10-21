@@ -34,6 +34,11 @@ const FAVICON = `data:image/svg+xml,${encodeURIComponent(BRAND_MARK)}`;
  * Three states: "system" (the default) stamps nothing and lets
  * prefers-color-scheme decide; "light" and "dark" stamp data-theme and win.
  */
+/** A static file's address for this build: `/app.js?v=…`. Plain when the build is unknown, as in local development. */
+export function asset(path: string, version: string | undefined): string {
+	return version ? `${path}?v=${version.slice(0, 8)}` : path;
+}
+
 export const THEME_SCRIPT = `(function(){
 var KEY='wnl-theme',ORDER=['system','light','dark'],root=document.documentElement;
 var S='<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true">';
@@ -136,7 +141,10 @@ function LayoutShell({
 				<meta name="theme-color" content="#f8f9fb" media="(prefers-color-scheme: light)" />
 				<meta name="theme-color" content="#131314" media="(prefers-color-scheme: dark)" />
 				<title>{title} · wan-nee-la</title>
-				<link rel="stylesheet" href="/app.css" />
+				{/* Both carry the build, so a deploy changes their address: a browser
+				    still holding last week's script or stylesheet cannot run it
+				    against this week's pages. */}
+				<link rel="stylesheet" href={asset('/app.css', version)} />
 				{/* The mark from logo.ts. The PNG is for browsers that ignore an SVG
 				    icon; those that take SVG pick the later, sharper one. Inline
 				    as a data: URL, which the CSP's img-src already allows, so the
@@ -153,7 +161,7 @@ function LayoutShell({
 				{/* Must run before first paint — see THEME_SCRIPT. */}
 				<script dangerouslySetInnerHTML={{ __html: THEME_SCRIPT }} />
 				{/* Enhancement only — every page works with this blocked. */}
-				<script src="/app.js" defer></script>
+				<script src={asset('/app.js', version)} defer></script>
 			</head>
 			<body class={fitViewport ? 'fit-viewport' : ''}>
 				<a class="skip-link" href="#main">{t('nav.skip')}</a>
