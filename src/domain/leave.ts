@@ -33,7 +33,7 @@ export interface BookingInput {
  *
  * The same fields as `BookingInput`, except the note is optional: it is the one
  * field big enough to threaten the cookie that carries this (see `flashCookie`
- * in `src/index.tsx`), so the encoder is allowed to drop it. `undefined` means
+ * in `src/server/flash.ts`), so the encoder is allowed to drop it. `undefined` means
  * "not carried" and leaves whatever the form already had; an empty string means
  * the reader cleared the note, which is a different thing.
  */

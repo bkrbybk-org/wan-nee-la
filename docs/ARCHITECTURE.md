@@ -159,6 +159,8 @@ Self-serve model (owner's decision): a POST creates a `confirmed` row directly. 
 
 ## Routes
 
+**Where they live.** `src/index.tsx` is the entry point and only that: the security headers, the flash cookie, `/health` and the LINE webhook (both above auth), authentication, the cross-origin guard, the error handlers and the cron. Every other route is in `src/routes/` — `calendar`, `api`, `leave`, `me`, `push`, `admin` — each its own Hono app, mounted at `/` in that order, so the middleware above runs first for all of them and their errors reach the one handler. What more than one area needs is in `src/server/`: `common.tsx` (the context types, `userOf`, `say`, `page`, `errorPage`, the safe-path and referrer checks, person keys, owner notices) and `flash.ts` (the flash cookie). Until 2026-10-21 this was one file of 2,400 lines.
+
 | Method | Path | Purpose |
 | --- | --- | --- |
 | GET | `/health` | Above the app's auth, still behind Access. Version, deploy time, D1 ping, Bangkok date, `accessConfigured`, `devAuthBypass`. 503 when D1 is unreachable. |
@@ -317,7 +319,7 @@ The trade-off: a screen reader meets a week's bars inside its first day cell. Ea
 - **`AskOnceDelete`** — a bin that opens a one-line confirmation beside it; only that button posts. Removing a holiday and deleting a leave type use it, as Remove… on a booking does: a holiday removed by accident changes what everyone's bookings cost.
 - **`BalanceCard`** and **`LeaveRow`** — the same balance cards and booking rows on My leave and a person's page. There, rows open the booking only for its owner or an admin, and never show a note.
 
-Errors are pages inside the app for anyone signed in — the bars, the reader's language, and "Go to the calendar" (`errorPage` in `src/index.tsx`). Only "not signed in" and "account inactive", which have nobody to show the app to, are bare.
+Errors are pages inside the app for anyone signed in — the bars, the reader's language, and "Go to the calendar" (`errorPage` in `src/server/common.tsx`). Only "not signed in" and "account inactive", which have nobody to show the app to, are bare.
 
 ### Layout
 
@@ -336,7 +338,7 @@ Both are rendered on every page and chosen by CSS, so there is no JS in the navi
 
 ### Admin area
 
-An overview and six section pages (`src/views/admin.tsx`), replacing one page that had grown to 6,000px on a laptop and 10,000 on a phone with 242 controls and two forms per person. The overview is for "is anything wrong": the holiday reminder, four figures, a tile per section with a one-line state. Each section page carries a row of chips — the way back to the overview and across to the others — that scrolls sideways on a phone instead of wrapping. Everything is still a plain form or link, and every section has its own URL, so a flash from a POST lands on the page the form was on. On a phone the People table stays a table: the type headings wrap, the email and the pencil drop out (the name is the same link), and it fits 375px with four types.
+An overview and seven section pages (`src/views/admin/`, a file per section and `shell.tsx` for the tabs and frame they share), replacing one page that had grown to 6,000px on a laptop and 10,000 on a phone with 242 controls and two forms per person. The overview is for "is anything wrong": the holiday reminder, four figures, a tile per section with a one-line state. Each section page carries a row of chips — the way back to the overview and across to the others — that scrolls sideways on a phone instead of wrapping. Everything is still a plain form or link, and every section has its own URL, so a flash from a POST lands on the page the form was on. On a phone the People table stays a table: the type headings wrap, the email and the pencil drop out (the name is the same link), and it fits 375px with four types.
 
 ### Booking for someone
 

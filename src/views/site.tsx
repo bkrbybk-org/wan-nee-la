@@ -5,7 +5,7 @@
  * notifications bell, which needs the push public key. Threading that key
  * through each page's props to reach Layout would add a parameter to seven
  * components that never use it; a context is set once where a page is rendered
- * (`page()` in src/index.tsx) and read once in the header.
+ * (`page()` in src/server/common.tsx) and read once in the header.
  */
 import { createContext, useContext } from 'hono/jsx';
 import { personColor } from './person.ts';

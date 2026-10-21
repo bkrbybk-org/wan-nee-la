@@ -4,7 +4,7 @@
  *
  * The spec is hand-written, which is the only way it could carry the reasoning
  * it does — but a hand-written spec rots the moment someone adds a route and
- * forgets. This compares the JSON-answering routes in src/index.tsx against
+ * forgets. This compares the JSON-answering routes in src/index.tsx and src/routes/ against
  * the paths the spec documents and fails when the two disagree.
  *
  * It checks that the two sets match, not that the schemas are right. Nothing
@@ -14,10 +14,12 @@
  * Run: node scripts/check-openapi.mjs
  */
 
-import { readFileSync } from 'node:fs';
+import { readdirSync, readFileSync } from 'node:fs';
 import { parse, stringify } from 'yaml';
 
-const src = readFileSync(new URL('../src/index.tsx', import.meta.url), 'utf8');
+// Every file that registers routes: the entry point, and one module per area.
+const routeFiles = ['../src/index.tsx', ...readdirSync(new URL('../src/routes/', import.meta.url)).map((f) => `../src/routes/${f}`)];
+const src = routeFiles.map((f) => readFileSync(new URL(f, import.meta.url), 'utf8')).join('\n');
 const spec = readFileSync(new URL('../public/openapi.yaml', import.meta.url), 'utf8');
 
 /**
@@ -96,7 +98,7 @@ let bad = 0;
 
 for (const route of routes) {
 	if (documented.has(route) || NOT_JSON.has(route)) continue;
-	console.error(`FAIL ${route} is in src/index.tsx but neither documented in openapi.yaml nor listed as non-JSON`);
+	console.error(`FAIL ${route} is in the routes but neither documented in openapi.yaml nor listed as non-JSON`);
 	bad++;
 }
 
@@ -172,7 +174,7 @@ try {
 if (bad === 0) {
 	console.error(`ok   ${documented.size} documented, ${NOT_JSON.size} deliberately not, ${routes.size} routes in total`);
 } else {
-	console.error(`\n${bad} mismatch(es) between src/index.tsx and public/openapi.yaml`);
+	console.error(`\n${bad} mismatch(es) between the routes and public/openapi.yaml`);
 }
 
 process.exitCode = bad === 0 ? 0 : 1;

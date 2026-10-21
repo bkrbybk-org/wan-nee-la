@@ -4,7 +4,7 @@ import type { AuditRow } from '../repo/db.ts';
 import type { LeaveEntry, LeaveType, User } from '../types.ts';
 import { FlashBanner, Layout } from './layout.tsx';
 import { BookingForm } from './booking.tsx';
-import { AuditItem } from './admin.tsx';
+import { AuditItem } from './admin/index.ts';
 import { DeleteIcon, EditIcon } from './icons.tsx';
 import { BackLink } from './parts.tsx';
 import { useLang, useT } from '../i18n/context.tsx';
