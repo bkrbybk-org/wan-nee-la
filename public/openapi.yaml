@@ -1,8 +1,8 @@
 # wan-nee-la — the JSON surface.
 #
-# Deliberately not the whole app. Of the 34 routes the Worker serves, seven
-# render HTML pages and seventeen are form posts that answer with a 303 and a
-# flash cookie; those are a browser flow, and describing them here would
+# Deliberately not the whole app. Of the 43 routes the Worker serves, sixteen
+# render HTML pages, one is a CSV download and sixteen are form posts that
+# answer with a page or a 303 and a flash cookie; those are a browser flow, and describing them here would
 # document the shape of a redirect rather than an interface anyone can call.
 # What follows is the part a program would use.
 #
@@ -29,15 +29,13 @@ info:
     **Every route except `/line/webhook` sits behind Cloudflare Access**, which
     authenticates at the edge, before the Worker runs. There is no API key and
     no signup: an Access identity the app has not seen becomes a user on its
-    first request, with the current year's quotas seeded. Access *service
-    tokens* deliberately cannot use the app — a token has no email, and every
-    row here is keyed by one.
+    first request, with the current year's quotas seeded. An Access *service
+    token* has no email, so it is nobody's colleague: an allowlisted one may
+    read the leave feeds and the balances, and nothing else.
 
-    **Four of the ten operations are not enabled yet** — the three under
-    Push and the LINE webhook. They answer, and their requests are validated at
-    the edge like the rest, but nothing is delivered: the deployment's push keys
-    do not match each other, and the LINE channel is switched off. Each one says
-    so, and the tag descriptions say what is missing.
+    **The LINE webhook is not enabled yet.** It answers, and its requests are
+    validated like the rest, but the LINE channel is switched off; its tag says
+    what is missing. Push has delivered in production since 2026-10-14.
 
     **Mutations require an `Origin` header matching `Host`.** Access is an
     authentication gate, not a CSRF defence: its cookie rides along on a form

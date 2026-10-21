@@ -260,8 +260,9 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
 		console.error('No hostname: pass --host, or have wrangler.local.jsonc in this or the main checkout.');
 		process.exit(1);
 	}
-	const spec = toShield(readFileSync('public/openapi.yaml', 'utf8'), host);
-	const print = fingerprint(readFileSync('public/openapi.yaml', 'utf8'));
+	const specText = readFileSync(fileURLToPath(new URL('../public/openapi.yaml', import.meta.url)), 'utf8');
+	const spec = toShield(specText, host);
+	const print = fingerprint(specText);
 	mkdirSync(SHIELD_DIR, { recursive: true });
 	// One file at a time: an older one left beside it is the one that gets
 	// uploaded by mistake.

@@ -1,6 +1,6 @@
 # wan-nee-la — Progress
 
-Updated: 2026-10-20
+Updated: 2026-10-21
 
 > This repo is **public**. Every account id, hostname, database id and Access
 > value below is a placeholder; the real ones live in `wrangler.local.jsonc`,
@@ -8,7 +8,7 @@ Updated: 2026-10-20
 
 ## Status
 
-Deployed and serving. Version `406cb987-c79f-465d-a88f-b422ae151dde`, deployed 2026-10-21 with `npm run ship`, D1 `<database-id>` in APAC, behind Cloudflare Access on `<hostname>`. Production checks passed: the new version serves all traffic, `/health` and `/` both 302 to Access, production D1 answers, and migration 0011 is applied with every type still offered. That deploy also carried the 09:00 weekday schedule — production had still been on the old daily `0 1 * * *` cron until then.
+Deployed and serving. Version `8f57b1c4-f3e5-4879-8d07-5d8d4cb23912`, deployed 2026-10-21 with `npm run ship`, D1 `<database-id>` in APAC, behind Cloudflare Access on `<hostname>`. Production checks passed: the new version serves all traffic, `/health` and `/` both 302 to Access, production D1 answers, all twelve migrations are applied, and `shield:probe` stops all 17 violating requests at the edge.
 
 **In real use.** Twelve active users, 24 confirmed bookings, 26 holidays, four leave types, 49 rows in the audit trail (read 2026-10-20). That changes what matters here: the shared surfaces now have a real audience, so note visibility, the audit trail and the privacy rules on `/u/:email` are load-bearing rather than theoretical.
 
@@ -166,7 +166,7 @@ Two consequences worth remembering:
 | `test-i18n.mjs` | 27 | Lookup, placeholders, plurals, and the catalogue's own health |
 | `smoke.mjs` | 526 | The HTTP layer — see below |
 | `test-browser.mjs` | 56 | Five screenshots compared with per-platform references (the month on a phone, light and dark, and a laptop; the admin People page on both) — then the calendar's own script in headless Chrome: the phone's day card, tapping and swiping it, what a screen reader is told, the folding Book button, the days-off-by-month chart, the busy-day count, the card staying on screen under both banners, the month swipe, the notification invitation, the entry popup, drag-to-move, remove and undo, booking from an empty day, the Thai interface |
-| `check-openapi.mjs` | — | Each of the 41 routes is either documented in `openapi.yaml` or deliberately listed as not, and the API Shield 3.0.3 copy still builds from it, and its validation fingerprint moves only when validation does |
+| `check-openapi.mjs` | — | Each of the 43 routes is either documented in `openapi.yaml` or deliberately listed as not, and the API Shield 3.0.3 copy still builds from it, and its validation fingerprint moves only when validation does |
 
 The smoke suite boots a real worker against a scratch database and exercises what pure functions cannot reach: the CSRF guard, ownership checks on edit and cancel, booking rules over real requests, the open-redirect guards on `returnTo` **and on the `Referer` header**, note visibility across two identities, the audit trail's contents, the security headers, digest decisions, the webhook signature, push subscription ownership, admin authorisation, undo and its re-validation, next-year and cross-year quota, a LINE channel switched off by its flag, adding, retiring and deleting leave types, and history pruning through the real scheduled handler, the audit trail's filter and pages, the admin's notifications column, and an unhandled error — a table renamed under the running server — answering in the app's own shapes and logged by route pattern, never by path.
 
@@ -217,7 +217,7 @@ Nothing here is urgent; all of it is confirmed present. Owners and ordering in [
 
 - A plain `npm run deploy` still overwrites Worker vars with only a warning (#40). `npm run ship` refuses on drift since 2026-10-19, so use that.
 - Nothing rate-limits the feeds (PLAN 3.4). Authentication stops strangers, not a signed-in caller looping over the roster.
-- The API Shield schema is uploaded by hand. Changing what one of the ten JSON operations accepts means `npm run openapi:shield` and a re-upload in the same change, or real requests get a 403. Since 2026-10-20 `ship` warns when the spec validates differently from the schema recorded as uploaded (`scripts/shield-uploaded.json`, a fingerprint of paths, parameters and bodies only) — a record kept by hand after a dashboard upload, so it is only as true as that habit.
+- The API Shield schema is uploaded by hand. Changing what one of the ten JSON operations accepts means `npm run openapi:shield` and a re-upload in the same change, or real requests get a 403. Since 2026-10-20 `ship` warns when the spec validates differently from the schema recorded as uploaded (`scripts/shield-uploaded.json`, a fingerprint of paths, parameters and bodies only) — a record kept by hand after a dashboard upload, so it is only as true as that habit. `npm run shield:check` fingerprints an actual schema — downloaded, or fetched with a read token — to check it against the repo.
 - Deploy is manual, by choice. Deploy-on-merge would put a Cloudflare API token and the infrastructure ids into a public repo's settings.
 
 Dependencies are clean: `npm audit` reports zero vulnerabilities after bumping Hono to `^4.13.8` and Wrangler to `^4.135.0` — the latter clears a HIGH advisory in its bundled `sharp`.
@@ -265,6 +265,9 @@ Features — iCal, team grouping, coverage scoped to a team — are in PLAN.md s
 - The daily digest runs at 09:00, Mon–Fri, and stays silent on days nobody is away. Its push title is Thai only and names people rather than counting them — a lock screen gives it one line, and the names are the message.
 
 ## Change log
+
+- **2026-10-21** — Docs cross-checked against the code. Route counts brought to 43 (10 in the spec, 33 deliberately not); the spec's introduction no longer says push is undelivered or that service tokens are refused, both untrue since September. Prose only: the Shield fingerprint is unchanged, so nothing to re-upload.
+- **2026-10-21** — The Shield schema file is named for its fingerprint (`dist/wan-nee-la-openapi-<fingerprint>.json`), so a dashboard row says which schema it holds. `npm run shield:check` fingerprints a schema — files downloaded from the dashboard, every upload in the zone with `CLOUDFLARE_API_TOKEN`, or with neither, the local file to upload — and flags a file whose name claims a fingerprint its content lacks. The Shield scripts resolve paths from their own location, so they print this checkout's full paths from any directory. Schema `0925e17be7913108` uploaded for the preview's `for` parameter; the probe gained a case for it, 17 of 17 enforced.
 
 - **2026-10-21** — The two largest files split, behaviour unchanged. `src/index.tsx` (2,400 lines) is now the entry point only — headers, flash, health, webhook, auth, the cross-origin guard, error handlers, cron — with every other route in `src/routes/` (calendar, api, leave, me, push, admin), each a Hono app mounted at the root in the old order, and shared helpers in `src/server/` (`common.tsx`, `flash.ts`). `src/views/admin.tsx` (1,200 lines) is `src/views/admin/`, a file per section. Every test count is the same before and after; `check-openapi` now reads all the route files.
 - **2026-10-21** — Security and debt pass. `npm audit` clean again: Hono 4.13.13, wrangler 4.151.3 and the in-range fixes; eslint stays on 10.9 because its newer releases pull `@keyv/serialize`, which the organisation's registry policy blocks. `DEV_AUTH_BYPASS` now signs in only a caller on this machine (`CF-Connecting-IP` loopback), so left on in production it would sign in nobody. Push subscriptions must point at a real push service. Person keys are an HMAC under a salt the database keeps, not a hash anyone could recompute from a list of addresses. The year-end reminder records a failure when nobody could be reached, and an admin can try again. `user` is typed as optional, read through `userOf` where a person is required. Migration 0012 indexes the audit trail by subject.

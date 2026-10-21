@@ -88,7 +88,7 @@ builds from it.
 CI runs it.
 
 `npm run test:smoke` additionally boots a worker against a scratch database and
-exercises the HTTP layer over all 41 routes — CSRF, ownership checks, note
+exercises the HTTP layer over all 43 routes — CSRF, ownership checks, note
 visibility across two identities, booking rules, the audit trail, security
 headers, the digest's decisions and the LINE webhook signature. It needs no
 secrets and makes no outbound calls. Every `check(` and `eq(` written in the
@@ -282,15 +282,15 @@ npm run openapi:shield
 ```
 
 That writes `dist/wan-nee-la-openapi-<fingerprint>.json` — one file, replacing
-any older one, named for the fingerprint in `scripts/shield-uploaded.json` so
-the dashboard row says which schema it is. OpenAPI 3.0.3, the ten JSON
+any older one, named for the spec's validation fingerprint so the dashboard
+row says which schema it is. OpenAPI 3.0.3, the ten JSON
 operations, request schemas only (API Shield does not validate responses), and
 `servers` set to your real hostname from `wrangler.local.jsonc`. It names the
 hostname, so it stays in the gitignored `dist/`. `npm test` builds it from the
 spec on every run, so a 3.1-only construct fails there rather than in the
 dashboard.
 
-The other 31 routes — HTML pages and form posts — are deliberately not in the
+The other 33 routes — HTML pages, the CSV export and form posts — are deliberately not in the
 spec. So do **not** deploy API Shield's fallthrough rule ("mitigate requests to
 unidentified endpoints") on this hostname: it would block the whole app.
 Upload with a token that has the **API Gateway** permission, rather than by
