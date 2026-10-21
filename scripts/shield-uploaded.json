@@ -1,6 +1,6 @@
 {
-	"fingerprint": "d273d177864c7342",
-	"recorded": "2026-10-19",
+	"fingerprint": "0925e17be7913108",
+	"recorded": "2026-10-21",
 	"how": "dashboard",
 	"note": "The API Shield schema last known to be uploaded, as a fingerprint of what it validates. Written by shield:upload, or by openapi:shield --mark-uploaded after a dashboard upload. See scripts/openapi-shield.mjs."
 }

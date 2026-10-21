@@ -81,6 +81,8 @@ const CASES = [
 	['preview: half not in enum', '/api/v1/leave/preview?start=2026-09-22&startHalf=evening', {}, false],
 	['preview: type id not an integer', '/api/v1/leave/preview?leaveTypeId=annual&start=2026-09-22', {}, false],
 	['preview: exclude not a uuid', '/api/v1/leave/preview?start=2026-09-22&exclude=42', {}, false],
+	['preview: booking for someone', '/api/v1/leave/preview?start=2026-09-22&for=02a63e3e2e92970a', {}, true],
+	['preview: for is an address', '/api/v1/leave/preview?start=2026-09-22&for=someone%40example.com', {}, false],
 
 	['subscribe: valid', '/api/v1/push/subscribe', json(SUB), true],
 	['subscribe: keys missing', '/api/v1/push/subscribe', json({ endpoint: SUB.endpoint }), false],
