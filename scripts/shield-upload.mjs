@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Upload dist/openapi-shield.json to Cloudflare API Shield.
+ * Upload the Shield schema in dist/ (wan-nee-la-openapi-<fingerprint>.json) to Cloudflare API Shield.
  *
  * The schema names paths and parameters exactly, so it goes stale the moment
  * the API changes — and a stale schema does not fail loudly: the operations it
@@ -26,7 +26,7 @@
  */
 
 import { existsSync, readFileSync } from 'node:fs';
-import { fingerprintOf, recordUploaded } from './openapi-shield.mjs';
+import { fingerprintOf, recordUploaded, shieldFileName, shieldFiles } from './openapi-shield.mjs';
 
 const API = 'https://api.cloudflare.com/client/v4';
 const NAME_PREFIX = 'wan-nee-la-';
@@ -40,9 +40,10 @@ if (!token) {
 	process.exit(1);
 }
 
-const file = 'dist/openapi-shield.json';
-if (!existsSync(file)) {
-	console.error(`${file} is missing. Run: npm run openapi:shield`);
+// The one file openapi:shield leaves in dist/, named for its fingerprint.
+const [file] = shieldFiles();
+if (!file || !existsSync(file)) {
+	console.error('No Shield schema in dist/. Run: npm run openapi:shield');
 	process.exit(1);
 }
 const source = readFileSync(file, 'utf8');
@@ -80,8 +81,9 @@ async function findZone() {
 }
 
 const zone = await findZone();
-const stamp = new Date().toISOString().slice(0, 16).replace(/[:T]/g, '-');
-const name = `${NAME_PREFIX}${stamp}`;
+// The same name a dashboard upload of the file would get, fingerprint and all,
+// so both routes leave rows that say which schema they are.
+const name = shieldFileName(fingerprintOf(spec));
 
 const uploaded = await api(`/zones/${zone}/schema_validation/schemas`, {
 	method: 'POST',

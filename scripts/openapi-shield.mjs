@@ -28,7 +28,7 @@
  * to dist/, which is gitignored — this repo is public.
  *
  * Usage:
- *   npm run openapi:shield                    → dist/openapi-shield.json
+ *   npm run openapi:shield                    → dist/wan-nee-la-openapi-<fingerprint>.json
  *   npm run openapi:shield -- --host api.example.com
  *   npm run openapi:shield -- --mark-uploaded   after uploading it by hand
  *
@@ -44,7 +44,7 @@
 
 import { createHash } from 'node:crypto';
 import { spawnSync } from 'node:child_process';
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parse } from 'yaml';
@@ -109,6 +109,27 @@ export function fingerprintOf(spec) {
 export const UPLOADED_RECORD = 'scripts/shield-uploaded.json';
 
 /** The fingerprint last recorded as uploaded, or null. */
+/**
+ * Where the Shield copy is written: `dist/wan-nee-la-openapi-<fingerprint>.json`.
+ * Every upload used to be called the same thing, so the dashboard's list could
+ * not say which was current; with the fingerprint in the name, its row matches
+ * scripts/shield-uploaded.json at a glance, and the old ones are plain to see.
+ */
+export const SHIELD_DIR = 'dist';
+export const SHIELD_PREFIX = 'wan-nee-la-openapi-';
+
+export function shieldFileName(print) {
+	return `${SHIELD_PREFIX}${print}.json`;
+}
+
+/** Every Shield copy in dist/, including the old fixed name. */
+export function shieldFiles() {
+	if (!existsSync(SHIELD_DIR)) return [];
+	return readdirSync(SHIELD_DIR)
+		.filter((f) => (f.startsWith(SHIELD_PREFIX) && f.endsWith('.json')) || f === 'openapi-shield.json')
+		.map((f) => join(SHIELD_DIR, f));
+}
+
 export function recordedFingerprint() {
 	if (!existsSync(UPLOADED_RECORD)) return null;
 	return JSON.parse(readFileSync(UPLOADED_RECORD, 'utf8')).fingerprint ?? null;
@@ -240,12 +261,16 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
 		process.exit(1);
 	}
 	const spec = toShield(readFileSync('public/openapi.yaml', 'utf8'), host);
-	mkdirSync('dist', { recursive: true });
-	writeFileSync('dist/openapi-shield.json', `${JSON.stringify(spec, null, 2)}\n`);
-	const ops = Object.values(spec.paths).reduce((n, item) => n + Object.keys(item).filter((k) => k !== 'parameters').length, 0);
-	console.log(`dist/openapi-shield.json — OpenAPI 3.0.3, ${ops} operations. Gitignored: it names the real hostname.`);
-
 	const print = fingerprint(readFileSync('public/openapi.yaml', 'utf8'));
+	mkdirSync(SHIELD_DIR, { recursive: true });
+	// One file at a time: an older one left beside it is the one that gets
+	// uploaded by mistake.
+	for (const stale of shieldFiles()) rmSync(stale);
+	const out = join(SHIELD_DIR, shieldFileName(print));
+	writeFileSync(out, `${JSON.stringify(spec, null, 2)}\n`);
+	const ops = Object.values(spec.paths).reduce((n, item) => n + Object.keys(item).filter((k) => k !== 'parameters').length, 0);
+	console.log(`${out} — OpenAPI 3.0.3, ${ops} operations. Upload this file; its name carries the fingerprint, so the dashboard row says which schema it is. Gitignored: it names the real hostname.`);
+
 	if (process.argv.includes('--mark-uploaded')) {
 		recordUploaded(print, 'dashboard');
 		console.log(`recorded fingerprint ${print} as uploaded in ${UPLOADED_RECORD} — commit it`);

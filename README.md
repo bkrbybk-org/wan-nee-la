@@ -281,7 +281,9 @@ string`. Upload the derived copy instead:
 npm run openapi:shield
 ```
 
-That writes `dist/openapi-shield.json`: OpenAPI 3.0.3, the ten JSON
+That writes `dist/wan-nee-la-openapi-<fingerprint>.json` — one file, replacing
+any older one, named for the fingerprint in `scripts/shield-uploaded.json` so
+the dashboard row says which schema it is. OpenAPI 3.0.3, the ten JSON
 operations, request schemas only (API Shield does not validate responses), and
 `servers` set to your real hostname from `wrangler.local.jsonc`. It names the
 hostname, so it stays in the gitignored `dist/`. `npm test` builds it from the
