@@ -150,6 +150,14 @@ export const HistoryIcon = (p: IconProps) => (
 	</Svg>
 );
 
+/** An hourglass: leave running out before the year does. */
+export const HourglassIcon = (p: IconProps) => (
+	<Svg {...p}>
+		<path d="M6 3h12M6 21h12" />
+		<path d="M7 3c0 5 5 6 5 9s-5 4-5 9M17 3c0 5-5 6-5 9s5 4 5 9" />
+	</Svg>
+);
+
 /** A cog: the way to /me/settings. */
 export const SettingsIcon = (p: IconProps) => (
 	<Svg {...p}>

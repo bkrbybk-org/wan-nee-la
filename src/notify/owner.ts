@@ -63,7 +63,7 @@ export async function tellOwner(env: Env, ownerEmail: string, input: OwnerNotice
 		const results = await Promise.all(subs.map((s) => sendPush(s, payload, vapidKeys(env))));
 		await Promise.all(results.filter((r) => r.gone).map((r) => db.deleteSubscriptionByEndpoint(env.DB, r.endpoint)));
 		console.log(
-			JSON.stringify({ event: 'owner-notified', action: input.action, delivered: results.filter((r) => r.ok).length, browsers: subs.length }),
+			JSON.stringify({ event: 'owner-notified', action: input.action, leave: input.leaveId, delivered: results.filter((r) => r.ok).length, browsers: subs.length }),
 		);
 	} catch (err) {
 		console.log(JSON.stringify({ event: 'owner-notify-failed', action: input.action, error: String(err) }));

@@ -8,7 +8,7 @@ Updated: 2026-10-20
 
 ## Status
 
-Deployed and serving. Version `634c7a17-bd9c-45ca-80f4-70a197f82523`, deployed 2026-10-21 with `npm run ship`, D1 `<database-id>` in APAC, behind Cloudflare Access on `<hostname>`. Production checks passed: the new version serves all traffic, `/health` and `/` both 302 to Access, production D1 answers, and migration 0011 is applied with every type still offered. That deploy also carried the 09:00 weekday schedule — production had still been on the old daily `0 1 * * *` cron until then.
+Deployed and serving. Version `b448a29b-2d8a-4402-b508-1ce01c88e6b9`, deployed 2026-10-21 with `npm run ship`, D1 `<database-id>` in APAC, behind Cloudflare Access on `<hostname>`. Production checks passed: the new version serves all traffic, `/health` and `/` both 302 to Access, production D1 answers, and migration 0011 is applied with every type still offered. That deploy also carried the 09:00 weekday schedule — production had still been on the old daily `0 1 * * *` cron until then.
 
 **In real use.** Twelve active users, 24 confirmed bookings, 26 holidays, four leave types, 49 rows in the audit trail (read 2026-10-20). That changes what matters here: the shared surfaces now have a real audience, so note visibility, the audit trail and the privacy rules on `/u/:email` are load-bearing rather than theoretical.
 
@@ -87,7 +87,8 @@ Two consequences worth remembering:
 | POST | `/api/v1/push/subscribe` · `/api/v1/push/unsubscribe` | This browser's push subscription. Unsubscribe is scoped to its owner. |
 | POST | `/api/v1/push/test` | Sends to the caller's own browsers, so a fresh setup can be proved without waiting for 09:00. |
 | GET | `/admin` | Overview: anything needing doing, four figures, a tile per section. Admin only, like everything under it. |
-| GET | `/admin/people` · `/admin/types` · `/admin/holidays` · `/admin/notifications` · `/admin/export` · `/admin/activity` | One page per section. |
+| GET | `/admin/people` · `/admin/types` · `/admin/holidays` · `/admin/notifications` · `/admin/year-end` · `/admin/export` · `/admin/activity` | One page per section. |
+| POST | `/admin/year-end/remind` | This year's unused-leave reminder, now rather than in November. Once a year either way. |
 | GET · POST | `/admin/people/:email` | One person's role, status and allowances, saved together. Last admin cannot demote itself. |
 | GET | `/admin/export.csv?from=&to=&kind=` | Leave as a spreadsheet for HR: per person per type, or per booking. Days counted inside the range; people who have left included; notes never. |
 | POST | `/admin/quotas/bulk` | One type's allowance for every active user. |
@@ -106,7 +107,9 @@ Two consequences worth remembering:
 
 **Booking** — one form with two shapes, One day (a date and the whole day, morning or afternoon) and Several days (the first day all day or from noon, the last all day or until noon); leave types as coloured chips; a summary above the button of the days, the balance before and after, and who else is away, by name — all from the server; half-day granularity, overlap detection, quota enforcement, weekend and holiday rejection, a 90-day backdate window and a far-future guard. Edit and remove on every confirmed booking, past ones included. A refused booking comes back to the form holding what was typed, with the offending field marked; a drag-to-move does not, since it lands on a month view whose form nobody opened. A cancel or an edit can be undone for ten minutes, and the note survives either way — a cancel never deleted the row, and an edit's note is read from the row rather than from the audit snapshot, which records only whether a note existed.
 
-**Booking for someone** — an admin's booking form asks who it is for, themselves first. The booking is theirs: their allowance, their overlap check, their coverage in the summary, and the history records the admin as the one who made it. When anyone changes a booking that is not theirs — books it, edits, drags, removes or restores it — the owner gets a push in their own language ("Pim changed your leave · Annual · 3 Nov – 6 Nov"), and their booking's page says "Pim booked this for you" or "Last changed by Pim".
+**Booking for someone** — an admin's booking form asks who it is for, themselves first. The booking is theirs: their allowance, their overlap check, their coverage in the summary, and the history records the admin as the one who made it. When anyone changes a booking that is not theirs — books it, edits, drags, removes or restores it — the owner gets a push in their own language ("Pim changed your leave · Annual · 3 Nov – 6 Nov"), and their booking's page and My leave say "Pim booked this for you" or "Changed by Pim".
+
+**Unused leave** — `/admin/year-end` lists each active person's annual allowance, what is booked and what is left, most left first, with a tile on the overview ("41 days of Annual unbooked"). On the first weekday of November everyone with days left gets a push saying how many, in their language, once a year; an admin can send it earlier from the same page, and November's then does not go out.
 
 **Leave types** — annual, sick, planned medical, personal, all offered. Managed from `/admin/types`: add, rename, recolour, set default days, reorder, retire, and delete one nobody has ever booked. A retired type leaves the booking form but keeps its history, and its existing bookings stay editable. Unpaid leave was seeded in 0002, never booked once, and removed in 0010. Planned medical is deliberately separate from sick leave: sick leave is unplanned and often entered after the fact, while a scheduled appointment or procedure is booked in advance like any other absence, and folding the two together would let planned treatment eat the allowance meant for being unexpectedly ill. It carries no allowance, so it is recorded but never refused — the only honest default without a stated policy.
 
@@ -148,19 +151,19 @@ Two consequences worth remembering:
 
 ## Verification
 
-**1,040 automated assertions**, all green. CI runs them, and lint, on every push and pull request.
+**1,070 automated assertions**, all green. CI runs them, and lint, on every push and pull request.
 
 | Suite | Assertions | Covers |
 | --- | --- | --- |
 | `test-dates.mjs` | 114 | Bangkok boundary, half-days, weekends, holidays, month grids |
 | `test-leave.mjs` | 166 | Booking rules, balances and the per-year allowance fallback, retired types, the admin leave-type form, calendar placement, note visibility, the rejected-booking draft codec |
 | `test-line.mjs` | 42 | Webhook signature, group-id extraction, daily and week-ahead digest text |
-| `test-push.mjs` | 41 | RFC 8291 encryption against the spec's worked example, VAPID token and signature, the `วันนี้ … ลา` and week-ahead titles, the notice a booking's owner gets when someone else changes it |
+| `test-push.mjs` | 47 | RFC 8291 encryption against the spec's worked example, VAPID token and signature, the `วันนี้ … ลา` and week-ahead titles, the notice a booking's owner gets when someone else changes it, the year-end reminder |
 | `test-holidays.mjs` | 45 | Parsing a pasted holiday list, and its bounds; what an import would change; the reminder to enter next year's |
-| `test-report.mjs` | 24 | Leave counted over a span — cut to it, halves where they fall — per person and per month; the CSV writer and its formula guard |
+| `test-report.mjs` | 30 | Leave counted over a span — cut to it, halves where they fall — per person and per month; the CSV writer and its formula guard; unused leave for the year end |
 | `test-migrate.mjs` | 29 | Migration tracking: the generated SQL on SQLite, then `migrate.mjs` itself through wrangler — applied twice, a legacy database refused and then baselined |
 | `test-i18n.mjs` | 27 | Lookup, placeholders, plurals, and the catalogue's own health |
-| `smoke.mjs` | 496 | The HTTP layer — see below |
+| `smoke.mjs` | 514 | The HTTP layer — see below |
 | `test-browser.mjs` | 56 | Five screenshots compared with per-platform references (the month on a phone, light and dark, and a laptop; the admin People page on both) — then the calendar's own script in headless Chrome: the phone's day card, tapping and swiping it, what a screen reader is told, the folding Book button, the days-off-by-month chart, the busy-day count, the card staying on screen under both banners, the month swipe, the notification invitation, the entry popup, drag-to-move, remove and undo, booking from an empty day, the Thai interface |
 | `check-openapi.mjs` | — | Each of the 41 routes is either documented in `openapi.yaml` or deliberately listed as not, and the API Shield 3.0.3 copy still builds from it, and its validation fingerprint moves only when validation does |
 
@@ -180,7 +183,7 @@ It is built against its own worst failure mode — passing while testing nothing
 
 ## Open items
 
-**No known bugs.** The push keypair mismatch (#40) was repaired on 2026-09-21. 1,040 assertions are green and `npm audit` is clean. The 2026-08-25 audit and the 2026-09-13 review both found and fixed what they turned up — the second a quota overdraw when moving a booking across New Year (#36) — and each fix is covered by a test or, where a test could not reach it, recorded in [ISSUES.md](ISSUES.md).
+**No known bugs.** The push keypair mismatch (#40) was repaired on 2026-09-21. 1,070 assertions are green and `npm audit` is clean. The 2026-08-25 audit and the 2026-09-13 review both found and fixed what they turned up — the second a quota overdraw when moving a booking across New Year (#36) — and each fix is covered by a test or, where a test could not reach it, recorded in [ISSUES.md](ISSUES.md).
 
 What follows is decisions, unfinished configuration, accepted trade-offs and debt — not defects.
 
@@ -262,6 +265,7 @@ Features — iCal, team grouping, coverage scoped to a team — are in PLAN.md s
 
 ## Change log
 
+- **2026-10-21** — Unused leave at the year end: `/admin/year-end` shows who still has annual leave unbooked and how much, and in November everyone with days left is reminded by push, once a year — or earlier, when an admin presses Send now. My leave marks bookings someone else last changed ("Booked for you by Pim"). The smoke suite now proves every route that changes someone else's booking tries to tell them — book, edit, drag, remove, undo — and that changing your own tells nobody.
 - **2026-10-21** — An admin can book leave for someone else: the booking form asks who it is for, and the booking is checked against that person's allowance and bookings and recorded as the admin's doing. People are offered by an opaque key, not their address, because the form sits in the calendar's HTML. When anyone changes a booking that is not theirs, the owner is told: a push in their own language, and a line on the booking's page. Pages link their script and stylesheet with the build in the address (`/app.js?v=…`), so a page cannot run another deploy's script.
 - **2026-10-21** — A booking's page shows the booking before offering to change it: the dates and owner as the heading, a status ("in 12 days", "on leave now, until 23 Oct"), days, note, the owner's balance, who else is away during it, and its history — who booked it and who changed what. Edit opens the form in place; Remove… asks once. It replaced three cards, one of which repeated the form beneath it. Editing, the summary says what changes: "4 days → 3 days", "Annual: 6 left → 7 after this". Two bugs fixed on the way: when an admin edited someone else's booking, who-else-is-away was counted from the admin and said "with you" — it is the owner's now, "with Ploy" — and someone with two bookings on one day was listed and counted twice. Back returns to where the reader came from, and the note's toggle says "Note", not "Add a note", when there is one.
 - **2026-10-21** — The booking form redesigned. "One day" or "Several days": one day is a date and Full day, Morning or Afternoon; several days are From and To, the first all day or from noon, the last all day or until noon — where it had been "Start half" and an "End half" that appeared once a second date was typed. Leave types are coloured chips; the note is behind "Add a note". Above the button, a summary: the days, the balance before and after ("Sick: 27 left → 24 after this", or none left), and who else is away by name, "with you, 5 of 11" — the old line counted the booker but named only the others, and sat under the button with the day count. The button says "Book 3 days"; Cancel closes the dialog. Radios and CSS switch the shapes, so it works without script, and the server ignores the hidden shape's fields (`parseBooking` reads `mode`). The preview API returns `balance`. Tested: unit (one-day mapping), smoke (balance, markup, a One day booking with a stale To date stored as one afternoon), browser (summary, button, switch).

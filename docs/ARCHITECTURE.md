@@ -191,6 +191,8 @@ Self-serve model (owner's decision): a POST creates a `confirmed` row directly. 
 | POST | `/admin/holidays/preview` | The import's middle step, writing nothing: each line as new, renamed or already held; parse errors by line number, with the list handed back to fix; and the bookings already made across a new working-day holiday, which were charged for it (`importPlan`). Its confirm button posts the same text to `/admin/holidays/import`, with `recount=1` unless the admin unticks it: the import then recounts those bookings through `updateLeave`, the path an edit takes, so each recount is an audited edit by the admin. Only ever fewer days, so no balance check can refuse one; a booking left with no working day is left alone. |
 | POST | `/admin/type` · `/admin/type/delete` | Add or edit a leave type, including retiring it; delete only one nobody has ever booked. The code is fixed once added — it is the feed's `type`. |
 | POST | `/admin/notify/preview` · `/admin/notify/send` | Dry-run and manual send, through the real digest job. |
+| GET | `/admin/year-end?y=` | Unused leave: each active person's annual allowance, what is booked to start in the year (taken or ahead) and what is left, most left first (`unusedLeave` in `src/domain/report.ts`); with notifications on or off, and this year's reminder — due, sent, empty or failed. |
+| POST | `/admin/year-end/remind` | Send this year's reminder now instead of in November. Still once a year: it takes the same claim the cron would. |
 
 ## The 09:00 notification
 
@@ -330,7 +332,7 @@ An admin's booking form opens with **Booking for**: themselves first, then every
 
 The options are `personKey`s, not addresses: the calendar, where the dialog lives, keeps addresses out of its HTML (see *Following one person*). The server maps a key back by hashing every active user, and refuses a key that names nobody, or more than one. Only the create form has the field — a booking's owner never changes.
 
-**The owner is told** (`src/notify/owner.ts`). When anyone other than the owner books, edits, removes or restores a booking — through the form, a drag, or undo — the owner's browsers get a push in the owner's language: "Pim changed your leave", "Annual · 3 Nov – 6 Nov". It is tagged per booking, so a second change replaces the first on the lock screen. It is sent with `waitUntil`, after the response, and is best effort: no subscription, no keys or a refusing push service are silent, and the change is already saved. The booking's page says the same thing to the owner for as long as it is true — "Pim booked this for you" or "Last changed by Pim", from the latest audit row — for the owner who has notifications off.
+**The owner is told** (`src/notify/owner.ts`). When anyone other than the owner books, edits, removes or restores a booking — through the form, a drag, or undo — the owner's browsers get a push in the owner's language: "Pim changed your leave", "Annual · 3 Nov – 6 Nov". It is tagged per booking, so a second change replaces the first on the lock screen. It is sent with `waitUntil`, after the response, and is best effort: no subscription, no keys or a refusing push service are silent, and the change is already saved. The booking's page says the same thing to the owner for as long as it is true — "Pim booked this for you" or "Last changed by Pim", from the latest audit row — for the owner who has notifications off, and so does each row of My leave ("Booked for you by Pim", "Changed by Pim", "Removed by Pim"; `changedByOthers`, one query for all of them).
 
 ## Response headers
 
@@ -361,6 +363,8 @@ What stays as it is, and why, is in [ISSUES.md](ISSUES.md) #25.
 Two channels, one job. `runDigest` decides *whether* to notify once — skipping weekends, public holidays, and days with nobody out — builds the text once, then fans out. An admin's preview runs the same function in dry-run mode, so what they see is produced by the code that sends.
 
 Two kinds of post, too: the daily "out today" digest, and a week-ahead summary on Monday mornings. They claim separate rows in `notification_runs` — keyed on `(date, kind, channel)` — because a Monday carries both, and a shared key would let whichever ran first suppress the other.
+
+**The year-end reminder** (`src/notify/yearend.ts`) is a third kind, push only and personal: in November, everyone with annual leave unbooked is told how much, in their own language ("6 days of Annual leave left in 2026"). The app carries nothing over into the next year (PLAN 5.7), so the cheapest fix for days lost in January is saying so while there are weeks left to book them. It runs from the same cron, in its own `try`, and claims `(YYYY-11-01, yearend, push)` — the year's 1 November, not the day it ran — so the first weekday of November sends it and every later run finds it taken. An admin's "Send now instead" on `/admin/year-end` takes the same claim, and is then that year's reminder. "Unbooked" rather than "untaken": a day booked for December is already spoken for. Only people with notifications on can be reached, and the page shows who they are so an admin can tell the others.
 
 | Channel | Reaches | Cost | Configured by |
 | --- | --- | --- | --- |

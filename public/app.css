@@ -1966,7 +1966,8 @@ a.my-link:focus-visible { outline: 2px solid var(--md-primary); outline-offset: 
 .my-main { min-width: 0; }
 .my-when { font-weight: 500; }
 .my-main > .muted { font-size: 13px; }
-.my-note { display: block; font-size: 12px; line-height: 16px; margin-top: 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.my-note,
+.my-by { display: block; font-size: 12px; line-height: 16px; margin-top: 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .my-days { font-variant-numeric: tabular-nums; color: var(--md-on-surface-variant); }
 .my-go { width: 20px; height: 20px; color: var(--md-on-surface-variant); }
 .my-row.cancelled .my-link { opacity: 0.6; }

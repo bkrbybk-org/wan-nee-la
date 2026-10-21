@@ -11,6 +11,7 @@
 import { b64urlToBytes, bytesToB64url, encryptPayload, vapidAuthorization } from '../src/notify/push.ts';
 import { buildPushTitle, buildWeekTitle } from '../src/notify/digest.ts';
 import { ownerNotice, shouldTellOwner } from '../src/notify/owner.ts';
+import { yearEndKey, yearEndNotice } from '../src/notify/yearend.ts';
 
 let failures = 0;
 const check = (name, cond, detail) => {
@@ -195,6 +196,15 @@ eq('owner notice: booked for them', ownerNotice({ ...moved, action: 'created' },
 eq('owner notice: one tag per booking, so changes replace each other', ownerNotice(moved, 'en').tag, ownerNotice({ ...moved, action: 'cancelled' }, 'en').tag);
 eq('owner notice: not for your own change', shouldTellOwner('a@example.com', 'a@example.com'), false);
 eq('owner notice: for someone else\'s', shouldTellOwner('admin@example.com', 'a@example.com'), true);
+
+// --- the year-end reminder ----------------------------------------------------
+const annualType = { label_en: 'Annual', label_th: 'ลาพักร้อน' };
+eq('year end: how much is left', yearEndNotice({ left: 6 }, annualType, 2026, 'en').title, '6 days of Annual leave left in 2026');
+eq('year end: one day is a day', yearEndNotice({ left: 1 }, annualType, 2026, 'en').title, '1 day of Annual leave left in 2026');
+eq('year end: a half day reads as one', yearEndNotice({ left: 2.5 }, annualType, 2026, 'en').title, '2.5 days of Annual leave left in 2026');
+eq('year end: in Thai, with the Thai type', yearEndNotice({ left: 6 }, annualType, 2026, 'th').title, 'ลาพักร้อนเหลือ 6 วันในปี 2026');
+eq('year end: opens My leave', yearEndNotice({ left: 6 }, annualType, 2026, 'en').url, '/me');
+eq('year end: claimed once per year, whichever day it runs', yearEndKey(2026), '2026-11-01');
 
 console.log(failures === 0 ? '\nAll push tests passed.' : `\n${failures} failure(s).`);
 process.exit(failures === 0 ? 0 : 1);

@@ -45,6 +45,7 @@ const NOT_JSON = new Set([
 	'GET /admin/notifications',
 	'GET /admin/export',
 	'GET /admin/activity',
+	'GET /admin/year-end',
 	// Form posts. These take application/x-www-form-urlencoded and answer 303.
 	'POST /api/v1/leave',
 	'POST /api/v1/leave/:id/edit',
@@ -55,6 +56,7 @@ const NOT_JSON = new Set([
 	'POST /admin/quotas/bulk',
 	'POST /admin/notify/preview',
 	'POST /admin/notify/send',
+	'POST /admin/year-end/remind',
 	'GET /admin/export.csv',
 	'POST /admin/holidays/preview',
 	'POST /admin/holidays/import',

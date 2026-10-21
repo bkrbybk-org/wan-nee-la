@@ -38,7 +38,7 @@ import { daysWithin, leaveSummary, monthlyDays, toCsv } from './domain/report.ts
 import { parseLeaveTypeForm } from './domain/leaveTypes.ts';
 import { isLang, t, tm, toLang, type Lang, type Message, type StringKey } from './i18n/strings.ts';
 import * as db from './repo/db.ts';
-import { AdminActivityPage, AdminExportPage, AdminHolidaysPage, AdminNotificationsPage, AdminOverviewPage, AdminPeoplePage, AdminPersonPage, AdminTypesPage, HolidayPreviewPage } from './views/admin.tsx';
+import { AdminActivityPage, AdminExportPage, AdminHolidaysPage, AdminNotificationsPage, AdminOverviewPage, AdminPeoplePage, AdminPersonPage, AdminTypesPage, AdminYearEndPage, HolidayPreviewPage } from './views/admin.tsx';
 import { BookPage } from './views/book.tsx';
 import { CalendarPage, UPCOMING_DAYS } from './views/calendar.tsx';
 import { EditPage } from './views/edit.tsx';
@@ -60,6 +60,7 @@ import {
 } from './notify/digest.ts';
 import { parseSubscription, sendPush } from './notify/push.ts';
 import { shouldTellOwner, tellOwner, type OwnerNoticeAction } from './notify/owner.ts';
+import { runYearEnd, yearEndKey, yearEndReport } from './notify/yearend.ts';
 import type { Env, LeaveRequest, LeaveType, User } from './types.ts';
 
 // `leaveTypes` caches db.listLeaveTypes() for the lifetime of one request. It
@@ -1285,11 +1286,12 @@ app.get('/me', async (c) => {
 	const list = c.req.query('list') === 'past' || (c.req.query('list') === undefined && year < nowYear) ? 'past' : 'upcoming';
 
 	const types = await leaveTypesOf(c);
-	const [balances, entries, holidays, upcoming] = await Promise.all([
+	const [balances, entries, holidays, upcoming, byOthers] = await Promise.all([
 		db.balancesFor(c.env.DB, user.email, year, types),
 		db.listUserLeave(c.env.DB, user.email, year),
 		db.holidaySet(c.env.DB, `${year}-01-01`, `${year}-12-31`),
 		db.listUpcomingFor(c.env.DB, user.email, today),
+		db.changedByOthers(c.env.DB, user.email),
 	]);
 	// Confirmed leave only: a cancelled booking took no days off.
 	const months = monthlyDays(entries.filter((e) => e.status === 'confirmed'), year, holidays);
@@ -1306,6 +1308,7 @@ app.get('/me', async (c) => {
 			upcoming={upcoming}
 			past={entries.filter((e) => e.status !== 'confirmed' || e.end_date < today)}
 			list={list}
+			byOthers={byOthers}
 			types={types}
 			today={today}
 			version={c.env.CF_VERSION_METADATA?.id}
@@ -1518,7 +1521,7 @@ app.get('/admin', async (c) => {
 	const today = c.get('today');
 	const thisYear = Number(today.slice(0, 4));
 	const configured = pushConfigured(c.env);
-	const [users, types, entries, todayHolidays, log, counts, holidaysDue, pushCounts, holidaysNow, holidaysNext] = await Promise.all([
+	const [users, types, entries, todayHolidays, log, counts, holidaysDue, pushCounts, holidaysNow, holidaysNext, yearEnd] = await Promise.all([
 		db.listUsers(c.env.DB),
 		leaveTypesOf(c),
 		db.listLeaveInRange(c.env.DB, today, today),
@@ -1529,8 +1532,10 @@ app.get('/admin', async (c) => {
 		configured ? db.subscriptionCounts(c.env.DB) : Promise.resolve(null),
 		db.listHolidays(c.env.DB, `${thisYear}-01-01`, `${thisYear}-12-31`),
 		db.listHolidays(c.env.DB, `${thisYear + 1}-01-01`, `${thisYear + 1}-12-31`),
+		yearEndReport(c.env, thisYear),
 	]);
 	const active = users.filter((u) => u.active);
+	const lang = toLang(c.get('user').lang);
 	// Working days only, the way the calendar and the digest count them.
 	const away = [...new Set((byDate(entries, todayHolidays).get(today) ?? []).map((e) => e.display_name))];
 
@@ -1552,8 +1557,60 @@ app.get('/admin', async (c) => {
 				{ year: thisYear + 1, n: holidaysNext.length },
 			]}
 			lineEnabled={lineEnabled(c.env)}
+			unused={
+				yearEnd.type
+					? {
+							type: lang === 'th' ? yearEnd.type.label_th : yearEnd.type.label_en,
+							days: yearEnd.rows.reduce((n, r) => n + Math.max(r.left, 0), 0),
+						}
+					: null
+			}
 		/>,
 	);
+});
+
+/** Who still has annual leave unbooked this year, and the November reminder. */
+app.get('/admin/year-end', async (c) => {
+	const { year, minYear, maxYear } = adminYear(c);
+	const thisYear = Number(c.get('today').slice(0, 4));
+	const [report, pushCounts, reminder] = await Promise.all([
+		yearEndReport(c.env, year),
+		pushConfigured(c.env) ? db.subscriptionCounts(c.env.DB) : Promise.resolve(null),
+		db.getNotification(c.env.DB, yearEndKey(thisYear), 'yearend', 'push'),
+	]);
+	return page(
+		c,
+		<AdminYearEndPage
+			{...adminCommon(c)}
+			year={year}
+			minYear={minYear}
+			maxYear={maxYear}
+			thisYear={thisYear}
+			type={report.type}
+			rows={report.rows}
+			pushCounts={pushCounts}
+			reminder={reminder}
+		/>,
+	);
+});
+
+/** Send this year's reminder now rather than in November. Still once a year. */
+app.post('/admin/year-end/remind', async (c) => {
+	const outcome = await runYearEnd(c.env, c.get('today'), { force: true });
+	console.log(JSON.stringify({ job: 'year-end-reminder', trigger: 'admin', ...outcome }));
+	const back = '/admin/year-end';
+	switch (outcome.status) {
+		case 'sent':
+			return redirectWithFlash(back, 'ok', say(c, 'flash.remindSent', { n: outcome.people, count: outcome.people }));
+		case 'skipped_duplicate':
+			return redirectWithFlash(back, 'err', say(c, 'flash.remindDone'));
+		case 'skipped_empty':
+			return redirectWithFlash(back, 'ok', say(c, 'flash.remindEmpty'));
+		case 'not_configured':
+			return redirectWithFlash(back, 'err', say(c, 'flash.remindOff'));
+		default:
+			return redirectWithFlash(back, 'err', say(c, 'flash.remindFailed'));
+	}
 });
 
 app.get('/admin/people', async (c) => {
@@ -2339,6 +2396,16 @@ export default {
 					error: err instanceof Error ? err.message : String(err),
 				}),
 			);
+		}
+
+		// Once a year, in November: who still has annual leave unbooked. Claimed
+		// per year, so only the month's first weekday sends it. Its own try, so
+		// neither it nor the digest can stop the other.
+		try {
+			const yearEnd = await runYearEnd(env, bangkokToday());
+			if (yearEnd.status !== 'not_due') console.log(JSON.stringify({ job: 'year-end-reminder', trigger: 'cron', ...yearEnd }));
+		} catch (err) {
+			console.log(JSON.stringify({ job: 'year-end-reminder', status: 'error', error: err instanceof Error ? err.message : String(err) }));
 		}
 
 		// After the posts and in its own try, so housekeeping can neither delay

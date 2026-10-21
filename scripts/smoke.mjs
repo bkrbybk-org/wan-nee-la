@@ -49,7 +49,7 @@ const ADMIN = 'admin@example.com';
 const OTHER = 'other@example.com';
 /** /me/settings takes all three settings at once; tests change one and pass the defaults for the rest. */
 const settings = (over) => post('/me/settings', { displayName: 'Admin', weekStart: '1', lang: 'en', ...over });
-const ADMIN_SECTIONS = ['/admin/people', '/admin/types', '/admin/holidays', '/admin/notifications', '/admin/export', '/admin/activity'];
+const ADMIN_SECTIONS = ['/admin/people', '/admin/types', '/admin/holidays', '/admin/notifications', '/admin/year-end', '/admin/export', '/admin/activity'];
 const STATE = mkdtempSync(join(tmpdir(), 'wnl-smoke-'));
 
 let pass = 0;
@@ -176,8 +176,9 @@ async function startServer(devEmail, { serviceToken = '', pushKeys = false } = {
 			'--var', 'DEV_AUTH_BYPASS:1',
 			'--var', `DEV_SERVICE_TOKEN:${serviceToken}`,
 			// Placeholder keys, enough to make the app consider push configured
-			// and draw the bell. Nothing is ever signed with them: no session that
-			// passes these triggers a send.
+			// and draw the bell. Nothing can be signed with them, so a send is
+			// attempted and fails before any request leaves — which is how the
+			// owner-notice and year-end tests see the attempt without a network.
 			...(pushKeys ? ['--var', 'VAPID_PUBLIC_KEY:smoke-public-key', '--var', 'VAPID_PRIVATE_KEY:smoke-private-key'] : []),
 			'--var', `DEV_EMAIL:${devEmail}`,
 			'--var', `LINE_CHANNEL_SECRET:${CHANNEL_SECRET}`,
@@ -1132,6 +1133,17 @@ async function main() {
 		d1("DELETE FROM leave_audit WHERE leave_id = 'pg-owner'");
 	}
 
+	// --- unused leave, for the year end --------------------------------------
+	{
+		const ye = await (await fetch(`${BASE}/admin/year-end`)).text();
+		const rows = [...ye.matchAll(/<tr class="(?:inactive)?">\s*<td>[^]*?<strong>([^<]+)<\/strong>[^]*?<td class="num">([\d.]+)<\/td>\s*<td class="num">([\d.]+)<\/td>\s*<td class="num[^"]*">\s*<strong>(-?[\d.]+)<\/strong>/g)].map((m) => ({ name: m[1], allotted: +m[2], booked: +m[3], left: +m[4] }));
+		check('year end: a row per active person', rows.length >= 3 && !rows.some((r) => r.name === 'Left Already'), JSON.stringify(rows.map((r) => r.name)));
+		check('year end: left is the allowance less what is booked', rows.every((r) => Math.abs(r.allotted - r.booked - r.left) < 1e-9), JSON.stringify(rows));
+		check('year end: the most left first', rows.every((r, i) => i === 0 || rows[i - 1].left >= r.left), JSON.stringify(rows.map((r) => r.left)));
+		check('year end: says the reminder needs notifications set up', ye.includes('Notifications are not set up on the server'), 'no notice');
+		check('year end: the overview shows what is unbooked', /href="\/admin\/year-end"[^]*?days of Annual unbooked/.test(await (await fetch(`${BASE}/admin`)).text()), 'no tile');
+	}
+
 	// --- an admin books for someone else ----------------------------------------
 	{
 		const FOR = clearFutureMonday(24);
@@ -1206,6 +1218,7 @@ async function main() {
 
 	// --- leave an admin booked for them ---------------------------------------
 	{
+		check('book for: My leave says who booked it for them', /data-by-other[^>]*>Booked for you by /.test(await (await fetch(`${BASE}/me`)).text()), 'no marker on /me');
 		const bookedFor = d1Rows(`SELECT id FROM leave_requests WHERE user_email = '${OTHER}' AND status = 'confirmed' AND id IN (SELECT leave_id FROM leave_audit WHERE actor_email = '${ADMIN}')`)[0]?.id;
 		const theirs = await (await fetch(`${BASE}/leave/${bookedFor}/edit`)).text();
 		check('book for: the owner\'s page says who booked it for them', /data-by-other[^>]*>[^<]*booked this for you/.test(theirs), theirs.slice(theirs.indexOf('booking-head'), theirs.indexOf('booking-head') + 900));
@@ -1905,6 +1918,65 @@ async function main() {
 	eq('audit pages: the rest on page 2', audits.items.length, 5);
 	check('audit pages: page 2 links back, and not on', audits.section.includes('rel="prev"') && !audits.section.includes('rel="next"'), 'links wrong');
 	d1("DELETE FROM leave_audit WHERE leave_id = 'smoke-pager'");
+
+	// --- the owner is told when someone else changes their booking -----------
+	// OTHER has a subscription from session 1. Every route that can change
+	// someone else's booking must try to tell them; the admin's own must not.
+	{
+		const notices = () =>
+			serverLog
+				.split('\n')
+				.filter((l) => l.includes('"owner-notified"'))
+				.map((l) => JSON.parse(l.slice(l.indexOf('{'))));
+		const settle = async (n) => {
+			for (let i = 0; i < 50 && notices().length < n; i++) await new Promise((r) => setTimeout(r, 100));
+			return notices();
+		};
+		const N = clearFutureMonday(30);
+		const otherName = d1Rows(`SELECT display_name FROM users WHERE email = '${OTHER}'`)[0]?.display_name;
+		const bookHtml = await (await fetch(`${BASE}/book`)).text();
+		const otherKey = new RegExp(`<option value="([0-9a-z]+)">${otherName}</option>`).exec(bookHtml)?.[1];
+		const start = notices().length;
+
+		await post('/api/v1/leave', { for: otherKey, leaveTypeId: '1', mode: 'one', startDate: N, dayPart: 'full' });
+		const id = d1Rows(`SELECT id FROM leave_requests WHERE user_email = '${OTHER}' AND start_date = '${N}' AND status = 'confirmed'`)[0]?.id;
+		await settle(start + 1);
+		await post(`/api/v1/leave/${id}/edit`, { leaveTypeId: '1', mode: 'one', startDate: addDays(N, 1), dayPart: 'full' });
+		await settle(start + 2);
+		// A drag posts to the same route with somewhere to return to.
+		await post(`/api/v1/leave/${id}/edit`, { leaveTypeId: '1', mode: 'one', startDate: addDays(N, 2), dayPart: 'full', returnTo: '/' });
+		await settle(start + 3);
+		await post(`/api/v1/leave/${id}/cancel`, {});
+		await settle(start + 4);
+		await post(`/api/v1/leave/${id}/undo`, {});
+		const seen = (await settle(start + 5)).slice(start);
+		eq('owner notice: book, edit, drag, remove and undo each tell the owner', seen.map((n) => n.action).join(), 'created,edited,edited,cancelled,restored');
+		check('owner notice: about that booking, to their browsers', seen.every((n) => n.leave === id && n.browsers >= 1), JSON.stringify(seen));
+		check('owner notice: and the log names no address', !serverLog.split('\n').some((l) => l.includes('"owner-notified"') && l.includes('@')), 'address in the log');
+
+		const mine = clearFutureMonday(31);
+		await post('/api/v1/leave', { leaveTypeId: '1', mode: 'one', startDate: mine, dayPart: 'full' });
+		const ownId = d1Rows(`SELECT id FROM leave_requests WHERE user_email = '${ADMIN}' AND start_date = '${mine}' AND status = 'confirmed'`)[0]?.id;
+		await post(`/api/v1/leave/${ownId}/cancel`, {});
+		await new Promise((r) => setTimeout(r, 1000));
+		eq('owner notice: nobody is told about their own change', notices().length, start + 5);
+		d1(`DELETE FROM leave_audit WHERE leave_id IN ('${id}', '${ownId}')`);
+		d1(`DELETE FROM leave_requests WHERE id IN ('${id}', '${ownId}')`);
+	}
+
+	// --- the year-end reminder, sent early by an admin ------------------------
+	{
+		const thisYear = TODAY.slice(0, 4);
+		const yeHtml = await (await fetch(`${BASE}/admin/year-end`)).text();
+		check('year end: an admin can send the reminder now', yeHtml.includes('action="/admin/year-end/remind"'), 'no button');
+		res = await post('/admin/year-end/remind', {});
+		check('year end: sent, and says to how many', /^Reminder sent to \d+ people?\.$/.test(flashOf(res)?.message ?? ''), flashOf(res)?.message);
+		eq('year end: claimed for the year, not the day', d1Rows(`SELECT status FROM notification_runs WHERE kind = 'yearend' AND date = '${thisYear}-11-01'`)[0]?.status, 'sent');
+		res = await post('/admin/year-end/remind', {});
+		check('year end: and only once a year', /already gone out/.test(flashOf(res)?.message ?? ''), flashOf(res)?.message);
+		check('year end: the page says it went', (await (await fetch(`${BASE}/admin/year-end`)).text()).includes('data-reminder-sent'), 'no sent line');
+		d1(`DELETE FROM notification_runs WHERE kind = 'yearend'`);
+	}
 
 	// --- an unhandled error ---------------------------------------------------
 	// Taken away from under the running server, so real routes throw the way a

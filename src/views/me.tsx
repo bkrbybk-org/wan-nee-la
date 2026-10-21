@@ -31,6 +31,8 @@ interface MeProps {
 	/** Everything in `year` that started before today's leave, any status. */
 	past: LeaveEntry[];
 	list: MeList;
+	/** Bookings whose last change was someone else's, and whose. */
+	byOthers: ReadonlyMap<string, { name: string; action: string }>;
 	types: LeaveType[];
 	today: string;
 	version?: string;
@@ -49,7 +51,7 @@ export function MePage(props: MeProps) {
 }
 
 function MeBody(props: MeProps) {
-	const { year, minYear, maxYear, balances, months, upcoming, past, list, types, today, error, notice, undo } = props;
+	const { year, minYear, maxYear, balances, months, upcoming, past, list, byOthers, types, today, error, notice, undo } = props;
 	const t = useT();
 	const thisYear = Number(today.slice(0, 4));
 	const listHref = (l: MeList) => `/me?${new URLSearchParams({ ...(year !== thisYear ? { y: String(year) } : {}), ...(l === 'past' ? { list: 'past' } : {}) })}`.replace(/\?$/, '');
@@ -94,7 +96,7 @@ function MeBody(props: MeProps) {
 					) : (
 						<ul class="my-list">
 							{upcoming.map((e) => (
-								<MyRow entry={e} today={today} />
+								<MyRow entry={e} today={today} by={byOthers.get(e.id)} />
 							))}
 						</ul>
 					)
@@ -105,7 +107,7 @@ function MeBody(props: MeProps) {
 						) : (
 							<ul class="my-list">
 								{confirmedPast.map((e) => (
-									<MyRow entry={e} today={today} />
+									<MyRow entry={e} today={today} by={byOthers.get(e.id)} />
 								))}
 							</ul>
 						)}
@@ -116,7 +118,7 @@ function MeBody(props: MeProps) {
 								<summary class="btn text">{t('me.showCancelled', { n: cancelled.length, count: cancelled.length })}</summary>
 								<ul class="my-list">
 									{cancelled.map((e) => (
-										<MyRow entry={e} today={today} />
+										<MyRow entry={e} today={today} by={byOthers.get(e.id)} />
 									))}
 								</ul>
 							</details>
@@ -210,7 +212,7 @@ function BalanceCard({ b }: { b: Balance }) {
  * after the fact and then corrected. Every row has the same shape; a note sits
  * on its own line under the dates, with whether colleagues can read it.
  */
-function MyRow({ entry, today }: { entry: LeaveEntry; today: string }) {
+function MyRow({ entry, today, by }: { entry: LeaveEntry; today: string; by?: { name: string; action: string } }) {
 	const t = useT();
 	const lang = useLang();
 	const cancelled = entry.status === 'cancelled';
@@ -230,6 +232,13 @@ function MyRow({ entry, today }: { entry: LeaveEntry; today: string }) {
 					{lang === 'th' ? entry.type_label_th : entry.type_label_en}
 					{now ? ` · ${t('me.now')}` : ''}
 				</span>
+				{/* Who else last touched it: an admin booked it for you, moved it
+				    or removed it. The push says so too, for whoever has them on. */}
+				{by ? (
+					<span class="my-by muted" data-by-other>
+						{t(by.action === 'created' ? 'me.bookedBy' : by.action === 'cancelled' ? 'me.removedBy' : 'me.changedBy', { name: by.name })}
+					</span>
+				) : null}
 				{entry.note ? (
 					<span class="my-note muted">
 						{entry.note} · {entry.note_private ? t('me.notePrivate') : t('me.noteShared')}

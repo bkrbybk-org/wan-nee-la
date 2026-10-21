@@ -11,7 +11,8 @@
  */
 
 import { countLeaveDays } from './dates.ts';
-import type { LeaveEntry } from '../types.ts';
+import { allottedFor, round } from './leave.ts';
+import type { LeaveEntry, LeaveType, Quota, User } from '../types.ts';
 
 /** Leave days a booking uses between `from` and `to`, inclusive. */
 export function daysWithin(e: LeaveEntry, from: string, to: string, holidays: ReadonlySet<string>): number {
@@ -93,6 +94,40 @@ export function monthlyDays(entries: readonly LeaveEntry[], year: number, holida
 		}
 		return { month, byType, total: [...byType.values()].reduce((a, b) => a + b, 0) };
 	});
+}
+
+export interface UnusedRow {
+	email: string;
+	name: string;
+	allotted: number;
+	/** Confirmed leave of the type starting in the year, taken or still ahead. */
+	booked: number;
+	/** What is not booked yet. Negative when overdrawn. */
+	left: number;
+}
+
+/**
+ * Who still has days of one leave type unbooked in a year — the year-end
+ * report, and who the November reminder goes to.
+ *
+ * "Unbooked", not "untaken": a day booked for December is already spoken for,
+ * and nobody needs reminding about it. Active people only, the most left
+ * first; charged to the year a booking starts in, as the balances are.
+ */
+export function unusedLeave(
+	users: readonly User[],
+	type: LeaveType,
+	quotas: readonly Quota[],
+	used: ReadonlyMap<string, ReadonlyMap<number, number>>,
+): UnusedRow[] {
+	return users
+		.filter((u) => u.active)
+		.map((u) => {
+			const allotted = allottedFor(type, quotas.filter((q) => q.user_email === u.email));
+			const booked = used.get(u.email)?.get(type.id) ?? 0;
+			return { email: u.email, name: u.display_name, allotted, booked, left: round(allotted - booked) };
+		})
+		.sort((a, b) => b.left - a.left || a.name.localeCompare(b.name));
 }
 
 /**

@@ -676,6 +676,25 @@ export async function auditCounts(db: D1Database, since: string): Promise<{ tota
 export const AUDIT_ACTIONS: readonly AuditAction[] = ['created', 'edited', 'cancelled', 'restored'];
 
 /** Everything that happened to one booking, newest first — its page's History. */
+/**
+ * Someone's bookings whose latest change was made by somebody else — an admin
+ * who booked, moved or removed it — with that person's name. For My leave, so
+ * the owner sees it without opening each booking.
+ */
+export async function changedByOthers(db: D1Database, email: string): Promise<Map<string, { name: string; action: AuditAction }>> {
+	const res = await db
+		.prepare(
+			`SELECT a.leave_id, a.action, COALESCE(u.display_name, a.actor_email) AS name
+			   FROM leave_audit a
+			   JOIN (SELECT leave_id, MAX(id) AS id FROM leave_audit WHERE subject_email = ? GROUP BY leave_id) latest ON latest.id = a.id
+			   LEFT JOIN users u ON u.email = a.actor_email
+			  WHERE a.actor_email <> ?`,
+		)
+		.bind(email, email)
+		.all<{ leave_id: string; action: AuditAction; name: string }>();
+	return new Map((res.results ?? []).map((r) => [r.leave_id, { name: r.name, action: r.action }]));
+}
+
 export async function auditForLeave(db: D1Database, leaveId: string): Promise<AuditRow[]> {
 	const res = await db.prepare('SELECT * FROM leave_audit WHERE leave_id = ? ORDER BY id DESC LIMIT 50').bind(leaveId).all<AuditRow>();
 	return res.results ?? [];
@@ -821,7 +840,7 @@ export async function setConfig(db: D1Database, key: string, value: string): Pro
 
 export type NotifyChannel = 'line' | 'push';
 
-export type NotifyKind = 'daily' | 'week';
+export type NotifyKind = 'daily' | 'week' | 'yearend';
 
 export interface NotificationRun {
 	date: string;
@@ -879,6 +898,19 @@ export async function finishNotification(
 		)
 		.bind(status, error ?? null, bangkokNow(), date, kind, channel)
 		.run();
+}
+
+/** How many people a run reached, once it knows. */
+export async function setNotificationPeople(db: D1Database, date: string, kind: NotifyKind, channel: NotifyChannel, people: number): Promise<void> {
+	await db.prepare('UPDATE notification_runs SET people = ? WHERE date = ? AND kind = ? AND channel = ?').bind(people, date, kind, channel).run();
+}
+
+/** One run's row, if it exists. */
+export async function getNotification(db: D1Database, date: string, kind: NotifyKind, channel: NotifyChannel): Promise<NotificationRun | null> {
+	return await db
+		.prepare('SELECT * FROM notification_runs WHERE date = ? AND kind = ? AND channel = ?')
+		.bind(date, kind, channel)
+		.first<NotificationRun>();
 }
 
 /** Drop a log row so a failed run can be retried. */

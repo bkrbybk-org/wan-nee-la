@@ -2,7 +2,7 @@
 // Unit tests for src/domain/report.ts — leave counted over a span: the HR
 // export and the per-month view on /me.
 // Run: npm run test:report
-import { daysWithin, leaveSummary, monthlyDays, toCsv } from '../src/domain/report.ts';
+import { daysWithin, leaveSummary, monthlyDays, toCsv, unusedLeave } from '../src/domain/report.ts';
 
 let failures = 0;
 const check = (name, cond, detail) => {
@@ -96,6 +96,25 @@ eq('within: a slice of only weekend is zero, not an error', daysWithin(entry({ s
 	check('csv: numbers stay numbers', csv.includes('"2.5"') && !csv.includes("'2.5"), csv);
 	check('csv: Thai passes through', csv.includes('"ลาป่วย"'), csv);
 	check('csv: a negative-looking name is defused too', toCsv([['-1 day']]).includes("\"'-1 day\""), 'not defused');
+}
+
+// --- unused leave, for the year end -----------------------------------------
+{
+	const annual = { id: 1, code: 'annual', label_en: 'Annual', label_th: 'ลาพักร้อน', color: '#000', default_days: 10, counts_quota: 1, sort_order: 1, active: 1 };
+	const person = (email, name, active = 1) => ({ email, display_name: name, active, is_admin: 0, week_start: 1, lang: 'en', created_at: '2026-01-01' });
+	const users = [person('a@x.com', 'Anan'), person('b@x.com', 'Bee'), person('c@x.com', 'Chai'), person('gone@x.com', 'Gone', 0)];
+	const quotas = [{ user_email: 'b@x.com', year: 2026, leave_type_id: 1, days_allotted: 15 }];
+	const used = new Map([
+		['a@x.com', new Map([[1, 4.5]])],
+		['c@x.com', new Map([[1, 12], [2, 3]])],
+	]);
+	const rows = unusedLeave(users, annual, quotas, used);
+	eq('unused: active people only', rows.map((r) => r.name).join(), 'Bee,Anan,Chai');
+	eq('unused: their own allowance where one is set', rows[0].allotted, 15);
+	eq('unused: the type\'s default where none is', rows[1].allotted, 10);
+	eq('unused: a half day left is kept', rows[1].left, 5.5);
+	eq('unused: overdrawn is negative, and last', rows[2].left, -2);
+	eq('unused: other types do not count', rows[2].booked, 12);
 }
 
 console.log(failures === 0 ? '\nAll report tests passed.' : `\n${failures} failure(s).`);

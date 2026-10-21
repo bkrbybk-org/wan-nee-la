@@ -5,9 +5,10 @@ import type { Holiday, LeaveType, Quota, User } from '../types.ts';
 import { AUDIT_ACTIONS } from '../repo/db.ts';
 import type { AuditFilter, AuditRow, LeaveSnapshot, NotificationRun } from '../repo/db.ts';
 import type { HolidayGap, HolidayParse, ImportPlan } from '../domain/holidays.ts';
+import type { UnusedRow } from '../domain/report.ts';
 import { FlashBanner, HolidaysDueBanner, Layout, YearNav } from './layout.tsx';
 import { SelectField, TextField } from './fields.tsx';
-import { BellIcon, BellRingIcon, CalendarIcon, ChevronLeftIcon, DeleteIcon, DownloadIcon, EditIcon, HistoryIcon, TagIcon, UsersIcon } from './icons.tsx';
+import { BellIcon, BellRingIcon, CalendarIcon, HourglassIcon, ChevronLeftIcon, DeleteIcon, DownloadIcon, EditIcon, HistoryIcon, TagIcon, UsersIcon } from './icons.tsx';
 import { useLang, useT } from '../i18n/context.tsx';
 import { t as translate, toLang } from '../i18n/strings.ts';
 import type { StringKey } from '../i18n/strings.ts';
@@ -24,13 +25,14 @@ import type { StringKey } from '../i18n/strings.ts';
  * JavaScript.
  */
 
-export type AdminSection = 'people' | 'types' | 'holidays' | 'notifications' | 'export' | 'activity';
+export type AdminSection = 'people' | 'types' | 'holidays' | 'notifications' | 'yearend' | 'export' | 'activity';
 
 const SECTIONS: { key: AdminSection; href: string; label: StringKey }[] = [
 	{ key: 'people', href: '/admin/people', label: 'admin.people' },
 	{ key: 'types', href: '/admin/types', label: 'admin.types' },
 	{ key: 'holidays', href: '/admin/holidays', label: 'admin.holidays' },
 	{ key: 'notifications', href: '/admin/notifications', label: 'admin.notifications' },
+	{ key: 'yearend', href: '/admin/year-end', label: 'admin.yearEnd' },
 	{ key: 'export', href: '/admin/export', label: 'admin.export' },
 	{ key: 'activity', href: '/admin/activity', label: 'admin.activity' },
 ];
@@ -108,6 +110,8 @@ export interface OverviewProps {
 	types: LeaveType[];
 	holidayCounts: { year: number; n: number }[];
 	lineEnabled: boolean;
+	/** Unbooked days of annual leave this year, for the tile; null without an annual type. */
+	unused: { type: string; days: number } | null;
 	error?: string;
 	notice?: string;
 }
@@ -125,7 +129,7 @@ export function AdminOverviewPage(props: OverviewProps) {
 }
 
 function OverviewBody(props: OverviewProps) {
-	const { today, holidaysDue, awayToday, push, lastDigest, changesWeek, changesTotal, users, types, holidayCounts, lineEnabled } = props;
+	const { today, holidaysDue, awayToday, push, lastDigest, changesWeek, changesTotal, users, types, holidayCounts, lineEnabled, unused } = props;
 	const t = useT();
 	const lang = useLang();
 	const active = users.filter((u) => u.active);
@@ -194,6 +198,14 @@ function OverviewBody(props: OverviewProps) {
 					title={t('admin.notifications')}
 					note={t('admin.tileNotify', { push: push ? t('admin.on') : t('admin.off'), line: lineEnabled ? t('admin.on') : t('admin.off') })}
 				/>
+				{unused ? (
+					<Tile
+						href="/admin/year-end"
+						Icon={HourglassIcon}
+						title={t('admin.yearEnd')}
+						note={t('admin.tileYearEnd', { n: formatDays(unused.days), type: unused.type })}
+					/>
+				) : null}
 				<Tile href="/admin/export" Icon={DownloadIcon} title={t('admin.export')} note={t('admin.tileExport')} />
 				<Tile href="/admin/activity" Icon={HistoryIcon} title={t('admin.activity')} note={t('admin.tileActivity', { n: changesTotal, count: changesTotal })} />
 			</ul>
@@ -212,6 +224,130 @@ function Tile({ href, Icon, title, note, alert }: { href: string; Icon: typeof U
 				</span>
 			</a>
 		</li>
+	);
+}
+
+// ---------------------------------------------------------------------------
+// Unused leave
+// ---------------------------------------------------------------------------
+
+export interface YearEndProps {
+	user: User;
+	version?: string;
+	year: number;
+	minYear: number;
+	maxYear: number;
+	thisYear: number;
+	type: LeaveType | null;
+	rows: UnusedRow[];
+	pushCounts: Map<string, number> | null;
+	/** This year's reminder, once it has been claimed. */
+	reminder: NotificationRun | null;
+	error?: string;
+	notice?: string;
+}
+
+/**
+ * Who still has annual leave unbooked, and the November reminder that tells
+ * them. Unused days do not carry over, so this is the page to open in the
+ * autumn: who to nudge, and whether the app already has.
+ */
+export function AdminYearEndPage(props: YearEndProps) {
+	const { user, version, year, minYear, maxYear, error, notice } = props;
+	return (
+		<AdminShell
+			user={user}
+			version={version}
+			section="yearend"
+			error={error}
+			notice={notice}
+			headExtra={<YearNav basePath="/admin/year-end" year={year} minYear={minYear} maxYear={maxYear} />}
+		>
+			<YearEndBody {...props} />
+		</AdminShell>
+	);
+}
+
+function YearEndBody({ year, thisYear, type, rows, pushCounts, reminder }: YearEndProps) {
+	const t = useT();
+	const lang = useLang();
+	if (!type) {
+		return (
+			<section class="card">
+				<p class="muted">{t('admin.yearEndNoType')}</p>
+			</section>
+		);
+	}
+	const typeName = lang === 'th' ? type.label_th : type.label_en;
+	const owed = rows.filter((r) => r.left > 0);
+	const total = owed.reduce((n, r) => n + r.left, 0);
+	const when = (r: NotificationRun) => shortDate(r.sent_at.slice(0, 10), lang);
+
+	return (
+		<>
+			{year === thisYear ? (
+				<section class="card">
+					<h2>{t('admin.remindHead')}</h2>
+					{!pushCounts ? (
+						<p class="muted">{t('admin.remindOff')}</p>
+					) : !reminder ? (
+						<>
+							<p class="muted">{t('admin.remindPlanned')}</p>
+							<form method="post" action="/admin/year-end/remind">
+								<button type="submit" class="btn tonal" disabled={owed.length === 0}>
+									<BellRingIcon class="sm" />
+									{t('admin.remindNow')}
+								</button>
+								<span class="tf-support">{t('admin.remindNowHelp')}</span>
+							</form>
+						</>
+					) : reminder.status === 'failed' ? (
+						<p class="bad">{t('admin.remindFailed', { date: when(reminder), error: reminder.error ?? '' })}</p>
+					) : reminder.status === 'skipped_empty' ? (
+						<p>{t('admin.remindEmpty', { date: when(reminder) })}</p>
+					) : (
+						<p data-reminder-sent>{t('admin.remindSent', { date: when(reminder), n: reminder.people, count: reminder.people })}</p>
+					)}
+				</section>
+			) : null}
+
+			<section class="card">
+				<h2>{t('admin.yearEndHead', { type: typeName, year })}</h2>
+				<p class="muted">{t('admin.yearEndHelp', { year })}</p>
+				<p data-yearend-total>
+					{owed.length ? t('admin.yearEndTotal', { people: owed.length, active: rows.length, days: formatDays(total) }) : t('admin.yearEndNone')}
+				</p>
+				<div class="table-scroll">
+					<table class="grid-table people-table yearend-table">
+						<thead>
+							<tr>
+								<th>{t('admin.person')}</th>
+								<th class="num">{t('admin.allowance')}</th>
+								<th class="num">{t('admin.booked')}</th>
+								<th class="num">{t('admin.leftCol')}</th>
+							</tr>
+						</thead>
+						<tbody>
+							{rows.map((r) => (
+								<tr class={r.left > 0 ? '' : 'inactive'}>
+									<td>
+										<a href={`/admin/people/${encodeURIComponent(r.email)}?y=${year}`} class="person-link">
+											<strong>{r.name}</strong>
+										</a>
+										{pushCounts && r.left > 0 ? <PushState n={pushCounts.get(r.email) ?? 0} /> : null}
+									</td>
+									<td class="num">{formatDays(r.allotted)}</td>
+									<td class="num">{formatDays(r.booked)}</td>
+									<td class={`num ${r.left < 0 ? 'bad' : ''}`}>
+										<strong>{formatDays(r.left)}</strong>
+									</td>
+								</tr>
+							))}
+						</tbody>
+					</table>
+				</div>
+			</section>
+		</>
 	);
 }
 
