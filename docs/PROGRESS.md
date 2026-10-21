@@ -8,7 +8,7 @@ Updated: 2026-10-20
 
 ## Status
 
-Deployed and serving. Version `4fb5113f-93d9-4215-923e-c64a662b3401`, deployed 2026-10-20 with `npm run ship`, D1 `<database-id>` in APAC, behind Cloudflare Access on `<hostname>`. Production checks passed: the new version serves all traffic, `/health` and `/` both 302 to Access, production D1 answers, and migration 0011 is applied with every type still offered. That deploy also carried the 09:00 weekday schedule — production had still been on the old daily `0 1 * * *` cron until then.
+Deployed and serving. Version `5245b04e-bb67-4329-bdec-91665866c221`, deployed 2026-10-20 with `npm run ship`, D1 `<database-id>` in APAC, behind Cloudflare Access on `<hostname>`. Production checks passed: the new version serves all traffic, `/health` and `/` both 302 to Access, production D1 answers, and migration 0011 is applied with every type still offered. That deploy also carried the 09:00 weekday schedule — production had still been on the old daily `0 1 * * *` cron until then.
 
 **In real use.** Twelve active users, 24 confirmed bookings, 26 holidays, four leave types, 49 rows in the audit trail (read 2026-10-20). That changes what matters here: the shared surfaces now have a real audience, so note visibility, the audit trail and the privacy rules on `/u/:email` are load-bearing rather than theoretical.
 
@@ -78,7 +78,7 @@ Two consequences worth remembering:
 | GET | `/api/v1/balances?year=&user=` | Entitlement, taken and remaining per person. Admins and service tokens only. |
 | GET | `/api/v1/leave/preview` | Server-side day count, coverage and balance for the form's summary. |
 | POST | `/api/v1/leave` | Book. Server computes days, checks overlap and the start year's balance. A refusal hands the submission and the offending field back to the form. |
-| GET · POST | `/leave/:id/edit` · `/api/v1/leave/:id/edit` | Edit, and offer undo. Also the drag-to-move target. |
+| GET · POST | `/leave/:id/edit` · `/api/v1/leave/:id/edit` | A booking's page — the booking, its balance, who else is away and its history, then Edit and Remove — and the save, which offers undo. Also the drag-to-move target. |
 | POST | `/api/v1/leave/:id/cancel` | Soft cancel; idempotent. Offers undo. |
 | POST | `/api/v1/leave/:id/undo` | Undo the last cancel or edit within ten minutes, re-running the booking rules first. |
 | GET | `/me` | Next leave, balances, upcoming or earlier leave, days off by month. Year navigation. |
@@ -146,7 +146,7 @@ Two consequences worth remembering:
 
 ## Verification
 
-**1,002 automated assertions**, all green. CI runs them, and lint, on every push and pull request.
+**1,011 automated assertions**, all green. CI runs them, and lint, on every push and pull request.
 
 | Suite | Assertions | Covers |
 | --- | --- | --- |
@@ -158,7 +158,7 @@ Two consequences worth remembering:
 | `test-report.mjs` | 24 | Leave counted over a span — cut to it, halves where they fall — per person and per month; the CSV writer and its formula guard |
 | `test-migrate.mjs` | 29 | Migration tracking: the generated SQL on SQLite, then `migrate.mjs` itself through wrangler — applied twice, a legacy database refused and then baselined |
 | `test-i18n.mjs` | 27 | Lookup, placeholders, plurals, and the catalogue's own health |
-| `smoke.mjs` | 472 | The HTTP layer — see below |
+| `smoke.mjs` | 481 | The HTTP layer — see below |
 | `test-browser.mjs` | 56 | Five screenshots compared with per-platform references (the month on a phone, light and dark, and a laptop; the admin People page on both) — then the calendar's own script in headless Chrome: the phone's day card, tapping and swiping it, what a screen reader is told, the folding Book button, the days-off-by-month chart, the busy-day count, the card staying on screen under both banners, the month swipe, the notification invitation, the entry popup, drag-to-move, remove and undo, booking from an empty day, the Thai interface |
 | `check-openapi.mjs` | — | Each of the 41 routes is either documented in `openapi.yaml` or deliberately listed as not, and the API Shield 3.0.3 copy still builds from it, and its validation fingerprint moves only when validation does |
 
@@ -178,7 +178,7 @@ It is built against its own worst failure mode — passing while testing nothing
 
 ## Open items
 
-**No known bugs.** The push keypair mismatch (#40) was repaired on 2026-09-21. 1,002 assertions are green and `npm audit` is clean. The 2026-08-25 audit and the 2026-09-13 review both found and fixed what they turned up — the second a quota overdraw when moving a booking across New Year (#36) — and each fix is covered by a test or, where a test could not reach it, recorded in [ISSUES.md](ISSUES.md).
+**No known bugs.** The push keypair mismatch (#40) was repaired on 2026-09-21. 1,011 assertions are green and `npm audit` is clean. The 2026-08-25 audit and the 2026-09-13 review both found and fixed what they turned up — the second a quota overdraw when moving a booking across New Year (#36) — and each fix is covered by a test or, where a test could not reach it, recorded in [ISSUES.md](ISSUES.md).
 
 What follows is decisions, unfinished configuration, accepted trade-offs and debt — not defects.
 
@@ -260,6 +260,7 @@ Features — iCal, team grouping, coverage scoped to a team — are in PLAN.md s
 
 ## Change log
 
+- **2026-10-21** — A booking's page shows the booking before offering to change it: the dates and owner as the heading, a status ("in 12 days", "on leave now, until 23 Oct"), days, note, the owner's balance, who else is away during it, and its history — who booked it and who changed what. Edit opens the form in place; Remove… asks once. It replaced three cards, one of which repeated the form beneath it. Editing, the summary says what changes: "4 days → 3 days", "Annual: 6 left → 7 after this". Two bugs fixed on the way: when an admin edited someone else's booking, who-else-is-away was counted from the admin and said "with you" — it is the owner's now, "with Ploy" — and someone with two bookings on one day was listed and counted twice. Back returns to where the reader came from, and the note's toggle says "Note", not "Add a note", when there is one.
 - **2026-10-21** — The booking form redesigned. "One day" or "Several days": one day is a date and Full day, Morning or Afternoon; several days are From and To, the first all day or from noon, the last all day or until noon — where it had been "Start half" and an "End half" that appeared once a second date was typed. Leave types are coloured chips; the note is behind "Add a note". Above the button, a summary: the days, the balance before and after ("Sick: 27 left → 24 after this", or none left), and who else is away by name, "with you, 5 of 11" — the old line counted the booker but named only the others, and sat under the button with the day count. The button says "Book 3 days"; Cancel closes the dialog. Radios and CSS switch the shapes, so it works without script, and the server ignores the hidden shape's fields (`parseBooking` reads `mode`). The preview API returns `balance`. Tested: unit (one-day mapping), smoke (balance, markup, a One day booking with a stale To date stored as one afternoon), browser (summary, button, switch).
 - **2026-10-20** — The calendar fits and gains a day panel. On a laptop the admin's holiday reminder is a chip in the month header, Book leave sits beside Today, the hint row is gone and the legend is under the grid, so a 1,366×800 screen shows the whole month where the last week had been in an inner scroll. The sidebar is now the day panel: the chosen day's card first — lit when anyone is away — then Upcoming. Clicking a day selects it, as a tap does on a phone; each day's + and the card's "Book this day" book. On a phone the Book button is round and steps aside while the card is on screen, where it had covered names, and Upcoming shows only for a day nobody is away, instead of repeating the card. Holiday names get two lines. Browser tests cover the panel, the +, the button stepping aside and Upcoming coming and going; the calendar screenshots were re-recorded.
 - **2026-10-20** — My leave redesigned. It leads with your next leave and a Book button, then the balances — an overdrawn one now red, "6.5 days over", where it had read "-6.5 days left" beside a full bar — then one list switched between Upcoming and Earlier this year. Upcoming had been listed furthest first, so the next booking was at the bottom; it is soonest first now, and covers next year too. Rows are one shape and open the booking; cancelled ones are folded away. The booking form that sat between the balances and the list is gone (the Book button, the calendar and `/book` all reach it), and name, week start and language moved to `/me/settings` as one form with one Save. The page went from 2,600px to about 1,050 on a laptop. Smoke checks the order, the overdrawn card, the cancelled fold and the one-form settings, including that one bad field saves none; the order check fails if the old order comes back.
