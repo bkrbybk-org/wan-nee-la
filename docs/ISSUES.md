@@ -159,7 +159,7 @@ Hence the `holidays` table + admin editor, not a constant in the source.
 - Substitution days when a holiday falls on a weekend.
 - Special one-off government holidays.
 
-Add those via `/admin` → Holidays. A missing holiday is not cosmetic: leave booked across it silently costs the employee a day of quota.
+Add those via `/admin/holidays`. A missing holiday is not cosmetic: leave booked across it silently costs the employee a day of quota.
 
 **2026-10-20: a reminder.** From 1 October to the end of January, an admin sees a banner on the calendar and on `/admin` while the coming year holds nothing but its fixed-date holidays, linking to the importer (`holidayGap` in `src/domain/holidays.ts`). The first version compared the count with the year before, and production showed why that fails on the first try: its 2026 starts in August, so the seeded 2027 already "had more". On 2026-10-20 production's 2027 is exactly the 15 seeded holidays, so the banner is showing. Still open in the sense that nothing *fetches* the announcement; the reminder makes forgetting it unlikely.
 

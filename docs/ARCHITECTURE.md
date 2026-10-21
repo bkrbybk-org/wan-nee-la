@@ -283,7 +283,7 @@ The detail popup is built from `data-*` attributes on the clicked element rather
 
 Native `<dialog>` + `showModal()` is used for focus trapping and Escape-to-close rather than reimplementing them.
 
-Only one booking form exists per page, inside the create dialog — two would collide on element ids. Editing, the summary says what changes ("4 days → 3 days", "Annual: 6 left → 7 after this") — `remaining` is what is left now, the booking included, and `after` counts its days back before charging the new ones.
+Only one booking form exists per page — inside the create dialog on the calendar, inside Edit on a booking's page — two would collide on element ids. Editing, the summary says what changes ("4 days → 3 days", "Annual: 6 left → 7 after this") — `remaining` is what is left now, the booking included, and `after` counts its days back before charging the new ones.
 
 **Coverage is the owner's.** The who-else-is-away count is worked out from the booking's owner, not from whoever is looking: an admin editing someone else's booking had seen it counted from the admin — their own days left out, the owner among "someone else" — and told "with you". The preview now names the owner (`coverage.with`), and the line reads "with Ploy". `coverageInRange` also counts a person once per day however many bookings they hold on it; a morning and an afternoon booked separately had been listed, and counted, twice.
 

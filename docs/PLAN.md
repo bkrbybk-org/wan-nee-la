@@ -40,7 +40,7 @@ These are policy questions. Each has a recommendation; none should be decided by
 | ~~2.1~~ | ~~**Leave notes are readable by everyone** ([ISSUES.md](ISSUES.md) #17).~~ | **Done:** per-note choice, private by default. |
 | ~~2.2~~ | ~~**No audit trail on retroactive changes** ([ISSUES.md](ISSUES.md) #8).~~ | **Done:** `leave_audit`, written in the same batch as each change. |
 | 2.3 | **Nothing monitors the deployment** ([ISSUES.md](ISSUES.md) #18). | **Monitor built** (2026-09-18): `.github/workflows/uptime.yml`, every 15 minutes. Needs the `HEALTH_URL` secret, and a way past Access — a Bypass rule on `/health`, or a service token in `CF_ACCESS_CLIENT_ID` / `CF_ACCESS_CLIENT_SECRET`. The token keeps `/health` private; the Bypass is simpler. |
-| 2.4 | **Retire Personal leave?** ([ISSUES.md](ISSUES.md) #39). Asked to be removed, but it has one confirmed booking, so it cannot be deleted without hiding that day. | **Mechanism done** (2026-09-18): `/admin` → Leave types → untick *offered* → **Save**. Left to the owner because it changes what everyone can book. |
+| 2.4 | **Retire Personal leave?** ([ISSUES.md](ISSUES.md) #39). Asked to be removed, but it has one confirmed booking, so it cannot be deleted without hiding that day. | **Mechanism done** (2026-09-18): `/admin/types` → untick *offered* → **Save**. Left to the owner because it changes what everyone can book. |
 
 ---
 
@@ -87,7 +87,7 @@ None of these are needed for the app to do its job. Rough value order.
 | # | Feature | Who | Notes |
 | --- | --- | --- | --- |
 | 5.1 | iCal feed | **Opus** then **Sonnet** | Leave appears in Google Calendar or Outlook. Calendar clients cannot do SSO, so it needs a per-user signed-token URL exempted from Access — the auth design is mine, the rest is not. |
-| ~~5.2~~ | ~~CSV export for HR~~ | — | **Done** (2026-10-20): `/admin` → Export for HR, per person per type or per booking, for a range up to a year. |
+| ~~5.2~~ | ~~CSV export for HR~~ | — | **Done** (2026-10-20): `/admin/export`, per person per type or per booking, for a range up to a year. |
 | ~~5.3~~ | ~~Look-ahead in the LINE digest~~ | — | **Done:** a Monday week-ahead post, on both channels. |
 | 5.4 | Team grouping and filtering | **Sonnet** | The calendar shows everyone. Worth doing when the roster makes it unreadable, not before. |
 | ~~5.5~~ | ~~Coverage warnings~~ | — | **Done:** shown under the booking form, roster-wide; see 5.8. |
