@@ -2091,3 +2091,74 @@ a.my-link:focus-visible { outline: 2px solid var(--md-primary); outline-offset: 
    card has its own, and the button would otherwise sit on a name. */
 .fab { transition: transform var(--md-dur-medium) var(--md-ease), opacity var(--md-dur-short) var(--md-ease); }
 .fab.fab-away { transform: translateY(160%); opacity: 0; pointer-events: none; }
+
+/* --- The booking form: one day or several ---------------------------------- */
+
+/* The two shapes, switched by the form's own radios: no script needed. */
+.booking:has(input[name="mode"][value="one"]:checked) .range-only { display: none; }
+.booking:has(input[name="mode"][value="range"]:checked) .one-only { display: none; }
+
+/* Leave types as chips, each in its calendar colour. */
+.type-chips { display: flex; flex-wrap: wrap; gap: 8px; margin: 0 0 16px; padding: 0; border: 0; }
+.type-chips.invalid .type-chip { border-color: var(--md-error); }
+.type-chip {
+	position: relative;
+	display: inline-flex;
+	align-items: center;
+	gap: 8px;
+	height: 36px;
+	padding: 0 14px;
+	border: 1px solid var(--md-outline);
+	border-radius: var(--md-shape-sm);
+	font-size: 14px;
+	font-weight: 500;
+	cursor: pointer;
+}
+.type-chip input { position: absolute; opacity: 0; width: 1px; height: 1px; }
+.type-chip:has(input:checked) { background: var(--md-secondary-container); color: var(--md-on-secondary-container); border-color: transparent; }
+.type-chip:has(input:focus-visible) { outline: 2px solid var(--md-primary); outline-offset: 2px; }
+
+/* Segmented choices inside the form fill their row. */
+.booking .choice { display: flex; width: 100%; margin-bottom: 16px; }
+.booking .choice label { flex: 1; min-width: 0; padding: 0 8px; }
+/* Half of a column on a phone: no tick (the fill already says which), and no
+   wrapping — "All day" over two lines read as two options. */
+.booking .choice.small label { height: 32px; padding: 0 4px; font-size: 12px; white-space: nowrap; }
+.booking .choice.small .seg-check { display: none !important; }
+.booking .choice.small input:checked ~ .seg-text { color: var(--md-on-secondary-container); }
+.booking .choice.small label:has(input:checked) { background: var(--md-secondary-container); }
+.booking .choice.invalid { border-color: var(--md-error); }
+.booking .choice label:has(input:focus-visible) { outline: 2px solid var(--md-primary); outline-offset: -2px; }
+.mode-switch { margin-bottom: 16px; }
+
+/* Dates: one column for one day, two side by side for several. */
+.when { display: grid; grid-template-columns: minmax(0, 1fr); gap: 12px; }
+.booking:has(input[name="mode"][value="range"]:checked) .when { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.when-end .tf { margin-bottom: 8px; }
+.when-end .choice { margin-bottom: 12px; }
+
+/* The note, out of the way until wanted. */
+.note-block { margin: 4px 0 12px; }
+.note-block > summary { list-style: none; cursor: pointer; }
+.note-block > summary::-webkit-details-marker { display: none; }
+.note-block[open] > summary { margin-bottom: 8px; }
+.note-block .checkline { margin-top: 4px; }
+
+/* The summary, above the button it informs. Empty until the script fills it. */
+.booking-summary { display: none; }
+.booking-summary.filled {
+	display: block;
+	padding: 10px 12px;
+	margin-bottom: 4px;
+	border-radius: var(--md-shape-sm);
+	background: var(--md-surface-container-high);
+}
+.booking-summary p { margin: 0; }
+.booking-summary p:empty { display: none; }
+.booking-summary p + p:not(:empty) { margin-top: 4px; }
+.booking-summary .preview { font-size: 14px; line-height: 20px; font-weight: 500; color: var(--md-on-surface); }
+.booking-summary .balance { font-size: 13px; line-height: 18px; color: var(--md-on-surface-variant); }
+.booking-summary .balance.bad, .booking-summary .preview.bad { color: var(--md-error); }
+.booking-summary .coverage { margin: 0; font-size: 13px; line-height: 18px; }
+.booking-summary .coverage.busy { margin-top: 6px; }
+.booking .actions { justify-content: flex-end; margin-top: 12px; }

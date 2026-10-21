@@ -93,6 +93,17 @@ eq('parseHalf: undefined', parseHalf(undefined), null);
 const p1 = parseBooking({ leaveTypeId: '1', startDate: '2026-08-17' });
 check('parseBooking: blank end date means a single day', !('error' in p1) && p1.endDate === '2026-08-17', JSON.stringify(p1));
 check('parseBooking: missing type', 'error' in parseBooking({ startDate: '2026-08-17' }), 'expected an error');
+// The form's One day mode: the hidden range fields are ignored, whatever they hold.
+{
+	const one = parseBooking({ leaveTypeId: '1', mode: 'one', startDate: '2026-08-17', endDate: '2026-08-21', dayPart: 'pm', startHalf: 'full', endHalf: 'am' });
+	check('parseBooking: one day ignores a stale end date', !('error' in one) && one.endDate === '2026-08-17', JSON.stringify(one));
+	check('parseBooking: one day takes its part of the day for both halves', !('error' in one) && one.startHalf === 'pm' && one.endHalf === 'pm', JSON.stringify(one));
+	const full = parseBooking({ leaveTypeId: '1', mode: 'one', startDate: '2026-08-17' });
+	check('parseBooking: one day defaults to the whole day', !('error' in full) && full.startHalf === 'full' && full.endHalf === 'full', JSON.stringify(full));
+	check('parseBooking: one day refuses a part that is not one', 'error' in parseBooking({ leaveTypeId: '1', mode: 'one', startDate: '2026-08-17', dayPart: 'evening' }), 'accepted');
+	const range = parseBooking({ leaveTypeId: '1', mode: 'range', startDate: '2026-08-17', endDate: '2026-08-21', startHalf: 'pm', endHalf: 'am', dayPart: 'am' });
+	check('parseBooking: several days keep their own halves', !('error' in range) && range.endDate === '2026-08-21' && range.startHalf === 'pm' && range.endHalf === 'am', JSON.stringify(range));
+}
 check('parseBooking: non-numeric type', 'error' in parseBooking({ leaveTypeId: 'x', startDate: '2026-08-17' }), 'expected an error');
 check('parseBooking: bad date', 'error' in parseBooking({ leaveTypeId: '1', startDate: '17/08/2026' }), 'expected an error');
 check('parseBooking: bad half', 'error' in parseBooking({ leaveTypeId: '1', startDate: '2026-08-17', startHalf: 'evening' }), 'expected an error');

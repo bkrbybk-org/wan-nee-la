@@ -29,6 +29,12 @@ function open(dialog: HTMLDialogElement | null) {
 for (const dialog of [createDialog, entryDialog]) {
 	if (!dialog) continue;
 	dialog.querySelector('[data-popup-close]')?.addEventListener('click', () => dialog.close());
+	// The form's own Cancel is a link to the calendar, for /book; in the dialog
+	// it just closes it.
+	dialog.querySelector('[data-form-cancel]')?.addEventListener('click', (e) => {
+		e.preventDefault();
+		dialog.close();
+	});
 	// Clicking the backdrop closes. The dialog element itself fills only the
 	// panel, so a click whose target is the dialog is a click outside the panel.
 	dialog.addEventListener('click', (e) => {
@@ -55,8 +61,11 @@ document.addEventListener('click', (e) => {
 	if (date) {
 		startInput.value = date;
 		// A fresh single-day booking: clear any end date left from last time, or
-		// the new start silently inherits an old range.
+		// the new start silently inherits an old range, and open on One day —
+		// a day was what was clicked.
 		if (endInput) endInput.value = '';
+		const oneDay = createDialog.querySelector<HTMLInputElement>('input[name="mode"][value="one"]');
+		if (oneDay) oneDay.checked = true;
 		if (createTitle) createTitle.textContent = S.bookOn.split('{date}').join(formatDate(date));
 	} else if (createTitle) {
 		createTitle.textContent = S.book;

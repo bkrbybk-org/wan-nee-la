@@ -831,6 +831,30 @@ async function main() {
 	eq('a refused preview keeps its key', refused.error?.key, 'error.notAWorkingDay');
 	eq('and carries the message the form shows', refused.error?.message, 'That day is a weekend or a public holiday.');
 
+	// --- the form's balance line, and its two shapes --------------------------
+	check(
+		'preview: says what the booking leaves of the allowance',
+		preview.balance?.type === 'Annual' && typeof preview.balance.remaining === 'number' && preview.balance.after === preview.balance.remaining - 1,
+		JSON.stringify(preview.balance),
+	);
+	const medicalId = d1Rows("SELECT id FROM leave_types WHERE code = 'medical'")[0]?.id;
+	const medicalPreview = await (await fetch(`${BASE}/api/v1/leave/preview?leaveTypeId=${medicalId}&start=${MON}&end=${MON}`)).json();
+	eq('preview: and nothing for a type without an allowance', medicalPreview.balance, null);
+	{
+		const bookHtml = await (await fetch(`${BASE}/book?date=${MON}`)).text();
+		check('form: leave types are radio chips', /class="type-chip"><input type="radio" name="leaveTypeId"/.test(bookHtml), 'no chips');
+		check('form: opens on One day', /name="mode" value="one" checked/.test(bookHtml) && bookHtml.includes('name="dayPart"'), 'not One day');
+		check('form: several days say what a half day means', bookHtml.includes('From noon') && bookHtml.includes('Until noon'), 'half-day wording missing');
+		check('form: the summary sits above the button', bookHtml.indexOf('data-summary') < bookHtml.indexOf('data-submit'), 'summary after the button');
+		// One day ignores the hidden range fields, whatever they still hold.
+		const ONE = clearFutureMonday(13);
+		res = await post('/api/v1/leave', { leaveTypeId: '2', mode: 'one', startDate: ONE, endDate: addDays(ONE, 3), dayPart: 'pm', startHalf: 'full', endHalf: 'am' });
+		check('form: a One day booking is accepted', flashOf(res)?.kind === 'ok', flashOf(res)?.message);
+		const stored = d1Rows(`SELECT end_date, start_half, end_half, days_total FROM leave_requests WHERE user_email = '${ADMIN}' AND start_date = '${ONE}' AND status = 'confirmed'`)[0];
+		eq('form: and is one afternoon, whatever the To field held', `${stored?.end_date} ${stored?.start_half}/${stored?.end_half} ${stored?.days_total}`, `${ONE} pm/pm 0.5`);
+		d1(`DELETE FROM leave_requests WHERE user_email = '${ADMIN}' AND start_date = '${ONE}'`);
+	}
+
 	// --- holiday import -----------------------------------------------------
 	res = await post('/admin/holidays/import', { list: '2027-01-01 New Year\n2027-04-13 Songkran' });
 	eq('holiday import accepted', flashOf(res)?.kind, 'ok');

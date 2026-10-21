@@ -507,6 +507,14 @@ async function main() {
 	await tap(`.cell-plus[data-date="${freeDay}"]`);
 	check('book: the + on an empty day opens the form', await waitFor("document.querySelector('[data-create-dialog]').open"), 'dialog closed');
 	eq('book: on that day', await evaluate("document.querySelector('[data-create-dialog] [data-start]').value"), freeDay);
+	// The summary above the button: the cost, the balance, and the button says it.
+	const dlg = "document.querySelector('[data-create-dialog]')";
+	check('form: the summary says what it costs and leaves', await waitFor(`/1 day/.test(${dlg}.querySelector('[data-preview]').textContent) && / left/.test(${dlg}.querySelector('[data-balance]').textContent)`, 5000), await evaluate(`${dlg}.querySelector('[data-summary]').innerText`));
+	eq('form: and the button says it too', await evaluate(`${dlg}.querySelector('[data-submit]').textContent`), 'Book 1 day');
+	check('form: One day hides the To field', await evaluate(`getComputedStyle(${dlg}.querySelector('[data-end]').closest('.when-end')).display === 'none'`), 'To shown');
+	await evaluate(`${dlg}.querySelector('input[name="mode"][value="range"]').click()`);
+	check('form: Several days shows it, with its half-day ends', await evaluate(`getComputedStyle(${dlg}.querySelector('[data-end]').closest('.when-end')).display !== 'none' && getComputedStyle(${dlg}.querySelector('input[name="dayPart"]').closest('.choice')).display === 'none'`), 'shape did not switch');
+	await evaluate(`${dlg}.querySelector('input[name="mode"][value="one"]').click()`);
 	await tap('[data-create-dialog] button[type="submit"]');
 	let booked = null;
 	for (let i = 0; i < 50 && !booked; i++) {

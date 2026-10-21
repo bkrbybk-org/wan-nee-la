@@ -672,11 +672,24 @@ app.get('/api/v1/leave/preview', async (c) => {
 	// refuse a booking, because the app does not know who covers for whom; it
 	// only knows how to stop someone finding out by accident on the Monday.
 	const viewer = c.get('user');
-	const [coverage, headcount] = await Promise.all([
-		db.coverageInRange(c.env.DB, parsed.startDate, parsed.endDate, viewer.email, c.req.query('exclude') ?? undefined),
+	const excludeId = c.req.query('exclude') ?? undefined;
+	const [coverage, headcount, editing] = await Promise.all([
+		db.coverageInRange(c.env.DB, parsed.startDate, parsed.endDate, viewer.email, excludeId),
 		db.activeUserCount(c.env.DB),
+		excludeId ? db.getLeave(c.env.DB, excludeId) : Promise.resolve(null),
 	]);
-	return c.json({ days: count.days, ...summariseCoverage(coverage, headcount, toLang(viewer.lang)) }, 200);
+	// Whose balance: the booking's owner when an admin is editing someone
+	// else's, otherwise the person asking. Anyone else's booking id is ignored.
+	const mayEdit = editing && (editing.user_email === viewer.email || viewer.is_admin);
+	const owner = mayEdit ? editing.user_email : viewer.email;
+	return c.json(
+		{
+			days: count.days,
+			...summariseCoverage(coverage, headcount, toLang(viewer.lang)),
+			balance: await previewBalance(c, owner, parsed, count.days, mayEdit ? editing : null),
+		},
+		200,
+	);
 });
 
 /**
@@ -690,6 +703,34 @@ app.get('/api/v1/leave/preview', async (c) => {
  * the warning neither fires on a single colleague in a team of forty nor stays
  * silent when both halves of a team of two book the same Tuesday.
  */
+/**
+ * What the booking does to its type's allowance, for the form's summary:
+ * "Annual: 7 left → 6 after this". Charged to the year the booking starts in,
+ * as the booking check does; an edit gets its own days back first, but only
+ * when the booking being edited is that type in that year — the same rule
+ * `validateBooking` applies, so the summary cannot promise what the save then
+ * refuses. Null for a type without an allowance.
+ */
+async function previewBalance(
+	c: Ctx,
+	email: string,
+	parsed: { leaveTypeId: number; startDate: string },
+	days: number,
+	editing: { leave_type_id: number; start_date: string; days_total: number; status: string } | null,
+) {
+	const types = await leaveTypesOf(c);
+	const year = Number(parsed.startDate.slice(0, 4));
+	const balance = (await db.balancesFor(c.env.DB, email, year, types)).find((b) => b.type.id === parsed.leaveTypeId);
+	if (!balance || !balance.type.counts_quota) return null;
+	const credit =
+		editing && editing.status === 'confirmed' && editing.leave_type_id === parsed.leaveTypeId && editing.start_date.slice(0, 4) === String(year)
+			? editing.days_total
+			: 0;
+	const remaining = round(balance.remaining + credit);
+	const lang = toLang(c.get('user').lang);
+	return { type: lang === 'th' ? balance.type.label_th : balance.type.label_en, remaining, after: round(remaining - days) };
+}
+
 function summariseCoverage(coverage: Map<string, string[]>, headcount: number, lang: Lang) {
 	let worstDate = '';
 	let worst: string[] = [];

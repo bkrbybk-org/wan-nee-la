@@ -98,15 +98,22 @@ export function parseBooking(form: Record<string, unknown>): BookingInput | { er
 	if (!Number.isInteger(leaveTypeId) || leaveTypeId <= 0) return { error: msg('error.pickType') };
 
 	const startDate = String(form.startDate ?? form.start_date ?? '').trim();
+	// The form's "One day" mode: one date and one part of it. Its range fields
+	// are still in the form — hidden, and possibly holding what was typed
+	// before switching — so they are ignored outright rather than trusted to
+	// be blank. Without `mode` (the API, drag-to-move, an older page) the
+	// fields mean what they always did.
+	const oneDay = form.mode === 'one';
 	// A blank end date means a single-day booking — the common case on mobile,
 	// where filling a second date picker for one day off is pure friction.
-	const endDate = String(form.endDate ?? form.end_date ?? '').trim() || startDate;
+	const endDate = oneDay ? startDate : String(form.endDate ?? form.end_date ?? '').trim() || startDate;
 
 	if (!isValidDate(startDate)) return { error: msg('error.badStart') };
 	if (!isValidDate(endDate)) return { error: msg('error.badEnd') };
 
-	const startHalf = parseHalf(form.startHalf ?? form.start_half ?? 'full');
-	const endHalf = parseHalf(form.endHalf ?? form.end_half ?? (startDate === endDate ? startHalf : 'full'));
+	const dayPart = oneDay ? parseHalf(form.dayPart ?? form.startHalf ?? 'full') : null;
+	const startHalf = oneDay ? dayPart : parseHalf(form.startHalf ?? form.start_half ?? 'full');
+	const endHalf = oneDay ? dayPart : parseHalf(form.endHalf ?? form.end_half ?? (startDate === endDate ? startHalf : 'full'));
 	if (!startHalf || !endHalf) return { error: msg('error.badHalf') };
 
 	const note = String(form.note ?? '').trim().slice(0, NOTE_MAX);

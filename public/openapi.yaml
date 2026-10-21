@@ -468,11 +468,19 @@ paths:
                       busy: true
                       names: [Bob, Chatchai W]
                       more: 0
+                    balance:
+                      type: Annual
+                      remaining: 7
+                      after: 3
                 quiet:
                   summary: Nobody else away
                   value:
                     days: 1
                     coverage: null
+                    balance:
+                      type: Annual
+                      remaining: 7
+                      after: 6
                 rejected:
                   summary: A range the rules refuse
                   value:
@@ -884,6 +892,27 @@ components:
                   items: { type: string }
                   maxItems: 3
                 more: { type: integer, description: Names beyond the three listed. }
+        balance:
+          description: |
+            What the booking does to its leave type's allowance, for the year
+            it starts in: what is left now, and what would be left after. When
+            editing (`exclude`), the booking's own days are counted back first
+            if it is the same type in the same year — the rule the save itself
+            applies. Null for a type without an allowance. Absent from replies
+            made before 2026-10-21.
+          oneOf:
+            - type: 'null'
+            - type: object
+              required: [type, remaining, after]
+              properties:
+                type:
+                  type: string
+                  description: The leave type's name, in the caller's language.
+                  examples: ['Annual']
+                remaining: { type: number, description: Days left before this booking. }
+                after:
+                  type: number
+                  description: Days left after it. Negative means the booking would be refused for lack of allowance.
 
     Error:
       type: object
