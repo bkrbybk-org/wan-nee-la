@@ -897,7 +897,7 @@ function parseSnapshot(raw: string | null): LeaveSnapshot | null {
  * and six unchanged fields hide it. People by name, where they still have a
  * row; the address otherwise.
  */
-function AuditItem({ row, names }: { row: AuditRow; names: Map<string, string> }) {
+export function AuditItem({ row, names }: { row: AuditRow; names: Map<string, string> }) {
 	const t = useT();
 	const lang = useLang();
 	const before = parseSnapshot(row.before);

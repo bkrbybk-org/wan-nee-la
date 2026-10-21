@@ -673,7 +673,13 @@ export async function auditCounts(db: D1Database, since: string): Promise<{ tota
 	return { total: row?.total ?? 0, since: row?.since ?? 0 };
 }
 
-export const AUDIT_ACTIONS: readonly AuditAction[] =['created', 'edited', 'cancelled', 'restored'];
+export const AUDIT_ACTIONS: readonly AuditAction[] = ['created', 'edited', 'cancelled', 'restored'];
+
+/** Everything that happened to one booking, newest first — its page's History. */
+export async function auditForLeave(db: D1Database, leaveId: string): Promise<AuditRow[]> {
+	const res = await db.prepare('SELECT * FROM leave_audit WHERE leave_id = ? ORDER BY id DESC LIMIT 50').bind(leaveId).all<AuditRow>();
+	return res.results ?? [];
+}
 
 export interface AuditFilter {
 	/** Rows where this address is the actor or the subject — "what happened around this person". */
@@ -729,7 +735,7 @@ export async function coverageInRange(
 ): Promise<Map<string, string[]>> {
 	const res = await db
 		.prepare(
-			`SELECT r.start_date, r.end_date, COALESCE(u.display_name, r.user_email) AS display_name
+			`SELECT r.start_date, r.end_date, r.user_email, COALESCE(u.display_name, r.user_email) AS display_name
 			   FROM leave_requests r
 			   LEFT JOIN users u ON u.email = r.user_email
 			  WHERE r.status = 'confirmed'
@@ -739,13 +745,18 @@ export async function coverageInRange(
 			    AND (? = '' OR r.id <> ?)`,
 		)
 		.bind(to, from, exclude, excludeId ?? '', excludeId ?? '')
-		.all<{ start_date: string; end_date: string; display_name: string }>();
+		.all<{ start_date: string; end_date: string; user_email: string; display_name: string }>();
 
 	// Expanded here rather than in SQL: SQLite has no generate_series in D1, and
-	// a range is at most a few weeks.
+	// a range is at most a few weeks. A person counts once per day however many
+	// bookings they hold on it — a morning and an afternoon booked separately
+	// had listed them, and counted them, twice.
 	const byDate = new Map<string, string[]>();
+	const seen = new Set<string>();
 	for (const row of res.results ?? []) {
 		for (let d = row.start_date > from ? row.start_date : from; d <= to && d <= row.end_date; d = addDays(d, 1)) {
+			if (seen.has(`${d} ${row.user_email}`)) continue;
+			seen.add(`${d} ${row.user_email}`);
 			const names = byDate.get(d) ?? [];
 			names.push(row.display_name);
 			byDate.set(d, names);

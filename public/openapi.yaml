@@ -892,14 +892,23 @@ components:
                   items: { type: string }
                   maxItems: 3
                 more: { type: integer, description: Names beyond the three listed. }
+                with:
+                  type: string
+                  description: |
+                    The booking's owner, present only when that is not the
+                    caller — an admin editing someone else's booking (`exclude`).
+                    Coverage is then counted from the owner: `out` includes
+                    them, and `names` leaves them out.
         balance:
           description: |
             What the booking does to its leave type's allowance, for the year
             it starts in: what is left now, and what would be left after. When
-            editing (`exclude`), the booking's own days are counted back first
-            if it is the same type in the same year — the rule the save itself
-            applies. Null for a type without an allowance. Absent from replies
-            made before 2026-10-21.
+            editing (`exclude`), `remaining` still includes the booking being
+            edited — it is what is left now — and `after` counts its days back
+            before charging the new ones, if it is the same type in the same
+            year: the rule the save itself applies. So shortening a five-day
+            booking to three reads 6 → 8. Null for a type without an
+            allowance. Absent from replies made before 2026-10-21.
           oneOf:
             - type: 'null'
             - type: object
@@ -909,7 +918,7 @@ components:
                   type: string
                   description: The leave type's name, in the caller's language.
                   examples: ['Annual']
-                remaining: { type: number, description: Days left before this booking. }
+                remaining: { type: number, description: Days left now. }
                 after:
                   type: number
                   description: Days left after it. Negative means the booking would be refused for lack of allowance.

@@ -15,6 +15,8 @@
 
 interface Coverage {
 	date: string;
+	/** The booking's owner, when that is not the person asking. */
+	with?: string;
 	out: number;
 	headcount: number;
 	busy: boolean;
@@ -44,6 +46,9 @@ function enhance(form: HTMLFormElement) {
 	// else already away on those days, and its own days are credited back.
 	const excludeId = form.getAttribute('data-editing') ?? '';
 	const submitLabel = submit?.textContent ?? '';
+	// What the booking costs now, when editing, so the summary can say what
+	// changes: "5 days → 4 days".
+	const currentDays = form.hasAttribute('data-current-days') ? Number(form.getAttribute('data-current-days')) : null;
 
 	/** Wording from the server, in the reader's language; English if it is missing. */
 	const S = {
@@ -53,6 +58,7 @@ function enhance(form: HTMLFormElement) {
 		balanceShort: '{type}: only {remaining} left — not enough for this',
 		balanceNone: '{type}: none left',
 		coverage: 'Also away on {date}: {names} — with you, {out} of {headcount}',
+		coverageFor: 'Also away on {date}: {names} — with {who}, {out} of {headcount}',
 		coverageMore: '{names} and {more} more',
 		...(() => {
 			try {
@@ -137,7 +143,8 @@ function enhance(form: HTMLFormElement) {
 
 			summary?.classList.add('filled');
 			if (typeof body.days === 'number') {
-				preview!.textContent = fill(S.days, { days: body.days }, body.days);
+				const now = fill(S.days, { days: body.days }, body.days);
+				preview!.textContent = currentDays !== null && currentDays !== body.days ? `${fill(S.days, { days: currentDays }, currentDays)} → ${now}` : now;
 				preview!.classList.remove('bad');
 				if (submit && !excludeId) submit.textContent = fill(S.bookDays, { days: body.days }, body.days);
 			} else {
@@ -187,7 +194,8 @@ function enhance(form: HTMLFormElement) {
 		}
 		const names = data.names.join(', ');
 		const others = data.more > 0 ? fill(S.coverageMore, { names, more: data.more }) : names;
-		coverage.textContent = fill(S.coverage, {
+		coverage.textContent = fill(data.with ? S.coverageFor : S.coverage, {
+			who: data.with ?? '',
 			out: data.out,
 			headcount: data.headcount,
 			date: data.date,

@@ -673,19 +673,22 @@ app.get('/api/v1/leave/preview', async (c) => {
 	// only knows how to stop someone finding out by accident on the Monday.
 	const viewer = c.get('user');
 	const excludeId = c.req.query('exclude') ?? undefined;
-	const [coverage, headcount, editing] = await Promise.all([
-		db.coverageInRange(c.env.DB, parsed.startDate, parsed.endDate, viewer.email, excludeId),
-		db.activeUserCount(c.env.DB),
-		excludeId ? db.getLeave(c.env.DB, excludeId) : Promise.resolve(null),
-	]);
-	// Whose balance: the booking's owner when an admin is editing someone
+	const editing = excludeId ? await db.getLeave(c.env.DB, excludeId) : null;
+	// Whose booking this is: the owner's when an admin is editing someone
 	// else's, otherwise the person asking. Anyone else's booking id is ignored.
+	// Coverage and balance are both theirs — counting from the admin had left
+	// the admin's own days out and put the owner among "someone else".
 	const mayEdit = editing && (editing.user_email === viewer.email || viewer.is_admin);
 	const owner = mayEdit ? editing.user_email : viewer.email;
+	const [coverage, headcount, ownerUser] = await Promise.all([
+		db.coverageInRange(c.env.DB, parsed.startDate, parsed.endDate, owner, excludeId),
+		db.activeUserCount(c.env.DB),
+		owner === viewer.email ? Promise.resolve(null) : db.getUser(c.env.DB, owner),
+	]);
 	return c.json(
 		{
 			days: count.days,
-			...summariseCoverage(coverage, headcount, toLang(viewer.lang)),
+			...summariseCoverage(coverage, headcount, toLang(viewer.lang), ownerUser?.display_name),
 			balance: await previewBalance(c, owner, parsed, count.days, mayEdit ? editing : null),
 		},
 		200,
@@ -726,12 +729,14 @@ async function previewBalance(
 		editing && editing.status === 'confirmed' && editing.leave_type_id === parsed.leaveTypeId && editing.start_date.slice(0, 4) === String(year)
 			? editing.days_total
 			: 0;
-	const remaining = round(balance.remaining + credit);
+	// `remaining` is what is left now, booking included, as the booking's page
+	// shows it; `after` what would be left once saved. Editing a five-day
+	// booking down to three reads "6 left → 8", not "11 left → 8".
 	const lang = toLang(c.get('user').lang);
-	return { type: lang === 'th' ? balance.type.label_th : balance.type.label_en, remaining, after: round(remaining - days) };
+	return { type: lang === 'th' ? balance.type.label_th : balance.type.label_en, remaining: round(balance.remaining), after: round(balance.remaining + credit - days) };
 }
 
-function summariseCoverage(coverage: Map<string, string[]>, headcount: number, lang: Lang) {
+function summariseCoverage(coverage: Map<string, string[]>, headcount: number, lang: Lang, ownerName?: string) {
 	let worstDate = '';
 	let worst: string[] = [];
 	for (const [date, names] of coverage) {
@@ -756,6 +761,9 @@ function summariseCoverage(coverage: Map<string, string[]>, headcount: number, l
 			busy: worst.length + 1 >= threshold,
 			names: worst.slice(0, 3),
 			more: Math.max(0, worst.length - 3),
+			// Whose booking it is, when that is not the person asking — an admin
+			// editing for someone — so the form says "with Ploy", not "with you".
+			...(ownerName ? { with: ownerName } : {}),
 		},
 	};
 }
@@ -916,6 +924,27 @@ app.get('/leave/:id/edit', async (c) => {
 	const [entry, types] = await Promise.all([db.getLeaveEntry(c.env.DB, id), leaveTypesOf(c)]);
 	if (!entry) return redirectWithFlash('/me', 'err', say(c, 'flash.gone'));
 
+	// The page shows the booking before offering to change it: the owner's
+	// balance in the year it starts, who else is away during it, and what has
+	// happened to it.
+	const year = Number(entry.start_date.slice(0, 4));
+	const [balances, coverage, history, users] = await Promise.all([
+		db.balancesFor(c.env.DB, entry.user_email, year, types),
+		db.coverageInRange(c.env.DB, entry.start_date, entry.end_date, entry.user_email, entry.id),
+		db.auditForLeave(c.env.DB, entry.id),
+		db.listUsers(c.env.DB),
+	]);
+	const balance = balances.find((b) => b.type.id === entry.leave_type_id);
+	const lang = toLang(user.lang);
+	const awayDates = new Map<string, string[]>();
+	for (const [date, names] of [...coverage.entries()].sort((a, b) => a[0].localeCompare(b[0]))) {
+		for (const name of names) awayDates.set(name, [...(awayDates.get(name) ?? []), date]);
+	}
+	// Back to where the reader came from — the calendar, an admin's trail, My
+	// leave — unless that was this page, or a form it posted to.
+	const from = referrerPath(c.req.header('Referer'), c.req.url);
+	const back = from && !from.startsWith('/leave/') && !from.startsWith('/api/') ? from : '/me';
+
 	return page(
 		c,
 		<EditPage
@@ -923,6 +952,11 @@ app.get('/leave/:id/edit', async (c) => {
 			entry={entry}
 			types={types}
 			today={today}
+			back={back}
+			balance={balance && balance.type.counts_quota ? { type: lang === 'th' ? balance.type.label_th : balance.type.label_en, remaining: balance.remaining, year } : null}
+			alsoAway={[...awayDates.entries()].map(([name, dates]) => ({ name, dates }))}
+			history={history}
+			names={new Map(users.map((u) => [u.email, u.display_name]))}
 			onBehalfOf={entry.user_email === user.email ? undefined : entry.display_name}
 			version={c.env.CF_VERSION_METADATA?.id}
 			error={flashOf(c.get('flash'), 'err')}

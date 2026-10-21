@@ -26,6 +26,8 @@ interface BookingFormProps {
 	 * marks which of these values to look at.
 	 */
 	draft?: BookingDraft;
+	/** Where Discard goes when editing. The booking's own page, which closes the form. */
+	discardHref?: string;
 }
 
 /**
@@ -49,7 +51,7 @@ interface BookingFormProps {
  * `type="date"` gives the native picker on both iOS and Android, which is a far
  * better mobile experience than any date-picker library and costs nothing.
  */
-export function BookingForm({ types, today, compact, entry, defaultDate, errorField, draft }: BookingFormProps) {
+export function BookingForm({ types, today, compact, entry, defaultDate, errorField, draft, discardHref }: BookingFormProps) {
 	const editing = Boolean(entry);
 	const action = entry ? `/api/v1/leave/${entry.id}/edit` : '/api/v1/leave';
 
@@ -85,6 +87,7 @@ export function BookingForm({ types, today, compact, entry, defaultDate, errorFi
 			// Lets the coverage line ignore the booking being edited, instead of
 			// counting it as somebody else already away on those days.
 			data-editing={entry?.id}
+			data-current-days={entry ? String(entry.days_total) : undefined}
 			// Templates, with their placeholders intact, for the lines the client
 			// fills in after asking the server. The wording stays in the
 			// catalogue, not in the bundle.
@@ -95,6 +98,7 @@ export function BookingForm({ types, today, compact, entry, defaultDate, errorFi
 				balanceShort: t('book.balanceShort'),
 				balanceNone: t('book.balanceNone'),
 				coverage: t('book.coverage'),
+				coverageFor: t('book.coverageFor'),
 				coverageMore: t('book.coverageMore'),
 			})}
 		>
@@ -192,7 +196,7 @@ export function BookingForm({ types, today, compact, entry, defaultDate, errorFi
 			{/* Behind a disclosure: optional, and most bookings have none. Open
 			    when there is one already. Private by default (ISSUES.md #17). */}
 			<details class="note-block" open={noteValue !== ''}>
-				<summary class="btn text">{t('book.addNote')}</summary>
+				<summary class="btn text">{noteValue ? t('book.noteHeading') : t('book.addNote')}</summary>
 				<TextField id={`note-${uid}`} name="note" label={t('book.note')} maxlength={500} value={noteValue} />
 				<label class="checkline">
 					<input type="checkbox" name="noteVisibility" value="shared" checked={shareNote} />
@@ -216,7 +220,7 @@ export function BookingForm({ types, today, compact, entry, defaultDate, errorFi
 				    Cancel side by side is how someone deletes a booking they
 				    meant to keep. */}
 				{editing ? (
-					<a class="btn text" href="/me">{t('book.discard')}</a>
+					<a class="btn text" href={discardHref ?? '/me'}>{t('book.discard')}</a>
 				) : (
 					<a class="btn text" href="/" data-form-cancel>{t('book.cancel')}</a>
 				)}

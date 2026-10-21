@@ -2162,3 +2162,25 @@ a.my-link:focus-visible { outline: 2px solid var(--md-primary); outline-offset: 
 .booking-summary .coverage { margin: 0; font-size: 13px; line-height: 18px; }
 .booking-summary .coverage.busy { margin-top: 6px; }
 .booking .actions { justify-content: flex-end; margin-top: 12px; }
+
+/* --- A booking's page: the booking first, then Edit and Remove -------------- */
+
+.booking-head { display: flex; gap: 12px; align-items: flex-start; justify-content: space-between; }
+.booking-head h1 { display: flex; align-items: center; gap: 10px; margin: 0; font-size: 24px; line-height: 32px; }
+.booking-head p { margin: 2px 0 0; }
+.booking-head .tag { flex: none; }
+.booking-admin { margin: 8px 0 0; font-size: 13px; }
+.booking-facts { display: grid; grid-template-columns: minmax(80px, max-content) minmax(0, 1fr); gap: 8px 16px; margin: 16px 0; font-size: 14px; }
+.booking-facts dt { color: var(--md-on-surface-variant); }
+.booking-facts > :nth-child(even) { margin: 0; }
+
+.booking-actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: flex-start; }
+.booking-actions > details > summary { list-style: none; cursor: pointer; display: inline-flex; }
+.booking-actions > details > summary::-webkit-details-marker { display: none; }
+/* Open, each takes a whole row: Edit's form straight under its button, with
+   Remove after it; the button stays where it was, so it also closes it. */
+.booking-actions > details[open] { flex-basis: 100%; }
+.booking-edit[open] > summary { background: var(--md-secondary-container); color: var(--md-on-secondary-container); }
+.booking-edit-form { margin-top: 16px; padding-top: 16px; border-top: 1px solid var(--md-outline-variant); }
+.booking-remove-confirm { margin-top: 8px; padding: 12px; border-radius: var(--md-shape-sm); background: var(--md-error-container); color: var(--md-on-error-container); }
+.booking-remove-confirm p { margin: 0 0 8px; color: inherit; }

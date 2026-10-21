@@ -1100,6 +1100,38 @@ async function main() {
 	res = await fetch(`${BASE}/admin/people/${encodeURIComponent('nobody@example.com')}`, { redirect: 'manual' });
 	check('person page: an unknown address goes back to People', /^\/admin\/people\?y=\d{4}$/.test(res.headers.get('location') ?? ''), res.headers.get('location'));
 
+	// --- a booking's page, seen by an admin -----------------------------------
+	{
+		const PG = clearFutureMonday(20);
+		d1(`INSERT OR IGNORE INTO users (email, display_name, is_admin, active, created_at) VALUES
+			('pane@example.com', 'Pane Owner', 0, 1, '2026-01-01'), ('twice@example.com', 'Twice Person', 0, 1, '2026-01-01')`);
+		d1(`INSERT INTO leave_requests (id, user_email, leave_type_id, start_date, end_date, start_half, end_half, days_total, note, note_private, status, created_at) VALUES
+			('pg-owner', 'pane@example.com', 1, '${PG}', '${addDays(PG, 2)}', 'full', 'full', 3, NULL, 1, 'confirmed', '${PG}'),
+			('pg-dup-a', 'twice@example.com', 2, '${PG}', '${PG}', 'am', 'am', 0.5, NULL, 1, 'confirmed', '${PG}'),
+			('pg-dup-b', 'twice@example.com', 2, '${PG}', '${PG}', 'pm', 'pm', 0.5, NULL, 1, 'confirmed', '${PG}')`);
+		d1(`INSERT INTO leave_audit (leave_id, actor_email, subject_email, action, at) VALUES ('pg-owner', 'pane@example.com', 'pane@example.com', 'created', '2026-01-02T09:00:00+07:00')`);
+
+		const pageRes = await fetch(`${BASE}/leave/pg-owner/edit`, { headers: { Referer: `${BASE}/?y=2030&m=3` } });
+		const html = await pageRes.text();
+		check('booking page: the booking and its owner first', /class="booking-head"[^]*?Pane Owner/.test(html), 'no owner in the heading');
+		check('booking page: its history, by name', /class="leave-list booking-history"[^]*?>created<[^]*?Pane Owner/.test(html), 'no history');
+		check('booking page: Edit and Remove are disclosures, the form inside Edit', /<details class="booking-edit"[^>]*>[^]*?data-booking/.test(html) && html.includes('class="booking-remove"'), 'actions missing');
+		check('booking page: Back goes where the reader came from', html.includes('href="/?y=2030&amp;m=3" class="back-link"'), 'back link wrong');
+		const fromForm = await (await fetch(`${BASE}/leave/pg-owner/edit`, { headers: { Referer: `${BASE}/leave/pg-owner/edit` } })).text();
+		check('booking page: but not back to itself', fromForm.includes('href="/me" class="back-link"'), 'back to itself');
+		const away = /<dt>Also away<\/dt>\s*<dd>([^]*?)<\/dd>/.exec(html)?.[1] ?? '';
+		eq('booking page: someone with two bookings that day is listed once', (away.match(/Twice Person/g) ?? []).length, 1);
+
+		// The form's preview, as the admin, for Pane's booking.
+		const pv = await (await fetch(`${BASE}/api/v1/leave/preview?leaveTypeId=1&start=${PG}&end=${PG}&exclude=pg-owner`)).json();
+		eq('preview: an admin editing someone else is told whose booking it is', pv.coverage?.with, 'Pane Owner');
+		eq('preview: and the count is from the owner, each person once', `${pv.coverage?.out} ${pv.coverage?.names?.join('+')}`, '2 Twice Person');
+		const same = await (await fetch(`${BASE}/api/v1/leave/preview?leaveTypeId=1&start=${PG}&end=${addDays(PG, 2)}&exclude=pg-owner`)).json();
+		check('preview: an unchanged edit leaves the balance where it is', same.balance && same.balance.after === same.balance.remaining, JSON.stringify(same.balance));
+		d1("DELETE FROM leave_requests WHERE id IN ('pg-owner', 'pg-dup-a', 'pg-dup-b')");
+		d1("DELETE FROM leave_audit WHERE leave_id = 'pg-owner'");
+	}
+
 	await stopServer();
 
 	// -----------------------------------------------------------------------

@@ -95,6 +95,7 @@ export const STRINGS = {
 	'book.bookDays': { en: 'Book {days} day|Book {days} days', th: 'ลา {days} วัน' },
 	'book.cancel': { en: 'Cancel', th: 'ยกเลิก' },
 	'book.addNote': { en: 'Add a note', th: 'เพิ่มหมายเหตุ' },
+	'book.noteHeading': { en: 'Note', th: 'หมายเหตุ' },
 	'book.lastDay': { en: 'Last day', th: 'วันสุดท้าย' },
 	'book.firstDay': { en: 'First day', th: 'วันแรก' },
 	'book.untilNoon': { en: 'Until noon', th: 'ถึงเที่ยง' },
@@ -118,6 +119,7 @@ export const STRINGS = {
 	'book.pageTitle': { en: 'Book leave', th: 'แจ้งลา' },
 	'book.back': { en: 'Back to calendar', th: 'กลับไปที่ปฏิทิน' },
 	'book.coverage': { en: 'Also away on {date}: {names} — with you, {out} of {headcount}', th: 'วันที่ {date} มีคนลาด้วย: {names} — รวมคุณ {out} จาก {headcount} คน' },
+	'book.coverageFor': { en: 'Also away on {date}: {names} — with {who}, {out} of {headcount}', th: 'วันที่ {date} มีคนลาด้วย: {names} — รวม {who} {out} จาก {headcount} คน' },
 	'book.coverageMore': { en: '{names} and {more} more', th: '{names} และอีก {more} คน' },
 
 	// --- my leave -------------------------------------------------------
@@ -186,13 +188,27 @@ export const STRINGS = {
 
 	// --- edit page ------------------------------------------------------
 	'edit.title': { en: 'Edit leave', th: 'แก้ไขการลา' },
-	'edit.back': { en: 'Back to my leave', th: 'กลับไปที่การลาของฉัน' },
-	'edit.current': { en: 'Currently booked', th: 'ที่บันทึกไว้ตอนนี้' },
-	'edit.change': { en: 'Change it', th: 'แก้ไข' },
+	'edit.back': { en: 'Back', th: 'ย้อนกลับ' },
+	'edit.statusNow': { en: 'On leave now, until {date}', th: 'กำลังลาอยู่ ถึง {date}' },
+	'edit.statusTomorrow': { en: 'Tomorrow', th: 'พรุ่งนี้' },
+	'edit.statusIn': { en: 'In {n} day|In {n} days', th: 'อีก {n} วัน' },
+	'edit.statusPast': { en: 'Taken', th: 'ลาไปแล้ว' },
+	'edit.factDays': { en: 'Days', th: 'จำนวนวัน' },
+	'edit.factNote': { en: 'Note', th: 'หมายเหตุ' },
+	'edit.factBalance': { en: 'Balance', th: 'สิทธิ์คงเหลือ' },
+	'edit.factAway': { en: 'Also away', th: 'คนอื่นที่ลาด้วย' },
+	'edit.balanceIn': { en: '{type}: {remaining} left in {year}', th: '{type}: เหลือ {remaining} วันในปี {year}' },
+	'edit.noAllowance': { en: 'No allowance — not counted', th: 'ไม่มีสิทธิ์จำกัด ไม่นับวัน' },
+	'edit.nobodyElse': { en: 'Nobody else', th: 'ไม่มีใคร' },
+	'edit.awayOn': { en: '{name} ({dates})', th: '{name} (วันที่ {dates})' },
+	'edit.noNote': { en: 'None', th: 'ไม่มี' },
+	'edit.history': { en: 'History', th: 'ประวัติ' },
+	'edit.edit': { en: 'Edit', th: 'แก้ไข' },
+	'edit.removeAsk': { en: 'Remove…', th: 'ลบ…' },
 	'edit.remove': { en: 'Remove', th: 'ลบ' },
 	'edit.removeHelp': { en: 'Cancelling returns {days} day to the balance|Cancelling returns {days} days to the balance and takes the entry off the shared calendar. The record is kept, marked cancelled, rather than deleted.', th: 'การยกเลิกจะคืนโควตา {days} วัน และนำรายการออกจากปฏิทินส่วนกลาง ระบบจะเก็บประวัติไว้โดยทำเครื่องหมายว่ายกเลิก ไม่ได้ลบทิ้ง' },
 	'edit.removeButton': { en: 'Remove this leave', th: 'ลบการลานี้' },
-	'edit.onBehalf': { en: "You are editing {name}'s booking as an admin.", th: 'คุณกำลังแก้ไขการลาของ {name} ในฐานะผู้ดูแลระบบ' },
+	'edit.onBehalf': { en: 'You are looking at {name}\'s booking as an admin.', th: 'คุณกำลังดูการลาของ {name} ในฐานะผู้ดูแลระบบ' },
 	'edit.days': { en: '{days} day|{days} days', th: '{days} วัน' },
 
 	// --- per-person page --------------------------------------------------

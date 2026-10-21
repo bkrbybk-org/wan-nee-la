@@ -1295,13 +1295,17 @@
 									"more": {
 										"type": "integer",
 										"description": "Names beyond the three listed."
+									},
+									"with": {
+										"type": "string",
+										"description": "The booking's owner, present only when that is not the\ncaller — an admin editing someone else's booking (`exclude`).\nCoverage is then counted from the owner: `out` includes\nthem, and `names` leaves them out.\n"
 									}
 								}
 							}
 						]
 					},
 					"balance": {
-						"description": "What the booking does to its leave type's allowance, for the year\nit starts in: what is left now, and what would be left after. When\nediting (`exclude`), the booking's own days are counted back first\nif it is the same type in the same year — the rule the save itself\napplies. Null for a type without an allowance. Absent from replies\nmade before 2026-10-21.\n",
+						"description": "What the booking does to its leave type's allowance, for the year\nit starts in: what is left now, and what would be left after. When\nediting (`exclude`), `remaining` still includes the booking being\nedited — it is what is left now — and `after` counts its days back\nbefore charging the new ones, if it is the same type in the same\nyear: the rule the save itself applies. So shortening a five-day\nbooking to three reads 6 → 8. Null for a type without an\nallowance. Absent from replies made before 2026-10-21.\n",
 						"oneOf": [
 							{
 								"type": "null"
@@ -1323,7 +1327,7 @@
 									},
 									"remaining": {
 										"type": "number",
-										"description": "Days left before this booking."
+										"description": "Days left now."
 									},
 									"after": {
 										"type": "number",
