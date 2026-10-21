@@ -1417,7 +1417,13 @@ form.inline:has(.tf-support) { margin-bottom: 28px; }
 	flex-wrap: wrap;
 }
 .holiday-list li + li { border-top: 1px solid var(--md-outline-variant); }
-.holiday-list form.inline { margin-left: auto; }
+.holiday-list .ask-once { margin-left: auto; }
+/* The name takes the room and wraps inside itself, so the bin stays on the
+   row's right on a phone instead of dropping to a line of its own. */
+@media (max-width: 599px) {
+	.holiday-list li { flex-wrap: nowrap; }
+	.holiday-list li > span:not(.holiday-date) { flex: 1; min-width: 0; }
+}
 
 /* On a phone the People table stays a table — it is data read across a row —
    with tighter cells; the table scrolls sideways inside its card if a roster
@@ -1885,8 +1891,11 @@ form.inline:has(.tf-support) { margin-bottom: 28px; }
 	align-items: center;
 }
 .type-row > summary::-webkit-details-marker { display: none; }
-.type-row > summary .btn { margin-left: auto; }
-.type-row[open] > summary .btn { visibility: hidden; }
+.type-row > summary { position: relative; padding-right: 48px; }
+/* The pencil stays at the top right of the row, on a phone too, rather than
+   wrapping onto a line of its own under the facts. */
+.type-row > summary .type-edit { position: absolute; right: 0; top: -8px; }
+.type-row[open] > summary .type-edit { visibility: hidden; }
 .type-row[open] > summary { margin-bottom: 12px; }
 .type-row .type-facts { font-size: 13px; }
 .type-list li.inactive .type-row > summary { opacity: 0.7; }
@@ -1951,7 +1960,9 @@ form.inline:has(.tf-support) { margin-bottom: 28px; }
 	position: relative;
 	isolation: isolate;
 	display: grid;
-	grid-template-columns: 12px minmax(0, 1fr) auto 24px;
+	/* The last column fits a chevron, or a Cancelled tag, which is wider and
+	   had sat over the day count when the column was a fixed 24px. */
+	grid-template-columns: 12px minmax(0, 1fr) auto minmax(24px, auto);
 	gap: 4px 12px;
 	align-items: center;
 	padding: 12px 8px;
@@ -1983,6 +1994,34 @@ a.my-link:focus-visible { outline: 2px solid var(--md-primary); outline-offset: 
 .settings-form .setting h2 { margin: 0 0 4px; font-size: 16px; }
 .settings-form .tf { max-width: 360px; }
 .settings-form .actions { margin-top: 20px; }
+
+/* Every form: the way out first, the button that commits last, at the right. */
+.form-actions { justify-content: flex-end; }
+
+/* A delete that asks once (`AskOnceDelete`): the bin opens a small
+   confirmation beside it, and only that button posts. */
+.ask-once { position: relative; display: inline-block; }
+.ask-once > summary { list-style: none; cursor: pointer; }
+.ask-once > summary::-webkit-details-marker { display: none; }
+.ask-once[open] > summary { color: var(--md-error); }
+.ask-once-form {
+	position: absolute;
+	right: 0;
+	top: calc(100% + 4px);
+	z-index: 5;
+	display: flex;
+	flex-direction: column;
+	align-items: flex-end;
+	gap: 8px;
+	width: max-content;
+	max-width: min(280px, 80vw);
+	padding: 12px 14px;
+	border-radius: 12px;
+	background: var(--md-surface-container-high);
+	box-shadow: var(--md-shadow-3);
+	font-size: 13px;
+	white-space: normal;
+}
 
 /* --- Calendar: the month fits, and a day panel beside it ------------------ */
 

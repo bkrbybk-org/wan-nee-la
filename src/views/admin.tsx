@@ -8,7 +8,8 @@ import type { HolidayGap, HolidayParse, ImportPlan } from '../domain/holidays.ts
 import type { UnusedRow } from '../domain/report.ts';
 import { FlashBanner, HolidaysDueBanner, Layout, YearNav } from './layout.tsx';
 import { SelectField, TextField } from './fields.tsx';
-import { BellIcon, BellRingIcon, CalendarIcon, HourglassIcon, ChevronLeftIcon, DeleteIcon, DownloadIcon, EditIcon, HistoryIcon, TagIcon, UsersIcon } from './icons.tsx';
+import { AskOnceDelete, BackLink, FormActions } from './parts.tsx';
+import { BellIcon, BellRingIcon, CalendarIcon, HourglassIcon, ChevronLeftIcon, DownloadIcon, EditIcon, HistoryIcon, TagIcon, UsersIcon } from './icons.tsx';
 import { useLang, useT } from '../i18n/context.tsx';
 import { t as translate, toLang } from '../i18n/strings.ts';
 import type { StringKey } from '../i18n/strings.ts';
@@ -44,20 +45,24 @@ interface ShellProps {
 	section?: AdminSection;
 	/** Beside the heading — a year switcher, where the page has a year. */
 	headExtra?: Child;
+	/** A page under a section — one person — names itself, and links back to the section. */
+	heading?: string;
 	error?: string;
 	notice?: string;
 	children?: Child;
 }
 
 /** Every admin page: the layout, the flash, the heading and — on a section — the tab row. */
-function AdminShell({ user, version, section, headExtra, error, notice, children }: ShellProps) {
+function AdminShell({ user, version, section, headExtra, heading: own, error, notice, children }: ShellProps) {
 	const lang = toLang(user.lang);
-	const heading = section ? translate(lang, SECTIONS.find((s) => s.key === section)!.label) : translate(lang, 'admin.title');
-	const title = section ? `${heading} · ${translate(lang, 'admin.title')}` : heading;
+	const sectionName = section ? translate(lang, SECTIONS.find((s) => s.key === section)!.label) : translate(lang, 'admin.title');
+	const heading = own ?? sectionName;
+	const title = section ? `${own ? `${own} · ` : ''}${sectionName} · ${translate(lang, 'admin.title')}` : heading;
 	return (
 		<Layout title={title} user={user} active="admin" version={version}>
 			<FlashBanner error={error} notice={notice} />
 			{section ? <AdminTabs current={section} /> : null}
+			{own && section ? <BackLink href={SECTIONS.find((s) => s.key === section)!.href} label={sectionName} /> : null}
 			<div class="page-head">
 				<h1>{heading}</h1>
 				{headExtra}
@@ -493,6 +498,7 @@ export function AdminPersonPage(props: PersonProps) {
 			user={user}
 			version={version}
 			section="people"
+			heading={subject.display_name}
 			error={error}
 			notice={notice}
 			headExtra={<YearNav basePath={base} year={year} minYear={minYear} maxYear={maxYear} />}
@@ -512,7 +518,6 @@ function PersonBody({ subject, year, types, quotas, pushCount }: PersonProps) {
 		<section class="card">
 			<div class="person-head">
 				<div class="person">
-					<h2>{subject.display_name}</h2>
 					<span class="muted mono">{subject.email}</span>
 					{pushCount !== null ? <PushState n={pushCount} /> : null}
 				</div>
@@ -545,10 +550,9 @@ function PersonBody({ subject, year, types, quotas, pushCount }: PersonProps) {
 					<input type="checkbox" name="active" value="1" checked={!!subject.active} /> {t('admin.isActive')}
 				</label>
 				<p class="muted">{t('admin.activeHelp')}</p>
-				<div class="actions">
+				<FormActions cancel={<a class="btn text" href={`/admin/people?y=${year}`}>{t('admin.cancel')}</a>}>
 					<button type="submit" class="btn primary">{t('admin.save')}</button>
-					<a class="btn text" href={`/admin/people?y=${year}`}>{t('admin.cancel')}</a>
-				</div>
+				</FormActions>
 			</form>
 		</section>
 	);
@@ -621,7 +625,11 @@ function TypesBody({ types, usage }: TypesProps) {
 									<span class="type-facts muted">
 										{type.counts_quota ? t('admin.defaultDaysN', { n: formatDays(type.default_days) }) : t('admin.noAllowance')} · {t('admin.bookings', { n: booked, count: booked })}
 									</span>
-									<span class="btn text small">{t('admin.edit')}</span>
+									{/* A pencil, as on People: the row's one way to edit. */}
+									<span class="icon-btn type-edit" aria-hidden="true">
+										<EditIcon />
+									</span>
+									<span class="visually-hidden">{t('admin.editType', { label: typeName(type) })}</span>
 								</summary>
 								<form method="post" action="/admin/type" class="type-form">
 									<input type="hidden" name="id" value={String(type.id)} />
@@ -634,12 +642,13 @@ function TypesBody({ types, usage }: TypesProps) {
 								{/* Offered only where it can succeed. The route re-checks, and so
 								    does the DELETE itself, in case someone books it meanwhile. */}
 								{booked === 0 ? (
-									<form method="post" action="/admin/type/delete" class="inline">
-										<input type="hidden" name="id" value={String(type.id)} />
-										<button type="submit" class="btn text small danger">
-											<DeleteIcon /> {t('admin.deleteType', { label: typeName(type) })}
-										</button>
-									</form>
+									<AskOnceDelete
+										action="/admin/type/delete"
+										fields={{ id: String(type.id) }}
+										label={t('admin.deleteType', { label: typeName(type) })}
+										confirm={t('admin.deleteTypeAsk')}
+										button={t('admin.deleteTypeButton')}
+									/>
 								) : null}
 							</details>
 						</li>
@@ -775,12 +784,13 @@ function HolidaysBody({ year, holidays, holidaysDue }: HolidaysProps) {
 									<span class="muted">{weekdayName(h.date, lang)}</span> {shortDate(h.date, lang)}
 								</span>
 								<span>{h.label}</span>
-								<form method="post" action="/admin/holiday/delete" class="inline">
-									<input type="hidden" name="date" value={h.date} />
-									<button type="submit" class="icon-btn" aria-label={t('admin.removeHoliday', { label: h.label, date: h.date })}>
-										<DeleteIcon />
-									</button>
-								</form>
+								<AskOnceDelete
+									action="/admin/holiday/delete"
+									fields={{ date: h.date }}
+									label={t('admin.removeHoliday', { label: h.label, date: h.date })}
+									confirm={t('admin.removeHolidayAsk')}
+									button={t('admin.removeHolidayButton')}
+								/>
 							</li>
 						))}
 					</ul>
@@ -842,12 +852,21 @@ function NotificationsBody({ today, push, line, log }: NotificationsProps) {
 						</p>
 						<dl class="popup-facts">
 							<dt>{t('admin.channelToken')}</dt>
-							<dd>{line.configured ? t('admin.tokenSet') : 'not set — run wrangler secret put LINE_CHANNEL_ACCESS_TOKEN'}</dd>
+							<dd>{line.configured ? t('admin.tokenSet') : t('admin.tokenMissing')}</dd>
 							<dt>{t('admin.group')}</dt>
-							<dd class="mono">{line.groupId ?? 'not captured yet — invite the bot to the group, then post any message in it'}</dd>
+							<dd class={line.groupId ? 'mono' : ''}>{line.groupId ?? t('admin.groupMissing')}</dd>
 						</dl>
 					</div>
 				</div>
+				{/* The commands live behind a disclosure: the page speaks plainly, and
+				    whoever sets the server up still finds what to run. */}
+				{!push || !line.enabled || !line.ready ? (
+					<details class="setup-how">
+						<summary class="btn text">{t('admin.setupHow')}</summary>
+						{!push ? <p class="muted">{t('admin.setupPush')}</p> : null}
+						{!line.enabled || !line.ready ? <p class="muted">{t('admin.setupLine')}</p> : null}
+					</details>
+				) : null}
 			</section>
 			<section class="card">
 				<h2>{t('admin.sendTitle')}</h2>
@@ -1038,6 +1057,8 @@ export function AuditItem({ row, names }: { row: AuditRow; names: Map<string, st
 	const lang = useLang();
 	const before = parseSnapshot(row.before);
 	const after = parseSnapshot(row.after);
+	// "3 days", as everywhere else — never "3d".
+	const days = (n: number) => t('edit.days', { count: n, days: formatDays(n) });
 	const span = (s: LeaveSnapshot) => (s.start_date === s.end_date ? shortDate(s.start_date, lang) : `${shortDate(s.start_date, lang)} – ${shortDate(s.end_date, lang)}`);
 
 	const changes: string[] = [];
@@ -1046,14 +1067,14 @@ export function AuditItem({ row, names }: { row: AuditRow; names: Map<string, st
 			changes.push(`${span(before)} → ${span(after)}`);
 		}
 		if (before.leave_type_id !== after.leave_type_id) changes.push(t('audit.typeChanged'));
-		if (before.days_total !== after.days_total) changes.push(`${before.days_total}d → ${after.days_total}d`);
+		if (before.days_total !== after.days_total) changes.push(`${days(before.days_total)} → ${days(after.days_total)}`);
 		if (before.has_note !== after.has_note) changes.push(t(after.has_note ? 'audit.noteAdded' : 'audit.noteRemoved'));
 		if (before.note_private !== after.note_private) {
 			changes.push(t(after.note_private ? 'audit.notePrivate' : 'audit.noteShared'));
 		}
 		if (changes.length === 0) changes.push(t('audit.noChange'));
 	} else if (after) {
-		changes.push(`${span(after)}, ${after.days_total}d`);
+		changes.push(`${span(after)}, ${days(after.days_total)}`);
 	} else if (before) {
 		changes.push(span(before));
 	}

@@ -1078,6 +1078,21 @@ async function main() {
 	res = await fetch(`${BASE}/admin?audit_action=created`, { redirect: 'manual' });
 	eq('admin: an old filtered-trail link goes on to Activity, filter and all', res.headers.get('location'), '/admin/activity?audit_action=created');
 
+	// --- one way of doing each thing, everywhere --------------------------------
+	{
+		const lost = await fetch(`${BASE}/no/such/page`);
+		const lostHtml = await lost.text();
+		eq('consistency: a missing page is a 404', lost.status, 404);
+		check('consistency: inside the app, with a way back', lostHtml.includes('class="topbar"') && lostHtml.includes('>Go to the calendar<'), 'a dead end');
+		const anan = await (await fetch(`${BASE}/admin/people/${encodeURIComponent(ADMIN)}`)).text();
+		check('consistency: one person\'s page is headed with their name, and links back to People', /<h1>Admin<\/h1>/.test(anan) && /class="back-link"[^>]*>[^]*?People<\/a>/.test(anan), 'heading or back link wrong');
+		check('consistency: Cancel before Save, on the right', /class="actions form-actions">\s*<a class="btn text"[^>]*>Cancel<\/a>\s*<button type="submit" class="btn primary">Save/.test(anan), 'button order');
+		const hol = await (await fetch(`${BASE}/admin/holidays?y=2026`)).text();
+		check('consistency: removing a holiday asks first', !hol.includes('action="/admin/holiday/delete"') || /<details class="ask-once">[^]*?action="\/admin\/holiday\/delete"/.test(hol), 'one-click delete');
+		check('consistency: days are written out, never "3d"', !/\d(\.\d)?d</.test(await (await fetch(`${BASE}/me`)).text()), '"Nd" on /me');
+		check('consistency: /book has one way back, above the heading', (await (await fetch(`${BASE}/book`)).text()).match(/class="back-link"/g)?.length === 1, 'back links');
+	}
+
 	// One person, one form: role, status and allowances saved together.
 	const personUrl = `/admin/people/${encodeURIComponent(ADMIN)}`;
 	const personHtml = await (await fetch(`${BASE}${personUrl}?y=2027`)).text();
@@ -1115,7 +1130,7 @@ async function main() {
 		const pageRes = await fetch(`${BASE}/leave/pg-owner/edit`, { headers: { Referer: `${BASE}/?y=2030&m=3` } });
 		const html = await pageRes.text();
 		check('booking page: the booking and its owner first', /class="booking-head"[^]*?Pane Owner/.test(html), 'no owner in the heading');
-		check('booking page: its history, by name', /class="leave-list booking-history"[^]*?>created<[^]*?Pane Owner/.test(html), 'no history');
+		check('booking page: its history, by name', /class="leave-list booking-history"[^]*?>Created<[^]*?Pane Owner/.test(html), 'no history');
 		check('booking page: Edit and Remove are disclosures, the form inside Edit', /<details class="booking-edit"[^>]*>[^]*?data-booking/.test(html) && html.includes('class="booking-remove"'), 'actions missing');
 		check('booking page: Back goes where the reader came from', html.includes('href="/?y=2030&amp;m=3" class="back-link"'), 'back link wrong');
 		const fromForm = await (await fetch(`${BASE}/leave/pg-owner/edit`, { headers: { Referer: `${BASE}/leave/pg-owner/edit` } })).text();
@@ -1187,6 +1202,7 @@ async function main() {
 	await startServer(OTHER);
 
 	eq('second user is not admin', (await fetch(`${BASE}/admin`)).status, 403);
+	check('and is told so inside the app, with a way back', (await (await fetch(`${BASE}/admin`)).text()).includes('>Go to the calendar<'), 'a bare error page');
 	for (const href of ADMIN_SECTIONS) eq(`second user cannot open ${href}`, (await fetch(`${BASE}${href}`)).status, 403);
 	eq('second user cannot change anyone', (await post(`/admin/people/${encodeURIComponent(OTHER)}`, { year: '2027', isAdmin: '1', active: '1' })).status, 403);
 	eq('and did not make themselves an admin', d1Rows(`SELECT is_admin FROM users WHERE email = '${OTHER}'`)[0]?.is_admin, 0);
@@ -1210,7 +1226,8 @@ async function main() {
 
 	// --- per-person page: schedule is shared, balances are not ---------------
 	const otherViewsAdmin = await (await fetch(`${BASE}/u/${encodeURIComponent(ADMIN)}`)).text();
-	check('a colleague can see someone\'s schedule', otherViewsAdmin.includes('leave-row'), 'schedule missing');
+	check('a colleague can see someone\'s schedule', otherViewsAdmin.includes('my-row'), 'schedule missing');
+	check('but a colleague\'s rows do not open their bookings', !otherViewsAdmin.includes('class="my-link" href='), 'rows link to someone else\'s booking');
 	check('but not their balances', !otherViewsAdmin.includes('class="balances"'), 'balances leaked to a colleague');
 	check('and never their note', !otherViewsAdmin.includes('smoke-private-note'), 'note leaked');
 
@@ -1409,7 +1426,7 @@ async function main() {
 	const adminHtml = await (await fetch(`${BASE}/admin/people`)).text();
 	check('but admin still lists them', adminHtml.includes(OTHER), 'deactivated user missing from /admin/people');
 	const leftAt = adminHtml.indexOf(`person-email">${OTHER}<`);
-	check('and marks them as having left', adminHtml.slice(adminHtml.lastIndexOf('<tr', leftAt), leftAt).includes('>left</span>'), 'not marked as left');
+	check('and marks them as having left', adminHtml.slice(adminHtml.lastIndexOf('<tr', leftAt), leftAt).includes('>Left</span>'), 'not marked as left');
 
 	const stillThere = d1Rows(`SELECT status FROM leave_requests WHERE id = '${otherLeave}'`);
 	eq('and their leave row is hidden, not deleted', stillThere[0]?.status, 'confirmed');
@@ -1899,7 +1916,7 @@ async function main() {
 	check('audit filter: by person keeps only their rows', audits.items.length > 0 && audits.items.every((li) => li.includes(OTHER)), `${audits.items.length} rows`);
 	check('audit filter: the person stays chosen', audits.section.includes(`<option value="${OTHER}" selected`), 'not selected');
 	audits = trailOf(await (await fetch(`${BASE}/admin/activity?audit_action=cancelled`)).text());
-	check('audit filter: by action keeps only that action', audits.items.length > 0 && audits.items.every((li) => li.includes('>cancelled</span>')), `${audits.items.length} rows`);
+	check('audit filter: by action keeps only that action', audits.items.length > 0 && audits.items.every((li) => li.includes('>Cancelled</span>')), `${audits.items.length} rows`);
 	res = await fetch(`${BASE}/admin/activity?audit_action=drop%20table&audit_who=nobody&audit_page=-4`);
 	audits = trailOf(await res.text());
 	check('audit filter: nonsense is ignored, not refused', res.status === 200 && audits.items.length > 0, `${res.status}, ${audits.items.length} rows`);

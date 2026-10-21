@@ -3,7 +3,7 @@ import type { BookingDraft } from '../domain/leave.ts';
 import type { LeaveType, User } from '../types.ts';
 import { FlashBanner, Layout } from './layout.tsx';
 import { BookingForm } from './booking.tsx';
-import { ChevronLeftIcon } from './icons.tsx';
+import { BackLink } from './parts.tsx';
 import { useLang, useT } from '../i18n/context.tsx';
 import { t as translate, toLang } from '../i18n/strings.ts';
 
@@ -79,10 +79,8 @@ function BookBody({
 		<>
 			<FlashBanner error={error} notice={notice} undo={undo} />
 
+			<BackLink href="/" label={t('nav.calendar')} />
 			<div class="page-head">
-				<a class="icon-btn" href="/" aria-label={t('book.back')}>
-					<ChevronLeftIcon />
-				</a>
 				<h1>{t('book.pageTitle')}</h1>
 				{date ? <span class="muted">{shortDate(date, lang)}</span> : null}
 			</div>
@@ -90,10 +88,6 @@ function BookBody({
 			<section class="card">
 				<BookingForm types={types} today={today} defaultDate={date} errorField={errorField} draft={draft} people={people} compact />
 			</section>
-
-			<p>
-				<a class="btn text" href="/">{t('book.back')}</a>
-			</p>
 		</>
 	);
 }

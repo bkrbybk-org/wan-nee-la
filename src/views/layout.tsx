@@ -417,6 +417,30 @@ function PushNudge() {
 	);
 }
 
+/**
+ * The error card on its own, for a page inside the app: what went wrong, and
+ * the way back to the calendar — never a dead end.
+ */
+export function ErrorCard({ title, detail }: { title: string; detail: string }) {
+	const t = useT();
+	return (
+		<div class="card centered">
+			<h1>{title}</h1>
+			<p class="muted">{detail}</p>
+			<p>
+				<a class="btn tonal" href="/">
+					{t('err.home')}
+				</a>
+			</p>
+		</div>
+	);
+}
+
+/**
+ * A bare error page, for when there is nobody signed in to show the app to —
+ * not signed in, or deactivated. Everything else uses `ErrorCard` inside the
+ * layout.
+ */
 export function ErrorPage({ title, detail }: { title: string; detail: string }) {
 	return (
 		<html lang="en">

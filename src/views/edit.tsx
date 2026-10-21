@@ -5,7 +5,8 @@ import type { LeaveEntry, LeaveType, User } from '../types.ts';
 import { FlashBanner, Layout } from './layout.tsx';
 import { BookingForm } from './booking.tsx';
 import { AuditItem } from './admin.tsx';
-import { ChevronLeftIcon, DeleteIcon, EditIcon } from './icons.tsx';
+import { DeleteIcon, EditIcon } from './icons.tsx';
+import { BackLink } from './parts.tsx';
 import { useLang, useT } from '../i18n/context.tsx';
 import { t as translate, toLang } from '../i18n/strings.ts';
 
@@ -31,6 +32,8 @@ interface EditProps {
 	onBehalfOf?: string;
 	/** Where Back goes: the page the reader came from, or their own leave. */
 	back: string;
+	/** What that page is called, for the link: "My leave", "Calendar". */
+	backLabel: string;
 	/** The owner's allowance for the type, in the year the booking starts; null for a type without one. */
 	balance: { type: string; remaining: number; year: number } | null;
 	/** Everyone else away during the booking, with the days they overlap it. */
@@ -51,14 +54,20 @@ interface EditProps {
 
 export function EditPage(props: EditProps) {
 	return (
-		<Layout title={translate(toLang(props.user.lang), 'edit.title')} user={props.user} active="me" version={props.version}>
+		<Layout
+			title={`${describeRange(props.entry.start_date, props.entry.end_date, props.entry.start_half, props.entry.end_half, toLang(props.user.lang))} · ${translate(toLang(props.user.lang), 'edit.pageTitle')}`}
+			user={props.user}
+			// Someone else's booking is reached from the calendar, not from My leave.
+			active={props.entry.user_email === props.user.email ? 'me' : 'calendar'}
+			version={props.version}
+		>
 			<EditBody {...props} />
 		</Layout>
 	);
 }
 
 function EditBody(props: EditProps) {
-	const { entry, types, today, onBehalfOf, back, balance, alsoAway, history, names, error, errorField, notice, draft, undo } = props;
+	const { entry, types, today, onBehalfOf, back, backLabel, balance, alsoAway, history, names, error, errorField, notice, draft, undo } = props;
 	const t = useT();
 	const lang = useLang();
 	const typeName = lang === 'th' ? entry.type_label_th : entry.type_label_en;
@@ -81,10 +90,7 @@ function EditBody(props: EditProps) {
 		<>
 			<FlashBanner error={error} notice={notice} undo={undo} />
 
-			<a href={back} class="back-link">
-				<ChevronLeftIcon />
-				{t('edit.back')}
-			</a>
+			<BackLink href={back} label={backLabel} />
 
 			<section class="card booking-view">
 				<div class="booking-head">
@@ -124,9 +130,14 @@ function EditBody(props: EditProps) {
 					</dd>
 					<dt>{t('edit.factBalance')}</dt>
 					<dd>
-						{balance
-							? t('edit.balanceIn', { type: balance.type, remaining: formatDays(balance.remaining), year: balance.year })
-							: <span class="muted">{t('edit.noAllowance')}</span>}
+						{/* Overdrawn reads as days over, as on My leave — never "-6.5 left". */}
+						{!balance ? (
+							<span class="muted">{t('edit.noAllowance')}</span>
+						) : balance.remaining < 0 ? (
+							<span class="bad">{t('edit.balanceOver', { type: balance.type, over: t('edit.days', { count: -balance.remaining, days: formatDays(-balance.remaining) }), year: balance.year })}</span>
+						) : (
+							t('edit.balanceIn', { type: balance.type, remaining: formatDays(balance.remaining), year: balance.year })
+						)}
 					</dd>
 					<dt>{t('edit.factAway')}</dt>
 					<dd>

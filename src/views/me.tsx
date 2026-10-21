@@ -3,7 +3,8 @@ import type { MonthTotals } from '../domain/report.ts';
 import type { Balance, LeaveEntry, LeaveType, User } from '../types.ts';
 import { FlashBanner, Layout, YearNav } from './layout.tsx';
 import { TextField } from './fields.tsx';
-import { CheckIcon, ChevronLeftIcon, ChevronRightIcon, PlusIcon, SettingsIcon } from './icons.tsx';
+import { CheckIcon, PlusIcon, SettingsIcon } from './icons.tsx';
+import { BackLink, BalanceCard, FormActions, LeaveRow } from './parts.tsx';
 import { useLang, useT } from '../i18n/context.tsx';
 import { LANGS, t as translate, toLang, type Lang } from '../i18n/strings.ts';
 
@@ -96,7 +97,7 @@ function MeBody(props: MeProps) {
 					) : (
 						<ul class="my-list">
 							{upcoming.map((e) => (
-								<MyRow entry={e} today={today} by={byOthers.get(e.id)} />
+								<LeaveRow entry={e} today={today} by={byOthers.get(e.id)} />
 							))}
 						</ul>
 					)
@@ -107,7 +108,7 @@ function MeBody(props: MeProps) {
 						) : (
 							<ul class="my-list">
 								{confirmedPast.map((e) => (
-									<MyRow entry={e} today={today} by={byOthers.get(e.id)} />
+									<LeaveRow entry={e} today={today} by={byOthers.get(e.id)} />
 								))}
 							</ul>
 						)}
@@ -118,7 +119,7 @@ function MeBody(props: MeProps) {
 								<summary class="btn text">{t('me.showCancelled', { n: cancelled.length, count: cancelled.length })}</summary>
 								<ul class="my-list">
 									{cancelled.map((e) => (
-										<MyRow entry={e} today={today} by={byOthers.get(e.id)} />
+										<LeaveRow entry={e} today={today} by={byOthers.get(e.id)} />
 									))}
 								</ul>
 							</details>
@@ -165,102 +166,6 @@ function NextLeave({ next, today }: { next?: LeaveEntry; today: string }) {
 	);
 }
 
-/**
- * One leave type's balance. An overdrawn one says so — in the error colour,
- * as days over — rather than as a minus sign beside a full bar in the type's
- * own colour, which read as fine.
- */
-function BalanceCard({ b }: { b: Balance }) {
-	const t = useT();
-	const lang = useLang();
-	const over = b.type.counts_quota && b.remaining < 0;
-	const pct = b.allotted > 0 ? Math.min(100, (b.used / b.allotted) * 100) : over ? 100 : 0;
-	return (
-		<div class={`balance-card ${over ? 'over' : ''}`}>
-			<div class="balance-top">
-				<span class="dot" style={`--chip: ${b.type.color}`} />
-				<span class="balance-label">{lang === 'th' ? b.type.label_th : b.type.label_en}</span>
-				<span class="balance-th muted">{lang === 'th' ? b.type.label_en : b.type.label_th}</span>
-			</div>
-			{b.type.counts_quota ? (
-				<>
-					<div class="balance-big">
-						{formatDays(Math.abs(b.remaining))}
-						<span class="unit">{over ? t('me.daysOver', { count: -b.remaining }) : t('me.daysLeft', { count: b.remaining })}</span>
-					</div>
-					<div class="meter" role="img" aria-label={t('me.meterLabel', { used: formatDays(b.used), allotted: formatDays(b.allotted) })}>
-						<span class="meter-fill" style={`width: ${pct}%; --chip: ${b.type.color}`} />
-					</div>
-					<div class="balance-sub muted">{t('me.usedOf', { used: formatDays(b.used), allotted: formatDays(b.allotted) })}</div>
-				</>
-			) : (
-				<>
-					<div class="balance-big">
-						{formatDays(b.used)}
-						<span class="unit">{t('me.daysTaken', { count: b.used })}</span>
-					</div>
-					<div class="balance-sub muted">{t('me.noAllowance')}</div>
-				</>
-			)}
-		</div>
-	);
-}
-
-/**
- * A booking in the list: the whole row is the link to its page, where it can
- * be edited or removed — past ones included, since sick leave is often entered
- * after the fact and then corrected. Every row has the same shape; a note sits
- * on its own line under the dates, with whether colleagues can read it.
- */
-function MyRow({ entry, today, by }: { entry: LeaveEntry; today: string; by?: { name: string; action: string } }) {
-	const t = useT();
-	const lang = useLang();
-	const cancelled = entry.status === 'cancelled';
-	const when = describeRange(entry.start_date, entry.end_date, entry.start_half, entry.end_half, lang);
-	const otherYear = entry.start_date.slice(0, 4) !== today.slice(0, 4) ? ` ${entry.start_date.slice(0, 4)}` : '';
-	const now = !cancelled && entry.start_date <= today && entry.end_date >= today;
-	const body = (
-		<>
-			<span class="dot" style={`--chip: ${entry.color}`} />
-			<span class="my-main">
-				<span class="my-when">
-					{when}
-					{otherYear}
-				</span>
-				<span class="muted">
-					{' '}
-					{lang === 'th' ? entry.type_label_th : entry.type_label_en}
-					{now ? ` · ${t('me.now')}` : ''}
-				</span>
-				{/* Who else last touched it: an admin booked it for you, moved it
-				    or removed it. The push says so too, for whoever has them on. */}
-				{by ? (
-					<span class="my-by muted" data-by-other>
-						{t(by.action === 'created' ? 'me.bookedBy' : by.action === 'cancelled' ? 'me.removedBy' : 'me.changedBy', { name: by.name })}
-					</span>
-				) : null}
-				{entry.note ? (
-					<span class="my-note muted">
-						{entry.note} · {entry.note_private ? t('me.notePrivate') : t('me.noteShared')}
-					</span>
-				) : null}
-			</span>
-			<span class="my-days">{formatDays(entry.days_total)}d</span>
-			{cancelled ? <span class="tag">{t('me.cancelled')}</span> : <ChevronRightIcon class="my-go" />}
-		</>
-	);
-	return (
-		<li class={`my-row ${cancelled ? 'cancelled' : ''}`}>
-			{cancelled ? (
-				<div class="my-link">{body}</div>
-			) : (
-				<a class="my-link" href={`/leave/${entry.id}/edit`} aria-label={t('me.editOn', { when: `${when}${otherYear}` })}>
-					{body}
-				</a>
-			)}
-		</li>
-	);
-}
 
 interface SettingsProps {
 	user: User;
@@ -288,10 +193,7 @@ function SettingsBody({ user, error, notice }: SettingsProps) {
 	return (
 		<>
 			<FlashBanner error={error} notice={notice} />
-			<a href="/me" class="back-link">
-				<ChevronLeftIcon />
-				{t('me.title')}
-			</a>
+			<BackLink href="/me" label={t('me.title')} />
 			<div class="page-head">
 				<h1>{t('me.settings')}</h1>
 			</div>
@@ -332,10 +234,9 @@ function SettingsBody({ user, error, notice }: SettingsProps) {
 						))}
 					</div>
 				</div>
-				<div class="actions">
+				<FormActions cancel={<a class="btn text" href="/me">{t('admin.cancel')}</a>}>
 					<button type="submit" class="btn primary">{t('me.save')}</button>
-					<a class="btn text" href="/me">{t('admin.cancel')}</a>
-				</div>
+				</FormActions>
 			</form>
 		</>
 	);

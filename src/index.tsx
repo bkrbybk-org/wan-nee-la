@@ -42,7 +42,7 @@ import { AdminActivityPage, AdminExportPage, AdminHolidaysPage, AdminNotificatio
 import { BookPage } from './views/book.tsx';
 import { CalendarPage, UPCOMING_DAYS } from './views/calendar.tsx';
 import { EditPage } from './views/edit.tsx';
-import { ErrorPage, Layout, THEME_SCRIPT } from './views/layout.tsx';
+import { ErrorCard, ErrorPage, Layout, THEME_SCRIPT } from './views/layout.tsx';
 import { MePage, MeSettingsPage } from './views/me.tsx';
 import { UserPage } from './views/user.tsx';
 import { PushKeyProvider } from './views/site.tsx';
@@ -366,6 +366,21 @@ function notifyOwner(
 			end_half: booking.end_half,
 		}),
 	);
+}
+
+/**
+ * What a back link to `path` is called: the page's own name, so the link says
+ * where it goes. "Back" only for a page without one.
+ */
+function backLabel(c: Ctx, path: string): string {
+	const p = path.split('?')[0];
+	if (p === '/') return say(c, 'nav.calendar');
+	if (p === '/me') return say(c, 'me.title');
+	if (p === '/admin') return say(c, 'admin.title');
+	if (p === '/admin/activity') return say(c, 'admin.activity');
+	if (p === '/admin/year-end') return say(c, 'admin.yearEnd');
+	if (p.startsWith('/admin/people')) return say(c, 'admin.people');
+	return say(c, 'edit.back');
 }
 
 async function leaveTypesOf(c: Ctx): Promise<LeaveType[]> {
@@ -1028,6 +1043,7 @@ app.get('/leave/:id/edit', async (c) => {
 			types={types}
 			today={today}
 			back={back}
+			backLabel={backLabel(c, back)}
 			balance={balance && balance.type.counts_quota ? { type: lang === 'th' ? balance.type.label_th : balance.type.label_en, remaining: balance.remaining, year } : null}
 			alsoAway={[...awayDates.entries()].map(([name, dates]) => ({ name, dates }))}
 			history={history}
@@ -1339,7 +1355,7 @@ app.get('/u/:email', async (c) => {
 
 	const subject = await db.getUser(c.env.DB, email);
 	if (!subject) {
-		return c.html(<ErrorPage title="Not found" detail="No such page." />, 404);
+		return errorPage(c, 404, 'err.notFound', 'err.notFoundDetail');
 	}
 
 	const nowYear = Number(today.slice(0, 4));
@@ -1356,6 +1372,7 @@ app.get('/u/:email', async (c) => {
 		c,
 		<UserPage
 			viewer={viewer}
+			today={c.get('today')}
 			subject={subject}
 			year={year}
 			minYear={minYear}
@@ -1482,7 +1499,7 @@ app.post('/api/v1/push/test', async (c) => {
 
 const adminOnly: MiddlewareHandler<{ Bindings: Env; Variables: Vars }> = async (c, next) => {
 	if (!c.get('user').is_admin) {
-		return c.html(<ErrorPage title="Admins only" detail="Ask an admin to grant you access." />, 403);
+		return errorPage(c, 403, 'err.adminsOnly', 'err.adminsOnlyDetail');
 	}
 	await next();
 };
@@ -2072,23 +2089,10 @@ app.onError((err, c) => {
 		}),
 	);
 	if (c.req.path.startsWith('/api/')) return jsonError(c, 'Something went wrong on the server. Try again shortly.', 500);
-	return c.html(<ErrorPage title="Something went wrong" detail="The server hit an error. Try again shortly; if it keeps happening, tell an admin." />, 500);
+	return errorPage(c, 500, 'err.server', 'err.serverDetail');
 });
 
-app.notFound((c) => {
-	const user = c.get('user');
-	if (!user) return c.html(<ErrorPage title="Not found" detail="No such page." />, 404);
-	return page(
-		c,
-		<Layout title="Not found" user={user} active="calendar">
-			<div class="card centered">
-				<h1>Not found</h1>
-				<p class="muted">No such page.</p>
-			</div>
-		</Layout>,
-		404,
-	);
-});
+app.notFound((c) => errorPage(c, 404, 'err.notFound', 'err.notFoundDetail'));
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -2135,7 +2139,24 @@ const PERIOD: Record<Half, string> = { full: 'full_day', am: 'morning', pm: 'aft
  * only the push key, which decides whether the notifications bell is drawn.
  * See src/views/site.tsx for why that is a context and not a prop.
  */
-function page(c: Ctx, node: Child, status?: 404) {
+/**
+ * An error as a page. Inside the app, with its bars and a way back, whenever
+ * someone is signed in; in their language. A bare page only when nobody is.
+ */
+function errorPage(c: Ctx, status: 403 | 404 | 500, title: StringKey, detail: StringKey) {
+	const user = c.get('user') as User | undefined;
+	const lang = toLang(user?.lang);
+	if (!user) return c.html(<ErrorPage title={t('en', title)} detail={t('en', detail)} />, status);
+	return page(
+		c,
+		<Layout title={t(lang, title)} user={user} active="calendar" version={c.env.CF_VERSION_METADATA?.id}>
+			<ErrorCard title={t(lang, title)} detail={t(lang, detail)} />
+		</Layout>,
+		status,
+	);
+}
+
+function page(c: Ctx, node: Child, status?: 403 | 404 | 500) {
 	const pushKey = pushConfigured(c.env) ? c.env.VAPID_PUBLIC_KEY : '';
 	return c.html(<PushKeyProvider value={pushKey}>{node}</PushKeyProvider>, status);
 }
