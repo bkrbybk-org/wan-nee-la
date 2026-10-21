@@ -61,8 +61,18 @@ export type YearEndStatus = 'sent' | 'skipped_empty' | 'skipped_duplicate' | 'no
  * is an admin's "Send now", which skips the month check but never the
  * once-a-year claim.
  */
-export async function runYearEnd(env: Env, today: string, opts: { force?: boolean } = {}): Promise<{ status: YearEndStatus; people: number }> {
+export async function runYearEnd(
+	env: Env,
+	today: string,
+	opts: { force?: boolean; retry?: boolean } = {},
+): Promise<{ status: YearEndStatus; people: number }> {
 	const year = Number(today.slice(0, 4));
+	// A retry takes back a claim that failed — only that. A reminder that went
+	// out stays this year's reminder.
+	if (opts.retry) {
+		const prior = await db.getNotification(env.DB, yearEndKey(year), 'yearend', 'push');
+		if (prior?.status === 'failed') await db.clearNotification(env.DB, yearEndKey(year), 'yearend', 'push');
+	}
 	if (!opts.force && today.slice(5, 7) !== '11') return { status: 'not_due', people: 0 };
 	if (!pushConfigured(env)) return { status: 'not_configured', people: 0 };
 
@@ -80,13 +90,24 @@ export async function runYearEnd(env: Env, today: string, opts: { force?: boolea
 		const [subs, users] = await Promise.all([db.activeSubscriptions(env.DB), db.listUsers(env.DB)]);
 		const langOf = new Map(users.map((u) => [u.email, toLang(u.lang)]));
 		let reached = 0;
+		let tried = 0;
+		let lastError = '';
 		for (const row of owed) {
 			const mine = subs.filter((s) => s.user_email === row.email);
 			if (mine.length === 0) continue;
+			tried++;
 			const payload = JSON.stringify(yearEndNotice(row, type, year, langOf.get(row.email) ?? 'en'));
 			const results = await Promise.all(mine.map((s) => sendPush(s, payload, vapidKeys(env))));
 			await Promise.all(results.filter((r) => r.gone).map((r) => db.deleteSubscriptionByEndpoint(env.DB, r.endpoint)));
 			if (results.some((r) => r.ok)) reached++;
+			else lastError = results.find((r) => r.error)?.error ?? lastError;
+		}
+		// People to reach, and nobody reached: a broken key or a push service
+		// refusing, not a quiet year. Recorded as failed, so it can be tried
+		// again rather than standing as this year's reminder.
+		if (tried > 0 && reached === 0) {
+			await db.finishNotification(env.DB, yearEndKey(year), 'yearend', 'push', 'failed', lastError || 'No browser accepted the reminder.');
+			return { status: 'failed', people: 0 };
 		}
 		await db.finishNotification(env.DB, yearEndKey(year), 'yearend', 'push', 'sent');
 		await db.setNotificationPeople(env.DB, yearEndKey(year), 'yearend', 'push', reached);

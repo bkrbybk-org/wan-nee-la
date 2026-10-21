@@ -245,6 +245,7 @@ export const STRINGS = {
 	'admin.remindFailed': { en: 'Tried on {date}, and failed: {error}', th: 'พยายามส่งเมื่อ {date} แต่ไม่สำเร็จ: {error}' },
 	'admin.remindEmpty': { en: 'Checked on {date}: nobody had days left.', th: 'ตรวจเมื่อ {date}: ไม่มีใครมีวันลาเหลือ' },
 	'admin.remindNow': { en: 'Send now instead', th: 'ส่งตอนนี้เลย' },
+	'admin.remindRetry': { en: 'Try again', th: 'ลองอีกครั้ง' },
 	'admin.remindNowHelp': { en: 'Sends this year\'s reminder today. November\'s then does not go out.', th: 'ส่งการแจ้งเตือนของปีนี้วันนี้ แล้วจะไม่ส่งซ้ำในเดือนพฤศจิกายน' },
 	'admin.remindOff': { en: 'Notifications are not set up on the server, so nobody can be reminded.', th: 'ยังไม่ได้ตั้งค่าการแจ้งเตือนบนเซิร์ฟเวอร์ จึงแจ้งเตือนใครไม่ได้' },
 	'flash.remindSent': { en: 'Reminder sent to {n} person.|Reminder sent to {n} people.', th: 'ส่งการแจ้งเตือนถึง {n} คนแล้ว' },

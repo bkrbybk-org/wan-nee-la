@@ -53,16 +53,25 @@ export function personColor(email: string): string {
 }
 
 /**
- * A short opaque key for one person, for matching their bars, rows and panel
- * entries on the page so hovering one can light up the rest.
+ * A short opaque key for one person: for matching their bars, rows and panel
+ * entries on the calendar, and for naming them in the booking form's "Booking
+ * for" field.
  *
  * Not the email: the calendar keeps addresses out of the HTML every colleague
- * receives, and a key copied from the address would put them back. This is one
- * way — the page can tell two entries are the same person, not who they are
- * beyond the name already shown.
+ * receives. And not a plain hash of it either — that was the first version, an
+ * unsalted FNV-1a anyone could recompute for a list of likely addresses, which
+ * gave the addresses back. This is HMAC-SHA256 under a random salt that never
+ * leaves the database (`personKeySalt`), cut to 64 bits: the same person
+ * always matches, and nothing outside the server can tell who a key is.
  */
-export function personKey(email: string): string {
-	return hashOf(email).toString(36);
+export async function personKeys(salt: string, emails: Iterable<string>): Promise<Map<string, string>> {
+	const key = await crypto.subtle.importKey('raw', new TextEncoder().encode(salt), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']);
+	const out = new Map<string, string>();
+	for (const email of new Set(emails)) {
+		const mac = new Uint8Array(await crypto.subtle.sign('HMAC', key, new TextEncoder().encode(email.trim().toLowerCase())));
+		out.set(email, [...mac.slice(0, 8)].map((b) => b.toString(16).padStart(2, '0')).join(''));
+	}
+	return out;
 }
 
 /**

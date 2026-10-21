@@ -170,7 +170,13 @@ function readToken(req: Request): string | null {
 	return match ? match[1] : null;
 }
 
-export type AuthResult = { ok: true; identity: Identity | ServiceIdentity } | { ok: false; reason: string };
+/** A loopback address: `::1`, `127.x.x.x`, or IPv4 loopback written as IPv6. */
+export function isLoopback(ip: string): boolean {
+	const a = ip.trim().toLowerCase();
+	return a === '::1' || /^127(\.\d{1,3}){3}$/.test(a) || /^::ffff:127(\.\d{1,3}){3}$/.test(a);
+}
+
+export type AuthResult ={ ok: true; identity: Identity | ServiceIdentity } | { ok: false; reason: string };
 
 /**
  * Identity for the current request.
@@ -182,6 +188,16 @@ export type AuthResult = { ok: true; identity: Identity | ServiceIdentity } | { 
  */
 export async function authenticate(req: Request, env: Env): Promise<AuthResult> {
 	if (env.DEV_AUTH_BYPASS === '1') {
+		// Honoured for a caller on this machine only. Left on in a real
+		// deployment, it would hand every visitor a session — Access in front is
+		// one line of config away from not being there, so the bypass checks for
+		// itself too. Not by hostname: `wrangler dev` rewrites the URL to the
+		// configured route. CF-Connecting-IP is the visitor's address, set by
+		// Cloudflare's edge in production (a client cannot choose it), and the
+		// loopback address under `wrangler dev`.
+		if (!isLoopback(req.headers.get('CF-Connecting-IP') ?? '')) {
+			return { ok: false, reason: 'DEV_AUTH_BYPASS is on, but this request is not from this machine, so it is ignored. Turn it off.' };
+		}
 		// The machine path has to be reachable locally too, or the only test of
 		// it would be in production.
 		const asService = (env.DEV_SERVICE_TOKEN ?? '').trim();

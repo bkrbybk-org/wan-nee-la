@@ -46,7 +46,7 @@ import { ErrorCard, ErrorPage, Layout, THEME_SCRIPT } from './views/layout.tsx';
 import { MePage, MeSettingsPage } from './views/me.tsx';
 import { UserPage } from './views/user.tsx';
 import { PushKeyProvider } from './views/site.tsx';
-import { personColors, personKey } from './views/person.ts';
+import { personColors, personKeys } from './views/person.ts';
 import { groupIdFromWebhook, verifyLineSignature } from './notify/line.ts';
 import {
 	GROUP_ID_KEY,
@@ -73,7 +73,7 @@ import type { Env, LeaveRequest, LeaveType, User } from './types.ts';
 // `user` is typed as always present because every handler that reads it runs
 // only for a person: a service token is turned away in the middleware unless it
 // asked for one of MACHINE_READABLE, and those two read `service` instead.
-type Vars = { user: User; service?: string; today: string; flash: Flash; leaveTypes?: LeaveType[] };
+type Vars = { user?: User; service?: string; today: string; flash: Flash; leaveTypes?: LeaveType[] };
 
 /**
  * What an Access service token may ask for. Both are read-only, and neither
@@ -304,6 +304,18 @@ app.use('*', async (c, next) => {
  */
 type Ctx = Context<{ Bindings: Env; Variables: Vars }>;
 
+/**
+ * The signed-in person, for a route that only runs for one — which is every
+ * route below the auth middleware, bar the machine feeds. Throws rather than
+ * hand back undefined: reaching here without a person is a bug, and the error
+ * handler turns it into a 500 instead of a page about nobody.
+ */
+function userOf(c: Ctx): User {
+	const user = c.get('user');
+	if (!user) throw new Error('this route needs a signed-in person');
+	return user;
+}
+
 function say(c: Ctx, key: StringKey, vars?: Record<string, string | number>): string {
 	return t(toLang(c.get('user')?.lang), key, vars);
 }
@@ -324,13 +336,20 @@ function sayMessage(c: Ctx, m: Message): string {
  * for anyone else, and the booking form then has no "Booking for" field.
  */
 async function bookablePeople(c: Ctx): Promise<{ key: string; name: string }[]> {
-	const user = c.get('user');
-	return user.is_admin ? peopleFor(user, await db.listUsers(c.env.DB)) : [];
+	const user = userOf(c);
+	if (!user.is_admin) return [];
+	const users = await db.listUsers(c.env.DB);
+	return peopleFor(user, users, await keysOf(c, users));
 }
 
-function peopleFor(user: User, users: User[]): { key: string; name: string }[] {
+function peopleFor(user: User, users: User[], keys: ReadonlyMap<string, string>): { key: string; name: string }[] {
 	const others = users.filter((u) => u.active && u.email !== user.email);
-	return [user, ...others].map((u) => ({ key: personKey(u.email), name: u.display_name }));
+	return [user, ...others].map((u) => ({ key: keys.get(u.email) ?? '', name: u.display_name }));
+}
+
+/** Everyone's opaque key, by email (`personKeys`). */
+async function keysOf(c: Ctx, users: readonly { email: string }[]): Promise<Map<string, string>> {
+	return personKeys(await db.personKeySalt(c.env.DB), users.map((u) => u.email));
 }
 
 /**
@@ -338,7 +357,9 @@ function peopleFor(user: User, users: User[]): { key: string; name: string }[] {
  * Null when it names nobody, or — the key being a short hash — more than one.
  */
 async function personByKey(c: Ctx, key: string): Promise<User | null> {
-	const matches = (await db.listUsers(c.env.DB)).filter((u) => u.active && personKey(u.email) === key);
+	const users = (await db.listUsers(c.env.DB)).filter((u) => u.active);
+	const keys = await keysOf(c, users);
+	const matches = users.filter((u) => keys.get(u.email) === key);
 	return matches.length === 1 ? matches[0] : null;
 }
 
@@ -352,7 +373,7 @@ function notifyOwner(
 	booking: { id: string; user_email: string; start_date: string; end_date: string; start_half: Half; end_half: Half },
 	type: { label_en: string; label_th: string } | undefined,
 ) {
-	const actor = c.get('user');
+	const actor = userOf(c);
 	if (!type || !shouldTellOwner(actor.email, booking.user_email)) return;
 	c.executionCtx.waitUntil(
 		tellOwner(c.env, booking.user_email, {
@@ -401,7 +422,7 @@ async function leaveTypesOf(c: Ctx): Promise<LeaveType[]> {
  * See `holidayGap`.
  */
 async function holidayReminder(c: Ctx): Promise<HolidayGap | null> {
-	const user = c.get('user');
+	const user = userOf(c);
 	const today = c.get('today');
 	const month = Number(today.slice(5, 7));
 	if (!user.is_admin || (month < 10 && month !== 1)) return null;
@@ -411,7 +432,7 @@ async function holidayReminder(c: Ctx): Promise<HolidayGap | null> {
 }
 
 app.get('/', async (c) => {
-	const user = c.get('user');
+	const user = userOf(c);
 	const today = c.get('today');
 	const now = { year: Number(today.slice(0, 4)), month: Number(today.slice(5, 7)) };
 	const year = clampInt(c.req.query('y'), now.year, 2000, 2100);
@@ -443,7 +464,8 @@ app.get('/', async (c) => {
 		holidayReminder(c),
 	]);
 	// The same list `bookablePeople` builds, from the users already fetched.
-	const people = user.is_admin ? peopleFor(user, users) : [];
+	const keys = await keysOf(c, users);
+	const people = user.is_admin ? peopleFor(user, users, keys) : [];
 
 	return page(
 		c,
@@ -458,6 +480,7 @@ app.get('/', async (c) => {
 			holidaysDue={holidaysDue}
 			people={people}
 			colors={personColors(users)}
+			keys={keys}
 			today={today}
 			version={c.env.CF_VERSION_METADATA?.id}
 			error={flashOf(c.get('flash'), 'err')}
@@ -513,7 +536,7 @@ app.get('/docs', (c) =>
  * and never reach this route.
  */
 app.get('/book', async (c) => {
-	const user = c.get('user');
+	const user = userOf(c);
 	const today = c.get('today');
 	const raw = c.req.query('date');
 	const [types, people] = await Promise.all([leaveTypesOf(c), bookablePeople(c)]);
@@ -551,7 +574,7 @@ app.get('/api/v1/leave', async (c) => {
 	const today = c.get('today');
 	// Absent for a service token, which is why it never sees a note: `visibleNote`
 	// answers "may *this person* read it", and a machine is not one.
-	const viewer = c.get('user') as User | undefined;
+	const viewer = c.get('user');
 	const from = validDateOr(c.req.query('from'), firstOfMonth(Number(today.slice(0, 4)), Number(today.slice(5, 7))));
 	const to = validDateOr(c.req.query('to'), lastOfMonth(Number(today.slice(0, 4)), Number(today.slice(5, 7))));
 	if (from > to) return jsonError(c, 'from is after to', 400);
@@ -676,7 +699,7 @@ app.get('/api/v1/holidays', async (c) => {
  */
 app.get('/api/v1/balances', async (c) => {
 	const today = c.get('today');
-	const viewer = c.get('user') as User | undefined;
+	const viewer = c.get('user');
 	const machine = c.get('service');
 	if (!machine && !viewer?.is_admin) {
 		return jsonError(c, 'Balances are readable by an admin or an allowlisted service token.', 403);
@@ -741,7 +764,7 @@ app.get('/api/v1/leave/preview', async (c) => {
 	// Who else is already away on these days. Advisory only — nothing here can
 	// refuse a booking, because the app does not know who covers for whom; it
 	// only knows how to stop someone finding out by accident on the Monday.
-	const viewer = c.get('user');
+	const viewer = userOf(c);
 	const excludeId = c.req.query('exclude') ?? undefined;
 	const editing = excludeId ? await db.getLeave(c.env.DB, excludeId) : null;
 	// Whose booking this is: the owner's when an admin is editing someone
@@ -807,7 +830,7 @@ async function previewBalance(
 	// `remaining` is what is left now, booking included, as the booking's page
 	// shows it; `after` what would be left once saved. Editing a five-day
 	// booking down to three reads "6 left → 8", not "11 left → 8".
-	const lang = toLang(c.get('user').lang);
+	const lang = toLang(userOf(c).lang);
 	return { type: lang === 'th' ? balance.type.label_th : balance.type.label_en, remaining: round(balance.remaining), after: round(balance.remaining + credit - days) };
 }
 
@@ -918,7 +941,7 @@ async function buildBookingContext(
 }
 
 app.post('/api/v1/leave', async (c) => {
-	const user = c.get('user');
+	const user = userOf(c);
 	const today = c.get('today');
 	const back = referrerPath(c.req.header('Referer'), c.req.url) ?? '/me';
 
@@ -935,15 +958,16 @@ app.post('/api/v1/leave', async (c) => {
 	// Whose booking this is. An admin may book for anyone active — someone off
 	// sick who phoned in — and it is checked against that person's allowance
 	// and other bookings, exactly as if they had booked it themselves.
-	const forKey = typeof form.for === 'string' && form.for !== '' ? form.for : personKey(user.email);
+	// No `for`, the usual case, is a booking for oneself and costs no key.
+	const forKey = typeof form.for === 'string' && form.for !== '' ? form.for : null;
 	let owner: User = user;
-	if (forKey !== personKey(user.email)) {
+	if (forKey !== null && forKey !== (await keysOf(c, [user])).get(user.email)) {
 		if (!user.is_admin) return redirectWithFlash(back, 'err', say(c, 'flash.forAdminsOnly'));
 		const target = await personByKey(c, forKey);
 		if (!target) return redirectWithFlash(back, 'err', say(c, 'flash.forUnknown'), { field: 'for', draft: { ...parsed, forKey } });
 		owner = target;
 	}
-	const draft = owner === user ? parsed : { ...parsed, forKey };
+	const draft = owner === user || forKey === null ? parsed : { ...parsed, forKey };
 
 	const ctx = await buildBookingContext(c.env, owner.email, parsed, today);
 	const check = validateBooking(parsed, ctx);
@@ -991,7 +1015,7 @@ async function ownedLeave(
 	c: Context<{ Bindings: Env; Variables: Vars }>,
 	id: string,
 ): Promise<{ ok: true; row: LeaveRequest } | { ok: false; error: string }> {
-	const user = c.get('user');
+	const user = userOf(c);
 	const row = await db.getLeave(c.env.DB, id);
 	if (!row) return { ok: false, error: say(c, 'flash.gone') };
 	if (row.user_email !== user.email && !user.is_admin) {
@@ -1001,7 +1025,7 @@ async function ownedLeave(
 }
 
 app.get('/leave/:id/edit', async (c) => {
-	const user = c.get('user');
+	const user = userOf(c);
 	const today = c.get('today');
 	const id = c.req.param('id');
 
@@ -1107,7 +1131,7 @@ app.post('/api/v1/leave/:id/edit', async (c) => {
 		days_total: check.days,
 		note: parsed.note || null,
 		note_private: parsed.notePrivate ? 1 : 0,
-	}, c.get('user').email);
+	}, userOf(c).email);
 	if (!changed) return redirectWithFlash(done, 'err', say(c, 'flash.cancelledWhileEditing'));
 	notifyOwner(c, 'edited', { ...owned.row, start_date: parsed.startDate, end_date: parsed.endDate, start_half: parsed.startHalf, end_half: parsed.endHalf }, check.type);
 
@@ -1133,7 +1157,7 @@ app.post('/api/v1/leave/:id/cancel', async (c) => {
 	const owned = await ownedLeave(c, id);
 	if (!owned.ok) return redirectWithFlash(back, 'err', owned.error);
 
-	const done = await db.cancelLeave(c.env.DB, id, c.get('user').email);
+	const done = await db.cancelLeave(c.env.DB, id, userOf(c).email);
 	if (done) {
 		const types = await leaveTypesOf(c);
 		notifyOwner(c, 'cancelled', owned.row, types.find((t) => t.id === owned.row.leave_type_id));
@@ -1216,7 +1240,7 @@ app.post('/api/v1/leave/:id/undo', async (c) => {
 	const check = validateBooking(restoring, ctx);
 	if (!check.ok) return redirectWithFlash(back, 'err', sayMessage(c, check.error));
 
-	const actor = c.get('user').email;
+	const actor = userOf(c).email;
 	if (last.action === 'cancelled') {
 		const done = await db.restoreLeave(c.env.DB, id, actor);
 		if (done) notifyOwner(c, 'restored', row, check.type);
@@ -1292,7 +1316,7 @@ function snapshotToBooking(raw: string | null, row: LeaveRequest): BookingInput 
 // ---------------------------------------------------------------------------
 
 app.get('/me', async (c) => {
-	const user = c.get('user');
+	const user = userOf(c);
 	const today = c.get('today');
 	const nowYear = Number(today.slice(0, 4));
 	const year = clampInt(c.req.query('y'), nowYear, 2000, 2100);
@@ -1349,7 +1373,7 @@ app.get('/me', async (c) => {
  * to enumerate who has an account.
  */
 app.get('/u/:email', async (c) => {
-	const viewer = c.get('user');
+	const viewer = userOf(c);
 	const today = c.get('today');
 	const email = decodeURIComponent(c.req.param('email')).trim().toLowerCase();
 
@@ -1388,7 +1412,7 @@ app.get('/me/settings', (c) =>
 	page(
 		c,
 		<MeSettingsPage
-			user={c.get('user')}
+			user={userOf(c)}
 			version={c.env.CF_VERSION_METADATA?.id}
 			error={flashOf(c.get('flash'), 'err')}
 			notice={flashOf(c.get('flash'), 'ok')}
@@ -1401,7 +1425,7 @@ app.get('/me/settings', (c) =>
  * anything is written, so one bad field saves none of them.
  */
 app.post('/me/settings', async (c) => {
-	const user = c.get('user');
+	const user = userOf(c);
 	const form = await c.req.parseBody();
 	const name = String(form.displayName ?? '').trim().slice(0, 60);
 	if (!name) return redirectWithFlash('/me/settings', 'err', say(c, 'flash.nameEmpty'));
@@ -1434,7 +1458,7 @@ app.post('/me/settings', async (c) => {
  * someone else's name on it.
  */
 app.post('/api/v1/push/subscribe', async (c) => {
-	const user = c.get('user');
+	const user = userOf(c);
 	const sub = parseSubscription(await c.req.json().catch(() => null));
 	if (!sub) return jsonError(c, 'Not a usable push subscription.', 400);
 
@@ -1450,7 +1474,7 @@ app.post('/api/v1/push/subscribe', async (c) => {
  * silence their notifications.
  */
 app.post('/api/v1/push/unsubscribe', async (c) => {
-	const user = c.get('user');
+	const user = userOf(c);
 	const body = (await c.req.json().catch(() => null)) as { endpoint?: unknown } | null;
 	const endpoint = typeof body?.endpoint === 'string' ? body.endpoint : '';
 	if (!endpoint) return jsonError(c, 'No endpoint.', 400);
@@ -1469,7 +1493,7 @@ app.post('/api/v1/push/unsubscribe', async (c) => {
  * 09:00 the next working day, which is how a broken setup stays broken.
  */
 app.post('/api/v1/push/test', async (c) => {
-	const user = c.get('user');
+	const user = userOf(c);
 	if (!pushConfigured(c.env)) return jsonError(c, 'Push is not configured on the server.', 503);
 
 	const subs = await db.subscriptionsFor(c.env.DB, user.email);
@@ -1498,7 +1522,7 @@ app.post('/api/v1/push/test', async (c) => {
 // ---------------------------------------------------------------------------
 
 const adminOnly: MiddlewareHandler<{ Bindings: Env; Variables: Vars }> = async (c, next) => {
-	if (!c.get('user').is_admin) {
+	if (!userOf(c).is_admin) {
 		return errorPage(c, 403, 'err.adminsOnly', 'err.adminsOnlyDetail');
 	}
 	await next();
@@ -1510,7 +1534,7 @@ app.use('/admin/*', adminOnly);
 /** The props every admin page takes from the request: who, which build, and the flash. */
 function adminCommon(c: Ctx) {
 	return {
-		user: c.get('user'),
+		user: userOf(c),
 		version: c.env.CF_VERSION_METADATA?.id,
 		error: flashOf(c.get('flash'), 'err'),
 		notice: flashOf(c.get('flash'), 'ok'),
@@ -1552,7 +1576,7 @@ app.get('/admin', async (c) => {
 		yearEndReport(c.env, thisYear),
 	]);
 	const active = users.filter((u) => u.active);
-	const lang = toLang(c.get('user').lang);
+	const lang = toLang(userOf(c).lang);
 	// Working days only, the way the calendar and the digest count them.
 	const away = [...new Set((byDate(entries, todayHolidays).get(today) ?? []).map((e) => e.display_name))];
 
@@ -1613,7 +1637,9 @@ app.get('/admin/year-end', async (c) => {
 
 /** Send this year's reminder now rather than in November. Still once a year. */
 app.post('/admin/year-end/remind', async (c) => {
-	const outcome = await runYearEnd(c.env, c.get('today'), { force: true });
+	const form = await c.req.parseBody();
+	// `retry` takes back a failed attempt's claim; a sent reminder is never resent.
+	const outcome = await runYearEnd(c.env, c.get('today'), { force: true, retry: form.retry === '1' });
 	console.log(JSON.stringify({ job: 'year-end-reminder', trigger: 'admin', ...outcome }));
 	const back = '/admin/year-end';
 	switch (outcome.status) {
@@ -1677,7 +1703,7 @@ app.get('/admin/people/:email', async (c) => {
  * anything is written, so a typo in one field does not save the rest.
  */
 app.post('/admin/people/:email', async (c) => {
-	const actor = c.get('user');
+	const actor = userOf(c);
 	const email = c.req.param('email').trim().toLowerCase();
 	const form = await c.req.parseBody();
 	const year = Number(form.year);
@@ -1984,7 +2010,7 @@ app.post('/admin/holidays/preview', async (c) => {
 	}
 	return page(
 		c,
-		<HolidayPreviewPage user={c.get('user')} text={text} errors={errors} plan={plan} version={c.env.CF_VERSION_METADATA?.id} />,
+		<HolidayPreviewPage user={userOf(c)} text={text} errors={errors} plan={plan} version={c.env.CF_VERSION_METADATA?.id} />,
 	);
 });
 
@@ -2036,7 +2062,7 @@ app.post('/admin/holidays/import', async (c) => {
 				note: entry.note,
 				note_private: entry.note_private,
 			},
-			c.get('user').email,
+			userOf(c).email,
 		);
 		if (changed) recounted++;
 	}
@@ -2144,7 +2170,7 @@ const PERIOD: Record<Half, string> = { full: 'full_day', am: 'morning', pm: 'aft
  * someone is signed in; in their language. A bare page only when nobody is.
  */
 function errorPage(c: Ctx, status: 403 | 404 | 500, title: StringKey, detail: StringKey) {
-	const user = c.get('user') as User | undefined;
+	const user = c.get('user');
 	const lang = toLang(user?.lang);
 	if (!user) return c.html(<ErrorPage title={t('en', title)} detail={t('en', detail)} />, status);
 	return page(

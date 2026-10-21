@@ -82,6 +82,24 @@ function concat(...parts: Uint8Array[]): Uint8Array {
  * mistake; and the keys must be exactly the sizes P-256 and RFC 8291 define,
  * since a wrong-sized key fails deep inside WebCrypto at 09:00 rather than here.
  */
+/**
+ * The push services browsers actually use: Chrome and Edge's FCM, Firefox's
+ * autopush, Apple's, and Windows'. A subscription is an address the Worker
+ * will POST to every morning, so it is held to these rather than to any https
+ * URL a signed-in person cares to register — which would turn the digest into
+ * a feed to their own server, and the Worker into a client of anywhere.
+ */
+export function isPushService(hostname: string): boolean {
+	const h = hostname.toLowerCase();
+	return (
+		h === 'fcm.googleapis.com' ||
+		h === 'updates.push.services.mozilla.com' ||
+		h === 'push.apple.com' ||
+		h.endsWith('.push.apple.com') ||
+		h.endsWith('.notify.windows.com')
+	);
+}
+
 export function parseSubscription(input: unknown): PushSubscription | null {
 	if (!input || typeof input !== 'object') return null;
 	const body = input as Record<string, unknown>;
@@ -96,7 +114,8 @@ export function parseSubscription(input: unknown): PushSubscription | null {
 	// subscription.
 	if (endpoint.length > 2048) return null;
 	try {
-		if (new URL(endpoint).protocol !== 'https:') return null;
+		const url = new URL(endpoint);
+		if (url.protocol !== 'https:' || !isPushService(url.hostname)) return null;
 	} catch {
 		return null;
 	}

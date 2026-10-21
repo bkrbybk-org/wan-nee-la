@@ -819,6 +819,19 @@ export async function activeUserCount(db: D1Database): Promise<number> {
 // App config (LINE group id)
 // ---------------------------------------------------------------------------
 
+/**
+ * The salt behind `personKeys`: random, made on first use, and never sent
+ * anywhere. INSERT OR IGNORE then a read, so two first requests racing agree
+ * on one salt rather than each keeping its own.
+ */
+export async function personKeySalt(db: D1Database): Promise<string> {
+	const existing = await getConfig(db, 'person_key_salt');
+	if (existing) return existing;
+	const fresh = [...crypto.getRandomValues(new Uint8Array(32))].map((b) => b.toString(16).padStart(2, '0')).join('');
+	await db.prepare('INSERT OR IGNORE INTO app_config (key, value) VALUES (?, ?)').bind('person_key_salt', fresh).run();
+	return (await getConfig(db, 'person_key_salt')) ?? fresh;
+}
+
 export async function getConfig(db: D1Database, key: string): Promise<string | null> {
 	const row = await db.prepare('SELECT value FROM app_config WHERE key = ?').bind(key).first<{ value: string }>();
 	return row?.value ?? null;

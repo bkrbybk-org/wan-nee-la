@@ -8,7 +8,7 @@ Updated: 2026-10-20
 
 ## Status
 
-Deployed and serving. Version `4abb6711-3b68-41de-85f7-f168f5795334`, deployed 2026-10-21 with `npm run ship`, D1 `<database-id>` in APAC, behind Cloudflare Access on `<hostname>`. Production checks passed: the new version serves all traffic, `/health` and `/` both 302 to Access, production D1 answers, and migration 0011 is applied with every type still offered. That deploy also carried the 09:00 weekday schedule — production had still been on the old daily `0 1 * * *` cron until then.
+Deployed and serving. Version `403a69d0-50df-4535-867e-32c006df8a3e`, deployed 2026-10-21 with `npm run ship`, D1 `<database-id>` in APAC, behind Cloudflare Access on `<hostname>`. Production checks passed: the new version serves all traffic, `/health` and `/` both 302 to Access, production D1 answers, and migration 0011 is applied with every type still offered. That deploy also carried the 09:00 weekday schedule — production had still been on the old daily `0 1 * * *` cron until then.
 
 **In real use.** Twelve active users, 24 confirmed bookings, 26 holidays, four leave types, 49 rows in the audit trail (read 2026-10-20). That changes what matters here: the shared surfaces now have a real audience, so note visibility, the audit trail and the privacy rules on `/u/:email` are load-bearing rather than theoretical.
 
@@ -50,7 +50,7 @@ src/client/    progressive enhancement only (booking preview, dialogs, drag,
                ripple, push subscription)
 ```
 
-Eleven migrations, applied in order; `migrations/0011` is the newest — it added `leave_types.active`, so a type with bookings can be retired rather than deleted (#39). Each database records which have run in an `applied_migrations` table, and `scripts/migrate.mjs` (`db:init`, `db:init:remote`) runs only the rest, so a second run is a no-op rather than the failure on `0003` it used to be ([ISSUES.md](ISSUES.md) #24). `npm run db:status:remote` lists production's.
+Twelve migrations, applied in order; `migrations/0012` is the newest — an index on the audit trail by whose booking it was, for My leave's "Booked for you by" marks. `0011` added `leave_types.active`, so a type with bookings can be retired rather than deleted (#39). Each database records which have run in an `applied_migrations` table, and `scripts/migrate.mjs` (`db:init`, `db:init:remote`) runs only the rest, so a second run is a no-op rather than the failure on `0003` it used to be ([ISSUES.md](ISSUES.md) #24). `npm run db:status:remote` lists production's.
 
 The rule that keeps this honest: **the server computes and validates everything.** `days_total` is never read from a request; the booking form's live preview asks the server rather than reimplementing the rules; drag-to-move submits to the same endpoint the edit page uses, so one set of validations covers every path.
 
@@ -151,19 +151,20 @@ Two consequences worth remembering:
 
 ## Verification
 
-**1,079 automated assertions**, all green. CI runs them, and lint, on every push and pull request.
+**1,107 automated assertions**, all green. CI runs them, and lint, on every push and pull request.
 
 | Suite | Assertions | Covers |
 | --- | --- | --- |
 | `test-dates.mjs` | 114 | Bangkok boundary, half-days, weekends, holidays, month grids |
-| `test-leave.mjs` | 166 | Booking rules, balances and the per-year allowance fallback, retired types, the admin leave-type form, calendar placement, note visibility, the rejected-booking draft codec |
+| `test-leave.mjs` | 168 | Booking rules, balances and the per-year allowance fallback, retired types, the admin leave-type form, calendar placement, note visibility, the rejected-booking draft codec |
 | `test-line.mjs` | 42 | Webhook signature, group-id extraction, daily and week-ahead digest text |
-| `test-push.mjs` | 47 | RFC 8291 encryption against the spec's worked example, VAPID token and signature, the `วันนี้ … ลา` and week-ahead titles, the notice a booking's owner gets when someone else changes it, the year-end reminder |
+| `test-push.mjs` | 55 | RFC 8291 encryption against the spec's worked example, VAPID token and signature, the `วันนี้ … ลา` and week-ahead titles, the notice a booking's owner gets when someone else changes it, the year-end reminder, which hosts a subscription may point at |
 | `test-holidays.mjs` | 45 | Parsing a pasted holiday list, and its bounds; what an import would change; the reminder to enter next year's |
 | `test-report.mjs` | 30 | Leave counted over a span — cut to it, halves where they fall — per person and per month; the CSV writer and its formula guard; unused leave for the year end |
+| `test-auth.mjs` | 15 | The development bypass: honoured for a loopback caller only, refused for any other |
 | `test-migrate.mjs` | 29 | Migration tracking: the generated SQL on SQLite, then `migrate.mjs` itself through wrangler — applied twice, a legacy database refused and then baselined |
 | `test-i18n.mjs` | 27 | Lookup, placeholders, plurals, and the catalogue's own health |
-| `smoke.mjs` | 523 | The HTTP layer — see below |
+| `smoke.mjs` | 526 | The HTTP layer — see below |
 | `test-browser.mjs` | 56 | Five screenshots compared with per-platform references (the month on a phone, light and dark, and a laptop; the admin People page on both) — then the calendar's own script in headless Chrome: the phone's day card, tapping and swiping it, what a screen reader is told, the folding Book button, the days-off-by-month chart, the busy-day count, the card staying on screen under both banners, the month swipe, the notification invitation, the entry popup, drag-to-move, remove and undo, booking from an empty day, the Thai interface |
 | `check-openapi.mjs` | — | Each of the 41 routes is either documented in `openapi.yaml` or deliberately listed as not, and the API Shield 3.0.3 copy still builds from it, and its validation fingerprint moves only when validation does |
 
@@ -183,7 +184,7 @@ It is built against its own worst failure mode — passing while testing nothing
 
 ## Open items
 
-**No known bugs.** The push keypair mismatch (#40) was repaired on 2026-09-21. 1,079 assertions are green and `npm audit` is clean. The 2026-08-25 audit and the 2026-09-13 review both found and fixed what they turned up — the second a quota overdraw when moving a booking across New Year (#36) — and each fix is covered by a test or, where a test could not reach it, recorded in [ISSUES.md](ISSUES.md).
+**No known bugs.** The push keypair mismatch (#40) was repaired on 2026-09-21. 1,107 assertions are green and `npm audit` is clean. The 2026-08-25 audit and the 2026-09-13 review both found and fixed what they turned up — the second a quota overdraw when moving a booking across New Year (#36) — and each fix is covered by a test or, where a test could not reach it, recorded in [ISSUES.md](ISSUES.md).
 
 What follows is decisions, unfinished configuration, accepted trade-offs and debt — not defects.
 
@@ -265,6 +266,7 @@ Features — iCal, team grouping, coverage scoped to a team — are in PLAN.md s
 
 ## Change log
 
+- **2026-10-21** — Security and debt pass. `npm audit` clean again: Hono 4.13.13, wrangler 4.151.3 and the in-range fixes; eslint stays on 10.9 because its newer releases pull `@keyv/serialize`, which the organisation's registry policy blocks. `DEV_AUTH_BYPASS` now signs in only a caller on this machine (`CF-Connecting-IP` loopback), so left on in production it would sign in nobody. Push subscriptions must point at a real push service. Person keys are an HMAC under a salt the database keeps, not a hash anyone could recompute from a list of addresses. The year-end reminder records a failure when nobody could be reached, and an admin can try again. `user` is typed as optional, read through `userOf` where a person is required. Migration 0012 indexes the audit trail by subject.
 - **2026-10-21** — A consistency pass over every page. One back link, above the heading and naming where it goes; Cancel before Save, at the right; "3 days", never "3d"; a pencil to edit and a bin that asks once to delete, on every admin list — removing a holiday had been one click. Overdrawn reads "6.5 days over" on a booking's page as on My leave, not "-6.5 left". Errors (404, admins only, 500) are pages inside the app, in the reader's language, with a way back. One person's admin page is headed with their name; a person's page shares My leave's cards and rows, and their own or an admin's rows open the booking. A booking's browser tab names its dates. Labels capitalised alike; the Notifications page speaks plainly, with the commands behind "How to set it up"; balance cards show one language.
 - **2026-10-21** — Unused leave at the year end: `/admin/year-end` shows who still has annual leave unbooked and how much, and in November everyone with days left is reminded by push, once a year — or earlier, when an admin presses Send now. My leave marks bookings someone else last changed ("Booked for you by Pim"). The smoke suite now proves every route that changes someone else's booking tries to tell them — book, edit, drag, remove, undo — and that changing your own tells nobody.
 - **2026-10-21** — An admin can book leave for someone else: the booking form asks who it is for, and the booking is checked against that person's allowance and bookings and recorded as the admin's doing. People are offered by an opaque key, not their address, because the form sits in the calendar's HTML. When anyone changes a booking that is not theirs, the owner is told: a push in their own language, and a line on the booking's page. Pages link their script and stylesheet with the build in the address (`/app.js?v=…`), so a page cannot run another deploy's script.

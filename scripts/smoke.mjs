@@ -1012,7 +1012,7 @@ async function main() {
 	// these are the RFC 8291 example's, which are the right shape.
 	const P256DH = 'BCVxsr7N_eNgVRqvHtD0zTZsEc6-VV-JvLexhqUzORcxaOzi6-AYWXvTBHm4bjyPjs7Vd8pZGH6SRpkNtoIAiw4';
 	const AUTH = 'BTBZMqHH6r4Tts7J_aSIgg';
-	const endpointOf = (id) => `https://push.example.net/wpush/v2/${id}`;
+	const endpointOf = (id) => `https://updates.push.services.mozilla.com/wpush/v2/smoke-${id}`;
 	const sub = (id) => ({ endpoint: endpointOf(id), keys: { p256dh: P256DH, auth: AUTH } });
 
 	eq('push: subscribe accepted', (await postJson('/api/v1/push/subscribe', sub('admin-laptop'))).status, 200);
@@ -1029,7 +1029,12 @@ async function main() {
 
 	eq(
 		'push: rejects a non-https endpoint',
-		(await postJson('/api/v1/push/subscribe', { endpoint: 'http://push.example.net/x', keys: { p256dh: P256DH, auth: AUTH } })).status,
+		(await postJson('/api/v1/push/subscribe', { endpoint: 'http://updates.push.services.mozilla.com/x', keys: { p256dh: P256DH, auth: AUTH } })).status,
+		400,
+	);
+	eq(
+		'push: rejects an endpoint that is not a push service',
+		(await postJson('/api/v1/push/subscribe', { endpoint: 'https://collector.example.net/wpush/v2/x', keys: { p256dh: P256DH, auth: AUTH } })).status,
 		400,
 	);
 	eq(
@@ -1347,7 +1352,7 @@ async function main() {
 	check('two of two people out is flagged as busy', withCoverage.coverage?.busy === true, JSON.stringify(withCoverage.coverage));
 
 	// --- push subscriptions belong to someone -------------------------------
-	const adminEndpoint = 'https://push.example.net/wpush/v2/admin-laptop';
+	const adminEndpoint = 'https://updates.push.services.mozilla.com/wpush/v2/smoke-admin-laptop';
 	await postJson('/api/v1/push/unsubscribe', { endpoint: adminEndpoint });
 	eq(
 		"cannot unsubscribe another user's browser",
@@ -1511,7 +1516,7 @@ async function main() {
 	check('bars: across three days', /span 3/.test(bars[0] ?? ''), bars[0]);
 	check('bars: in the week layer', barHtml.includes('class="week-bars"'), 'no bar layer');
 	const barAt = barHtml.indexOf(bars[0] ?? '<none>');
-	check('bars: carries the person\'s badge', /class="badge" style="--who: #[0-9a-f]{6}"/.test(barHtml.slice(barAt, barAt + 600)), 'no badge');
+	check('bars: carries the person\'s badge', /class="badge" style="--who: #[0-9a-f]{6}"/.test(barHtml.slice(barAt, barAt + 900)), 'no badge');
 	check('bars: read aloud with the whole range, not one day', /aria-label="[^"]*–[^"]*"/.test(bars[0] ?? ''), bars[0]);
 	check('bars: each cell still has its phone dot', (barHtml.match(/<a class="chip [^"]*"[^>]*data-entry="smoke-bar-1"/g) ?? []).length >= 3, 'phone dots gone');
 	{
@@ -1903,7 +1908,7 @@ async function main() {
 	};
 	check('admin push: a person with a subscription shows as on, with a count', /push-state on[^]*Notifications on · 1 browser/.test(rowOf(pushAdminHtml, OTHER)), rowOf(pushAdminHtml, OTHER).slice(0, 300));
 	check('admin push: a person without one shows as off', /push-state muted[^]*Notifications off/.test(rowOf(pushAdminHtml, ADMIN)), rowOf(pushAdminHtml, ADMIN).slice(0, 300));
-	check('admin push: no endpoint reaches the page', !pushAdminHtml.includes('push.example.net'), 'endpoint in /admin/people');
+	check('admin push: no endpoint reaches the page', !pushAdminHtml.includes('updates.push.services.mozilla.com'), 'endpoint in /admin/people');
 	check('admin push: absent where push is not configured', !noKeysAdminHtml.includes('push-state'), 'push column without keys');
 
 	// --- the audit trail, filtered and paged ------------------------------------
@@ -1986,11 +1991,20 @@ async function main() {
 		const thisYear = TODAY.slice(0, 4);
 		const yeHtml = await (await fetch(`${BASE}/admin/year-end`)).text();
 		check('year end: an admin can send the reminder now', yeHtml.includes('action="/admin/year-end/remind"'), 'no button');
+		const claim = () => d1Rows(`SELECT status FROM notification_runs WHERE kind = 'yearend' AND date = '${thisYear}-11-01'`)[0]?.status;
+		// The placeholder keys cannot sign, so every browser refuses: people to
+		// reach and nobody reached is a failure, not a quiet year.
 		res = await post('/admin/year-end/remind', {});
-		check('year end: sent, and says to how many', /^Reminder sent to \d+ people?\.$/.test(flashOf(res)?.message ?? ''), flashOf(res)?.message);
-		eq('year end: claimed for the year, not the day', d1Rows(`SELECT status FROM notification_runs WHERE kind = 'yearend' AND date = '${thisYear}-11-01'`)[0]?.status, 'sent');
-		res = await post('/admin/year-end/remind', {});
-		check('year end: and only once a year', /already gone out/.test(flashOf(res)?.message ?? ''), flashOf(res)?.message);
+		check('year end: nobody reached is reported as a failure', /could not be sent/.test(flashOf(res)?.message ?? ''), flashOf(res)?.message);
+		eq('year end: claimed for the year, not the day — as failed', claim(), 'failed');
+		const failedPage = await (await fetch(`${BASE}/admin/year-end`)).text();
+		check('year end: the page offers to try again', failedPage.includes('name="retry"'), 'no retry');
+		res = await post('/admin/year-end/remind', { retry: '1' });
+		check('year end: a retry tries again', /could not be sent/.test(flashOf(res)?.message ?? '') && claim() === 'failed', `${flashOf(res)?.message} ${claim()}`);
+		// One that went out is this year's reminder, retry or not.
+		d1(`UPDATE notification_runs SET status = 'sent', people = 3 WHERE kind = 'yearend'`);
+		res = await post('/admin/year-end/remind', { retry: '1' });
+		check('year end: and a sent one is never sent again', /already gone out/.test(flashOf(res)?.message ?? '') && claim() === 'sent', `${flashOf(res)?.message} ${claim()}`);
 		check('year end: the page says it went', (await (await fetch(`${BASE}/admin/year-end`)).text()).includes('data-reminder-sent'), 'no sent line');
 		d1(`DELETE FROM notification_runs WHERE kind = 'yearend'`);
 	}

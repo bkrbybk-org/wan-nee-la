@@ -8,7 +8,7 @@
 // of the derivation is invisible until the very last byte is wrong.
 //
 // Run: npm run test:push
-import { b64urlToBytes, bytesToB64url, encryptPayload, vapidAuthorization } from '../src/notify/push.ts';
+import { b64urlToBytes, bytesToB64url, encryptPayload, isPushService, vapidAuthorization } from '../src/notify/push.ts';
 import { buildPushTitle, buildWeekTitle } from '../src/notify/digest.ts';
 import { ownerNotice, shouldTellOwner } from '../src/notify/owner.ts';
 import { yearEndKey, yearEndNotice } from '../src/notify/yearend.ts';
@@ -196,6 +196,14 @@ eq('owner notice: booked for them', ownerNotice({ ...moved, action: 'created' },
 eq('owner notice: one tag per booking, so changes replace each other', ownerNotice(moved, 'en').tag, ownerNotice({ ...moved, action: 'cancelled' }, 'en').tag);
 eq('owner notice: not for your own change', shouldTellOwner('a@example.com', 'a@example.com'), false);
 eq('owner notice: for someone else\'s', shouldTellOwner('admin@example.com', 'a@example.com'), true);
+
+// --- where a subscription may point ---------------------------------------------
+for (const host of ['fcm.googleapis.com', 'updates.push.services.mozilla.com', 'web.push.apple.com', 'wns2-sg2p.notify.windows.com']) {
+	eq(`push service: ${host}`, isPushService(host), true);
+}
+for (const host of ['collector.example.net', 'fcm.googleapis.com.example.net', 'evilpush.apple.com.example', 'notify.windows.com.evil.test']) {
+	eq(`not a push service: ${host}`, isPushService(host), false);
+}
 
 // --- the year-end reminder ----------------------------------------------------
 const annualType = { label_en: 'Annual', label_th: 'ลาพักร้อน' };

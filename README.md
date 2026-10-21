@@ -56,7 +56,7 @@ Cloudflare Access cannot run locally, so create `.dev.vars` (gitignored) to log 
 printf 'DEV_AUTH_BYPASS=1\nDEV_EMAIL=you@example.com\n' > .dev.vars
 ```
 
-> `DEV_AUTH_BYPASS=1` skips identity verification entirely. It is for `wrangler dev` only — in production it would hand every visitor a session as `DEV_EMAIL`. `/health` reports whether it is on.
+> `DEV_AUTH_BYPASS=1` skips identity verification entirely. It is for `wrangler dev` only, and it signs in only a caller on the same machine (`CF-Connecting-IP` is loopback) — left on in production it would sign in nobody, rather than hand every visitor a session as `DEV_EMAIL`. `/health` reports whether it is on.
 
 ```bash
 npm run dev

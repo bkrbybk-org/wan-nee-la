@@ -19,7 +19,7 @@
     "db:seed:remote": "wrangler d1 execute wan-nee-la --remote --file=migrations/0002_seed.sql",
     "test:dates": "node --experimental-strip-types scripts/test-dates.mjs",
     "test:leave": "node --experimental-strip-types scripts/test-leave.mjs",
-    "test": "npm run test:dates && npm run test:leave && npm run test:line && npm run test:push && npm run test:holidays && npm run test:report && npm run test:migrate && npm run test:i18n && npm run test:openapi",
+    "test": "npm run test:dates && npm run test:leave && npm run test:line && npm run test:push && npm run test:holidays && npm run test:report && npm run test:auth && npm run test:migrate && npm run test:i18n && npm run test:openapi",
     "test:line": "node --experimental-strip-types scripts/test-line.mjs",
     "test:push": "node --experimental-strip-types scripts/test-push.mjs",
     "test:holidays": "node --experimental-strip-types scripts/test-holidays.mjs",
@@ -39,22 +39,23 @@
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
     "format": "eslint . --fix",
-    "format:check": "eslint ."
+    "format:check": "eslint .",
+    "test:auth": "node --experimental-strip-types scripts/test-auth.mjs"
   },
   "dependencies": {
-    "hono": "^4.13.8"
+    "hono": "^4.13.13"
   },
   "devDependencies": {
-    "@cloudflare/workers-types": "^5.20260801.1",
+    "@cloudflare/workers-types": "^5.20261021.1",
     "@eslint/js": "^10.0.1",
     "@stylistic/eslint-plugin": "^5.10.0",
     "esbuild": "^0.28.1",
     "eslint": "^10.9.1",
     "globals": "^17.11.0",
-    "swagger-ui-dist": "^5.32.14",
+    "swagger-ui-dist": "^5.34.0",
     "typescript": "^5.7.2",
     "typescript-eslint": "^8.68.0",
-    "wrangler": "^4.135.0",
+    "wrangler": "^4.151.3",
     "yaml": "^2.9.1"
   },
   "allowScripts": {

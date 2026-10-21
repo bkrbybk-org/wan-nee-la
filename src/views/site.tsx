@@ -28,6 +28,19 @@ const PersonColorsContext = createContext<ReadonlyMap<string, string>>(new Map()
 
 export const PersonColorsProvider = PersonColorsContext.Provider;
 
+/**
+ * Each person's opaque key (see `personKeys`), set by the calendar page so
+ * every bar, row and panel entry carries the same one.
+ */
+const PersonKeysContext = createContext<ReadonlyMap<string, string>>(new Map());
+
+export const PersonKeysProvider = PersonKeysContext.Provider;
+
+export function useKeyOf(): (email: string) => string {
+	const keys = useContext(PersonKeysContext);
+	return (email) => keys.get(email) ?? '';
+}
+
 /** The colour for one person; an address with no user row falls back to its hash. */
 export function useColorOf(): (email: string) => string {
 	const colors = useContext(PersonColorsContext);

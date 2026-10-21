@@ -15,8 +15,8 @@ import {
 	MONDAY,
 } from '../domain/dates.ts';
 import { byDate, halfOn, visibleNote, weekLanes, type BookingDraft, type WeekSegment } from '../domain/leave.ts';
-import { initials, personKey, shortName } from './person.ts';
-import { PersonColorsProvider, useColorOf } from './site.tsx';
+import { initials, shortName } from './person.ts';
+import { PersonColorsProvider, PersonKeysProvider, useColorOf, useKeyOf } from './site.tsx';
 import type { Half, Holiday, LeaveEntry, LeaveType, User } from '../types.ts';
 import { FlashBanner, HolidaysDueBanner, Layout } from './layout.tsx';
 import type { HolidayGap } from '../domain/holidays.ts';
@@ -39,6 +39,8 @@ interface CalendarProps {
 	people?: { key: string; name: string }[];
 	/** Each person's badge colour, by email, in sign-up order. */
 	colors: ReadonlyMap<string, string>;
+	/** Each person's opaque key, by email — see `personKeys`. */
+	keys: ReadonlyMap<string, string>;
 	holidays: Holiday[];
 	types: LeaveType[];
 	today: string;
@@ -115,6 +117,7 @@ function UpcomingList({
 }) {
 	const t = useT();
 	const colorOf = useColorOf();
+	const keyOf = useKeyOf();
 	const canEdit = (e: LeaveEntry) => e.user_email === user.email || Boolean(user.is_admin);
 
 	// One row per booking, under the day it starts. It used to be one row per
@@ -153,7 +156,7 @@ function UpcomingList({
 								{dayEntries.map((e) => (
 									<a
 										class={`upcoming-item ${canEdit(e) ? 'mine' : ''}`}
-										data-who={personKey(e.user_email)}
+										data-who={keyOf(e.user_email)}
 										href={canEdit(e) ? `/leave/${e.id}/edit` : '#'}
 										aria-label={rangeLabel(e, lang)}
 										{...entryData(e, canEdit(e), visibleNote(e, user), lang)}
@@ -214,6 +217,7 @@ function WeekBars(props: {
 	const { week, segs, heldBack, monthPrefix, today, map, canEdit, noteFor } = props;
 	const lang = useLang();
 	const colorOf = useColorOf();
+	const keyOf = useKeyOf();
 	return (
 		<div class="week-bars">
 			{segs.map((s) => {
@@ -243,7 +247,7 @@ function WeekBars(props: {
 						style={`--chip: ${e.color}; grid-column: ${s.col + 1} / span ${s.span}; grid-row: ${s.lane + 1}`}
 						title={`${e.display_name} — ${typeLabel(e, lang)}${noteFor(e) ? `: ${noteFor(e)}` : ''}`}
 						aria-label={rangeLabel(e, lang)}
-						data-who={personKey(e.user_email)}
+						data-who={keyOf(e.user_email)}
 						{...entryData(e, canEdit(e), noteFor(e), lang)}
 					>
 						<span class="badge" style={`--who: ${colorOf(e.user_email)}`} aria-hidden="true">
@@ -313,6 +317,7 @@ function DayMore(props: {
 	const t = useT();
 	const lang = useLang();
 	const colorOf = useColorOf();
+	const keyOf = useKeyOf();
 	const id = `more-${date}`;
 	return (
 		<>
@@ -336,7 +341,7 @@ function DayMore(props: {
 						<li>
 							<a
 								class="day-more-item"
-								data-who={personKey(e.user_email)}
+								data-who={keyOf(e.user_email)}
 								href={canEdit(e) ? `/leave/${e.id}/edit` : '#'}
 								style={`--chip: ${e.color}`}
 								aria-label={entryLabel(e, date, lang)}
@@ -427,7 +432,9 @@ export function CalendarPage(props: CalendarProps) {
 			fitViewport
 		>
 			<PersonColorsProvider value={props.colors}>
+				<PersonKeysProvider value={props.keys}>
 				<CalendarBody {...props} />
+				</PersonKeysProvider>
 			</PersonColorsProvider>
 		</Layout>
 	);

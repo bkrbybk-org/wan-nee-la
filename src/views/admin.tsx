@@ -307,7 +307,16 @@ function YearEndBody({ year, thisYear, type, rows, pushCounts, reminder }: YearE
 							</form>
 						</>
 					) : reminder.status === 'failed' ? (
-						<p class="bad">{t('admin.remindFailed', { date: when(reminder), error: reminder.error ?? '' })}</p>
+						<>
+							<p class="bad">{t('admin.remindFailed', { date: when(reminder), error: reminder.error ?? '' })}</p>
+							<form method="post" action="/admin/year-end/remind">
+								<input type="hidden" name="retry" value="1" />
+								<button type="submit" class="btn tonal">
+									<BellRingIcon class="sm" />
+									{t('admin.remindRetry')}
+								</button>
+							</form>
+						</>
 					) : reminder.status === 'skipped_empty' ? (
 						<p>{t('admin.remindEmpty', { date: when(reminder) })}</p>
 					) : (

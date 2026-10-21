@@ -48,7 +48,7 @@ Two zone-level layers run at the edge **before** Access, so they see anonymous t
 
 ## Data model (D1)
 
-Eleven migrations, applied in order; `0010` removed the unused unpaid leave type and changed data only, and `0011` added `leave_types.active`. This is the schema they produce — checked against a database with all of them applied, not written from memory.
+Twelve migrations, applied in order; `0010` removed the unused unpaid leave type and changed data only, `0011` added `leave_types.active`, and `0012` indexes the audit trail by whose booking it was. This is the schema they produce — checked against a database with all of them applied, not written from memory.
 
 Which have run is recorded in the database itself, in `applied_migrations (name, applied_at)`, written by `scripts/migrate.mjs` in the same script as each file it applies. It is not in the block below because no migration creates it: the runner does, on first use.
 
@@ -229,7 +229,7 @@ The browser notification's **title** is the message on its own: `วันนี
 | `VAPID_PUBLIC_KEY` | var | not a secret — every subscribing browser is given it; empty keeps push off |
 | `VAPID_PRIVATE_KEY` | secret | `wrangler secret put`; push stays off without it |
 | `VAPID_SUBJECT` | var | a contact address push services can reach, e.g. `mailto:ops@example.com` |
-| `DEV_AUTH_BYPASS` / `DEV_EMAIL` | var | local development only — `"1"` skips Access verification and signs in as `DEV_EMAIL` |
+| `DEV_AUTH_BYPASS` / `DEV_EMAIL` | var | local development only — `"1"` skips Access verification and signs in as `DEV_EMAIL`, and only for a caller on this machine: `CF-Connecting-IP` must be loopback. In production the edge sets that header to the visitor's address, so the bypass left on still signs nobody in. Not by hostname — `wrangler dev` rewrites the URL to the configured route. |
 
 The Bangkok offset is a constant in `src/domain/dates.ts`, not a binding — Thailand has never observed DST, so there is nothing to configure.
 
@@ -299,7 +299,7 @@ The trade-off: a screen reader meets a week's bars inside its first day cell. Ea
 
 **Bars show "First L."** — "Chatchai W." rather than a surname cut off by an ellipsis in every cell. The tooltip, the bar's label, the popup and the Upcoming list keep the full name.
 
-**Following one person.** Pointing at any of someone's bars, Upcoming rows or "+N more" rows lights all of them and dims everyone else (`src/client/calendar.ts`); keyboard focus does the same. They are matched on `data-who`, a one-way hash of the address (`personKey`) — the page can tell two entries belong to one person without carrying the address, which the calendar keeps out of its HTML. Only on devices that can hover.
+**Following one person.** Pointing at any of someone's bars, Upcoming rows or "+N more" rows lights all of them and dims everyone else (`src/client/calendar.ts`); keyboard focus does the same. They are matched on `data-who`, an opaque key per person (`personKeys`) — the page can tell two entries belong to one person without carrying the address, which the calendar keeps out of its HTML. The key is HMAC-SHA256 of the address under a random salt kept in `app_config` (`personKeySalt`, made on first use), cut to 16 hex characters. It replaced an unsalted 32-bit FNV hash, which anyone with a list of likely addresses could recompute and so map back. Only on devices that can hover.
 
 **Past days fade** — a washed-out ground and a quieter date, not opacity on the cell, which would also fade the week's bars living in its first cell. A bar fades on its own, and only once it has finished entirely: one still running today is not in the past, only its start is. Fading is a cue, not a lock — leave can be booked into the past, and sick leave usually is.
 
@@ -342,7 +342,7 @@ An overview and six section pages (`src/views/admin.tsx`), replacing one page th
 
 An admin's booking form opens with **Booking for**: themselves first, then everyone active. Someone off sick phones in, and the admin books it for them. The booking is the other person's in every respect — their allowance, their other bookings for the overlap check, their coverage in the summary ("with Ploy") — and the audit trail records the admin as the actor, so the booking's history reads "Pim → Ploy's booking". A note under the field, shown only once someone else is chosen, says it counts against their allowance and that they are told.
 
-The options are `personKey`s, not addresses: the calendar, where the dialog lives, keeps addresses out of its HTML (see *Following one person*). The server maps a key back by hashing every active user, and refuses a key that names nobody, or more than one. Only the create form has the field — a booking's owner never changes.
+The options are person keys, not addresses: the calendar, where the dialog lives, keeps addresses out of its HTML (see *Following one person*). The server maps a key back by keying every active user, and refuses a key that names nobody, or more than one. Only the create form has the field — a booking's owner never changes.
 
 **The owner is told** (`src/notify/owner.ts`). When anyone other than the owner books, edits, removes or restores a booking — through the form, a drag, or undo — the owner's browsers get a push in the owner's language: "Pim changed your leave", "Annual · 3 Nov – 6 Nov". It is tagged per booking, so a second change replaces the first on the lock screen. It is sent with `waitUntil`, after the response, and is best effort: no subscription, no keys or a refusing push service are silent, and the change is already saved. The booking's page says the same thing to the owner for as long as it is true — "Pim booked this for you" or "Last changed by Pim", from the latest audit row — for the owner who has notifications off, and so does each row of My leave ("Booked for you by Pim", "Changed by Pim", "Removed by Pim"; `changedByOthers`, one query for all of them).
 
@@ -376,7 +376,7 @@ Two channels, one job. `runDigest` decides *whether* to notify once — skipping
 
 Two kinds of post, too: the daily "out today" digest, and a week-ahead summary on Monday mornings. They claim separate rows in `notification_runs` — keyed on `(date, kind, channel)` — because a Monday carries both, and a shared key would let whichever ran first suppress the other.
 
-**The year-end reminder** (`src/notify/yearend.ts`) is a third kind, push only and personal: in November, everyone with annual leave unbooked is told how much, in their own language ("6 days of Annual leave left in 2026"). The app carries nothing over into the next year (PLAN 5.7), so the cheapest fix for days lost in January is saying so while there are weeks left to book them. It runs from the same cron, in its own `try`, and claims `(YYYY-11-01, yearend, push)` — the year's 1 November, not the day it ran — so the first weekday of November sends it and every later run finds it taken. An admin's "Send now instead" on `/admin/year-end` takes the same claim, and is then that year's reminder. "Unbooked" rather than "untaken": a day booked for December is already spoken for. Only people with notifications on can be reached, and the page shows who they are so an admin can tell the others.
+**The year-end reminder** (`src/notify/yearend.ts`) is a third kind, push only and personal: in November, everyone with annual leave unbooked is told how much, in their own language ("6 days of Annual leave left in 2026"). The app carries nothing over into the next year (PLAN 5.7), so the cheapest fix for days lost in January is saying so while there are weeks left to book them. It runs from the same cron, in its own `try`, and claims `(YYYY-11-01, yearend, push)` — the year's 1 November, not the day it ran — so the first weekday of November sends it and every later run finds it taken. An admin's "Send now instead" on `/admin/year-end` takes the same claim, and is then that year's reminder. When there were people to reach and no browser accepted it — a broken key, a refusing push service — the run is recorded as failed rather than sent, and the page offers "Try again", which takes back only a failed claim. "Unbooked" rather than "untaken": a day booked for December is already spoken for. Only people with notifications on can be reached, and the page shows who they are so an admin can tell the others.
 
 | Channel | Reaches | Cost | Configured by |
 | --- | --- | --- | --- |
@@ -392,6 +392,7 @@ Implemented directly against RFC 8291 (`aes128gcm` payload encryption) and RFC 8
 Three consequences worth knowing:
 
 - **The message travels inside the payload.** A service worker wakes with no page open, and a fetch to an origin behind Access returns a login redirect — so it cannot pull the digest itself. The text is encrypted end to end; the push service forwards bytes it cannot read.
+- **Only real push services.** `parseSubscription` accepts an endpoint on FCM, Mozilla's autopush, Apple's or Windows' push service (`isPushService`), not any https URL: a subscription is an address the Worker posts to every morning, and anyone signed in could otherwise point it at their own server.
 - **Subscriptions are per browser, not per person.** The endpoint is the primary key. Re-subscribing reassigns ownership to whoever is signed in, which is what makes a shared machine safe after someone signs out.
 - **Dead endpoints are pruned on send.** 404 and 410 mean gone for good and the row is deleted; anything else may be transient and is retried tomorrow.
 

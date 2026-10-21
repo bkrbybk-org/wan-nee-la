@@ -17,7 +17,7 @@ import {
 	visibleNote,
 	weekLanes,
 } from '../src/domain/leave.ts';
-import { initials, PERSON_COLORS, personColor, personColors, personKey, shortName } from '../src/views/person.ts';
+import { initials, PERSON_COLORS, personColor, personColors, personKeys, shortName } from '../src/views/person.ts';
 import { parseLeaveTypeForm } from '../src/domain/leaveTypes.ts';
 import { defaultDisplayName } from '../src/repo/db.ts';
 
@@ -349,9 +349,15 @@ eq('short name: first name and surname initial', shortName('Chatchai Wongdetsaku
 eq('short name: a single word is left alone', shortName('Admin'), 'Admin');
 eq('short name: already short stays readable', shortName('Parkpoom P'), 'Parkpoom P.');
 eq('short name: extra spaces are ignored', shortName('  Soipachara   Mekalai '), 'Soipachara M.');
-eq('person key: the same person always matches', personKey('a@example.com'), personKey(' A@Example.com'));
-check('person key: different people do not', personKey('a@example.com') !== personKey('b@example.com'), 'collided');
-check('person key: carries nothing of the address', !personKey('somchai@example.com').includes('somchai'), 'leaks the address');
+{
+	const keys = await personKeys('salt-one', ['a@example.com', ' A@Example.com', 'b@example.com', 'somchai@example.com']);
+	eq('person key: the same person always matches', keys.get('a@example.com'), keys.get(' A@Example.com'));
+	check('person key: different people do not', keys.get('a@example.com') !== keys.get('b@example.com'), 'collided');
+	check('person key: carries nothing of the address', !keys.get('somchai@example.com').includes('somchai'), 'leaks the address');
+	check('person key: 16 hex characters, as the booking form expects', /^[0-9a-f]{16}$/.test(keys.get('a@example.com')), keys.get('a@example.com'));
+	const other = await personKeys('salt-two', ['a@example.com']);
+	check('person key: a different salt gives different keys, so they cannot be recomputed without it', other.get('a@example.com') !== keys.get('a@example.com'), 'salt ignored');
+}
 eq('initials: two words', initials('Somchai Pong'), 'SP');
 eq('initials: one word', initials('Admin'), 'A');
 eq('initials: lower case is raised', initials('parkpoom p'), 'PP');
