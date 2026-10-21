@@ -24,7 +24,7 @@
  * that is a renamed file, and the name is the thing to stop trusting.
  */
 
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { basename } from 'node:path';
 import { parse } from 'yaml';
 import { cfApi, findZoneId } from './cloudflare-api.mjs';
@@ -50,7 +50,22 @@ function claimedBy(name) {
 
 const rows = [];
 if (files.length > 0) {
-	for (const f of files) rows.push({ name: basename(f), print: printOf(readFileSync(f, 'utf8')), from: 'file' });
+	const missing = files.filter((f) => !existsSync(f));
+	if (missing.length > 0) {
+		// The dashboard downloads under the name the row has — for an upload made
+		// before the names carried a fingerprint, plain wan-nee-la-openapi.json.
+		console.error(`No such file: ${missing.join(', ')}`);
+		console.error('Download it from Uploaded schemas → ⋯ → Download, then pass the path it was saved to (often ~/Downloads/<the row\'s name>).');
+		process.exit(2);
+	}
+	for (const f of files) {
+		try {
+			rows.push({ name: basename(f), print: printOf(readFileSync(f, 'utf8')), from: 'file' });
+		} catch (err) {
+			console.error(`${f} is not a JSON or YAML schema: ${err instanceof Error ? err.message : err}`);
+			process.exit(2);
+		}
+	}
 } else {
 	const token = process.env.CLOUDFLARE_API_TOKEN;
 	if (!token) {
