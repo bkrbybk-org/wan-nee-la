@@ -237,7 +237,7 @@ export function BookingForm({ types, today, compact, entry, defaultDate, errorFi
 			{/* Filled in by booking.js before the button is pressed: what this
 			    costs, what it leaves, and who else is away. Empty, and hidden,
 			    without it. */}
-			<div class="booking-summary" data-summary aria-live="polite">
+			<div class="booking-summary" id="booking-summary" data-summary aria-live="polite">
 				<p class="preview" data-preview></p>
 				<p class="balance" data-balance></p>
 				<p class="coverage" data-coverage></p>

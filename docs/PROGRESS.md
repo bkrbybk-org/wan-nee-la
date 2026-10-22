@@ -1,6 +1,6 @@
 # wan-nee-la — Progress
 
-Updated: 2026-10-21
+Updated: 2026-10-22
 
 > This repo is **public**. Every account id, hostname, database id and Access
 > value below is a placeholder; the real ones live in `wrangler.local.jsonc`,
@@ -8,7 +8,7 @@ Updated: 2026-10-21
 
 ## Status
 
-Deployed and serving. Version `8f57b1c4-f3e5-4879-8d07-5d8d4cb23912`, deployed 2026-10-21 with `npm run ship`, D1 `<database-id>` in APAC, behind Cloudflare Access on `<hostname>`. Production checks passed: the new version serves all traffic, `/health` and `/` both 302 to Access, production D1 answers, all twelve migrations are applied, and `shield:probe` stops all 17 violating requests at the edge.
+Deployed and serving. Version `c1df9696-59d7-4635-b0d7-15b0ca76008d`, deployed 2026-10-22 with `npm run ship`, D1 `<database-id>` in APAC, behind Cloudflare Access on `<hostname>`. Production checks passed: the new version serves all traffic, `/health` and `/` both 302 to Access, production D1 answers, all twelve migrations are applied, and `shield:probe` stops all 17 violating requests at the edge.
 
 **In real use.** Twelve active users, 24 confirmed bookings, 26 holidays, four leave types, 49 rows in the audit trail (read 2026-10-20). That changes what matters here: the shared surfaces now have a real audience, so note visibility, the audit trail and the privacy rules on `/u/:email` are load-bearing rather than theoretical.
 
@@ -151,12 +151,12 @@ Two consequences worth remembering:
 
 ## Verification
 
-**1,107 automated assertions**, all green. CI runs them, and lint, on every push and pull request.
+**1,116 automated assertions**, all green. CI runs them, and lint, on every push and pull request.
 
 | Suite | Assertions | Covers |
 | --- | --- | --- |
 | `test-dates.mjs` | 114 | Bangkok boundary, half-days, weekends, holidays, month grids |
-| `test-leave.mjs` | 168 | Booking rules, balances and the per-year allowance fallback, retired types, the admin leave-type form, calendar placement, note visibility, the rejected-booking draft codec |
+| `test-leave.mjs` | 170 | Booking rules, balances and the per-year allowance fallback, retired types, the admin leave-type form, calendar placement, note visibility, the rejected-booking draft codec |
 | `test-line.mjs` | 42 | Webhook signature, group-id extraction, daily and week-ahead digest text |
 | `test-push.mjs` | 55 | RFC 8291 encryption against the spec's worked example, VAPID token and signature, the `วันนี้ … ลา` and week-ahead titles, the notice a booking's owner gets when someone else changes it, the year-end reminder, which hosts a subscription may point at |
 | `test-holidays.mjs` | 45 | Parsing a pasted holiday list, and its bounds; what an import would change; the reminder to enter next year's |
@@ -165,7 +165,7 @@ Two consequences worth remembering:
 | `test-migrate.mjs` | 29 | Migration tracking: the generated SQL on SQLite, then `migrate.mjs` itself through wrangler — applied twice, a legacy database refused and then baselined |
 | `test-i18n.mjs` | 27 | Lookup, placeholders, plurals, and the catalogue's own health |
 | `smoke.mjs` | 526 | The HTTP layer — see below |
-| `test-browser.mjs` | 56 | Five screenshots compared with per-platform references (the month on a phone, light and dark, and a laptop; the admin People page on both) — then the calendar's own script in headless Chrome: the phone's day card, tapping and swiping it, what a screen reader is told, the folding Book button, the days-off-by-month chart, the busy-day count, the card staying on screen under both banners, the month swipe, the notification invitation, the entry popup, drag-to-move, remove and undo, booking from an empty day, the Thai interface |
+| `test-browser.mjs` | 63 | Five screenshots compared with per-platform references (the month on a phone, light and dark, and a laptop; the admin People page on both) — then the calendar's own script in headless Chrome: the phone's day card, tapping and swiping it, what a screen reader is told, the folding Book button, the days-off-by-month chart, the busy-day count, the card staying on screen under both banners, the month swipe, the notification invitation, the entry popup, drag-to-move, remove and undo, booking from an empty day and the button held when the allowance cannot cover it, the narrower weekend columns with the bars still on their days, the phone's folded Upcoming and its colour key, the Thai interface |
 | `check-openapi.mjs` | — | Each of the 43 routes is either documented in `openapi.yaml` or deliberately listed as not, and the API Shield 3.0.3 copy still builds from it, and its validation fingerprint moves only when validation does |
 
 The smoke suite boots a real worker against a scratch database and exercises what pure functions cannot reach: the CSRF guard, ownership checks on edit and cancel, booking rules over real requests, the open-redirect guards on `returnTo` **and on the `Referer` header**, note visibility across two identities, the audit trail's contents, the security headers, digest decisions, the webhook signature, push subscription ownership, admin authorisation, undo and its re-validation, next-year and cross-year quota, a LINE channel switched off by its flag, adding, retiring and deleting leave types, and history pruning through the real scheduled handler, the audit trail's filter and pages, the admin's notifications column, and an unhandled error — a table renamed under the running server — answering in the app's own shapes and logged by route pattern, never by path.
@@ -184,7 +184,7 @@ It is built against its own worst failure mode — passing while testing nothing
 
 ## Open items
 
-**No known bugs.** The push keypair mismatch (#40) was repaired on 2026-09-21. 1,107 assertions are green and `npm audit` is clean. The 2026-08-25 audit and the 2026-09-13 review both found and fixed what they turned up — the second a quota overdraw when moving a booking across New Year (#36) — and each fix is covered by a test or, where a test could not reach it, recorded in [ISSUES.md](ISSUES.md).
+**No known bugs.** The push keypair mismatch (#40) was repaired on 2026-09-21. 1,116 assertions are green and `npm audit` is clean. The 2026-08-25 audit and the 2026-09-13 review both found and fixed what they turned up — the second a quota overdraw when moving a booking across New Year (#36) — and each fix is covered by a test or, where a test could not reach it, recorded in [ISSUES.md](ISSUES.md).
 
 What follows is decisions, unfinished configuration, accepted trade-offs and debt — not defects.
 
@@ -265,6 +265,8 @@ Features — iCal, team grouping, coverage scoped to a team — are in PLAN.md s
 - The daily digest runs at 09:00, Mon–Fri, and stays silent on days nobody is away. Its push title is Thai only and names people rather than counting them — a lock screen gives it one line, and the names are the message.
 
 ## Change log
+
+- **2026-10-22** — UI review fixes. The booking form says before submitting that a booking needs more than is left ("Annual: none left — not enough for this"), in the error colour, and holds the button until it fits; the save's own refusal, when the allowance is already spent or overdrawn, says "No annual leave left for 2026" instead of "-6.5 remaining". "Also away" on a busy day is amber, not the red kept for refusals. On a laptop the weekend columns are narrower (10% against 16%), so weekday names cut less. Upcoming no longer repeats the day card's people when the card shows today; on a phone it stays under the card on busy days too, folded to four days with "Show all upcoming", and a one-line colour key sits under the grid. The phone's Book button starts out of the way instead of sitting on the card until the observer catches up. The weekday header's weekend shading now works in Thai.
 
 - **2026-10-21** — Docs cross-checked against the code. Route counts brought to 43 (10 in the spec, 33 deliberately not); the spec's introduction no longer says push is undelivered or that service tokens are refused, both untrue since September. Prose only: the Shield fingerprint is unchanged, so nothing to re-upload.
 - **2026-10-21** — The Shield schema file is named for its fingerprint (`dist/wan-nee-la-openapi-<fingerprint>.json`), so a dashboard row says which schema it holds. `npm run shield:check` fingerprints a schema — files downloaded from the dashboard, every upload in the zone with `CLOUDFLARE_API_TOKEN`, or with neither, the local file to upload — and flags a file whose name claims a fingerprint its content lacks. The Shield scripts resolve paths from their own location, so they print this checkout's full paths from any directory. Schema `0925e17be7913108` uploaded for the preview's `for` parameter; the probe gained a case for it, 17 of 17 enforced.

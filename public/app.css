@@ -40,6 +40,8 @@
 	--md-on-error: #ffffff;
 	--md-error-container: #ffcec5;
 	--md-on-error-container: #350b09;
+	--app-caution-container: #ffdea8;
+	--app-on-caution-container: #271900;
 	--md-surface: #f8f9fb;
 	--md-on-surface: #1b1c1d;
 	--md-surface-variant: #dfe3e9;
@@ -108,6 +110,8 @@
 		--md-on-error: #551915;
 		--md-error-container: #782723;
 		--md-on-error-container: #ffcec5;
+		--app-caution-container: #5b4300;
+		--app-on-caution-container: #ffdea8;
 		--md-surface: #131314;
 		--md-on-surface: #e1e2e4;
 		--md-surface-variant: #43474d;
@@ -148,6 +152,8 @@
 	--md-on-error: #551915;
 	--md-error-container: #782723;
 	--md-on-error-container: #ffcec5;
+	--app-caution-container: #5b4300;
+	--app-on-caution-container: #ffdea8;
 	--md-surface: #131314;
 	--md-on-surface: #e1e2e4;
 	--md-surface-variant: #43474d;
@@ -1204,11 +1210,10 @@ form.inline:has(.tf-support) { margin-bottom: 28px; }
 
 /* ---------- legend ---------- */
 
-/* Hidden on phones: the agenda names each leave type in words on the row
-   itself, so the colour key has nothing left to explain and was costing two
-   rows of a small screen. The month grid, which shows colour and no type name,
-   is desktop-only — and that is where the legend earns its place. */
-.legend { display: none; flex-wrap: wrap; gap: 8px; margin: var(--pad) 0; }
+/* Chips on a laptop, beside the bars. On a phone a single line of dots and
+   names under the grid, in the reader's language only: the grid's dots carry
+   colour and nothing else, and the key is what says which is which. */
+.legend { display: flex; flex-wrap: wrap; gap: 8px; margin: var(--pad) 0; }
 /* M3 assist chip. */
 .legend-item {
 	display: inline-flex;
@@ -1347,8 +1352,8 @@ form.inline:has(.tf-support) { margin-bottom: 28px; }
 .coverage.busy {
 	padding: 8px 12px;
 	border-radius: var(--md-shape-sm);
-	background: var(--md-error-container);
-	color: var(--md-on-error-container);
+	background: var(--app-caution-container);
+	color: var(--app-on-caution-container);
 	font-weight: 500;
 }
 
@@ -1575,13 +1580,17 @@ form.inline:has(.tf-support) { margin-bottom: 28px; }
 	.brand-name { display: inline; }
 	.account-name { display: inline; margin-right: 4px; color: var(--md-on-surface-variant); }
 	.fab { display: none; }
-	.legend { display: flex; }
 
 	/* Bars replace the per-day chips. A week shows three rows of them and each
 	   day counts the rest; CELL_CHIPS in calendar.tsx decides how many rows, and
 	   the server never renders more, so nothing here has to hide extras. */
 	.cell .chips { display: none; }
 	.lane-space { display: block; height: calc(var(--lanes, 0) * 26px); }
+	/* Weekdays 16% each, the weekend 10%. The bars' grid sits in the week's
+	   first cell and is sized from it: the whole row is 100/16 of a weekday
+	   column, or 100/10 of a weekend one when the week opens on Sunday. */
+	.grid col { width: 16%; }
+	.grid col.col-weekend { width: 10%; }
 	.week-bars {
 		display: grid;
 		position: absolute;
@@ -1589,14 +1598,18 @@ form.inline:has(.tf-support) { margin-bottom: 28px; }
 		left: 0;
 		top: 36px;
 		bottom: 0;
-		width: calc(700% + 6 * 6px);
-		grid-template-columns: repeat(7, minmax(0, 1fr));
+		width: calc(625% + 6 * 6px);
+		grid-template-columns: repeat(5, minmax(0, 16fr)) repeat(2, minmax(0, 10fr));
 		grid-auto-rows: 22px;
 		column-gap: 6px;
 		row-gap: 4px;
 		align-content: start;
 		pointer-events: none;
 		overflow: hidden;
+	}
+	.grid.weekend-first .week-bars {
+		width: calc(1000% + 6 * 6px);
+		grid-template-columns: minmax(0, 10fr) repeat(5, minmax(0, 16fr)) minmax(0, 10fr);
 	}
 	.week-bars > * { pointer-events: auto; margin: 0 6px; min-width: 0; }
 	.bar { display: flex; align-items: center; gap: 6px; padding: 2px 8px 2px 4px; }
@@ -2110,10 +2123,19 @@ a.my-link:focus-visible { outline: 2px solid var(--md-primary); outline-offset: 
 .agenda-view.day-mode .agenda-row.selected.has-people .agenda-type { color: inherit; opacity: 0.85; }
 .agenda-view.day-mode .agenda-row.selected.has-people .agenda-book { color: inherit; }
 
-/* On a phone the card is the answer, and Upcoming under it would repeat the
-   same names; it shows only while the chosen day has nobody away. */
+/* With today chosen, its card already names everyone away today: Upcoming
+   starts from tomorrow rather than saying it twice. */
+.cal-side:has(.agenda-view.day-mode .agenda-row.selected.today.has-people) .upcoming-day.today { display: none; }
+.upcoming-all { margin: 8px 0 0 -12px; }
 @media (max-width: 767px) {
-	.cal-side:has(.agenda-view.day-mode .agenda-row.selected.has-people) .cal-upcoming { display: none; }
+	.legend { gap: 4px 14px; margin: 10px 0 0; }
+	.legend-item { height: auto; padding: 0; border: 0; gap: 6px; font-size: 12px; line-height: 16px; font-weight: 400; color: var(--md-on-surface-variant); }
+	.legend-item .muted { display: none; }
+	/* Folded by calendar.ts to the first few days; the button opens the rest. */
+	.cal-upcoming.folded .upcoming-day:nth-child(n+5) { display: none; }
+}
+@media (min-width: 768px) {
+	.upcoming-all { display: none; }
 }
 @media (min-width: 1024px) and (min-height: 700px) {
 	body.fit-viewport .cal-side .agenda-view { margin-top: 0; }
@@ -2204,6 +2226,8 @@ a.my-link:focus-visible { outline: 2px solid var(--md-primary); outline-offset: 
 .booking-summary .preview { font-size: 14px; line-height: 20px; font-weight: 500; color: var(--md-on-surface); }
 .booking-summary .balance { font-size: 13px; line-height: 18px; color: var(--md-on-surface-variant); }
 .booking-summary .balance.bad, .booking-summary .preview.bad { color: var(--md-error); }
+/* The reason the button is held: as easy to find as the button. */
+.booking-summary .balance.bad { font-weight: 500; }
 .booking-summary .coverage { margin: 0; font-size: 13px; line-height: 18px; }
 .booking-summary .coverage.busy { margin-top: 6px; }
 .booking .actions { justify-content: flex-end; margin-top: 12px; }

@@ -56,7 +56,7 @@ function enhance(form: HTMLFormElement) {
 		bookDays: 'Book {days} day|Book {days} days',
 		balance: '{type}: {remaining} left → {after} after this',
 		balanceShort: '{type}: only {remaining} left — not enough for this',
-		balanceNone: '{type}: none left',
+		balanceNone: '{type}: none left — not enough for this',
 		coverage: 'Also away on {date}: {names} — with you, {out} of {headcount}',
 		coverageFor: 'Also away on {date}: {names} — with {who}, {out} of {headcount}',
 		coverageMore: '{names} and {more} more',
@@ -107,7 +107,20 @@ function enhance(form: HTMLFormElement) {
 		if (balance) balance.textContent = '';
 		paintCoverage(null);
 		if (submit) submit.textContent = submitLabel;
+		hold(false);
 		summary?.classList.remove('filled');
+	}
+
+	/**
+	 * Hold the button while the summary says the server would refuse. Only on
+	 * the preview's word: when it cannot be reached the form still submits and
+	 * the server decides, as it always does.
+	 */
+	function hold(refused: boolean) {
+		if (!submit) return;
+		submit.disabled = refused;
+		if (refused) submit.setAttribute('aria-describedby', summary?.id ?? '');
+		else submit.removeAttribute('aria-describedby');
 	}
 
 	async function request() {
@@ -157,6 +170,7 @@ function enhance(form: HTMLFormElement) {
 			}
 			paintBalance(body.balance ?? null);
 			paintCoverage(body.coverage ?? null);
+			hold(typeof body.days !== 'number' || (body.balance != null && body.balance.after < 0));
 		} catch {
 			// Offline or the request failed. The summary is a nicety; the form
 			// still submits and the server still decides.
@@ -174,7 +188,8 @@ function enhance(form: HTMLFormElement) {
 		}
 		const short = data.after < 0;
 		// Already at or past zero, "only -6.5 left" is nonsense: say none is left.
-		const template = data.remaining <= 0 ? S.balanceNone : short ? S.balanceShort : S.balance;
+		// Not when an edit gives days back and so still fits: that reads as usual.
+		const template = !short ? S.balance : data.remaining <= 0 ? S.balanceNone : S.balanceShort;
 		balance.textContent = fill(template, { type: data.type, remaining: data.remaining, after: data.after });
 		balance.classList.toggle('bad', short);
 	}

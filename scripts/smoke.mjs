@@ -527,7 +527,7 @@ async function main() {
 	// The allowance still binds — against the right year now. Nobody has been
 	// seeded for next year, so the type default is what stands in.
 	res = await post('/api/v1/leave', { leaveTypeId: '1', startDate: addDays(NEXT_MON, 21), endDate: addDays(NEXT_MON, 32) });
-	check('and next year runs out on its own quota', /Not enough/.test(flashOf(res)?.message ?? ''), flashOf(res)?.message);
+	check('and next year runs out on its own quota', new RegExp(`Not enough|No annual leave left for ${NEXT_MON.slice(0, 4)}`).test(flashOf(res)?.message ?? ''), flashOf(res)?.message);
 
 	await post(`/api/v1/leave/${nextYearId}/cancel`);
 	eq('next-year fixture cleaned up', (await feed(NEXT_MON, addDays(NEXT_MON, 11))).entries.length, 0);
@@ -549,7 +549,7 @@ async function main() {
 	res = await post(`/api/v1/leave/${moverId}/edit`, {
 		leaveTypeId: '1', startDate: addDays(NEXT_MON, 21), endDate: addDays(NEXT_MON, 25),
 	});
-	check('moving it into a full next year is refused', /Not enough/.test(flashOf(res)?.message ?? ''), flashOf(res)?.message);
+	check('moving it into a full next year is refused', new RegExp(`Not enough|No annual leave left for ${NEXT_MON.slice(0, 4)}`).test(flashOf(res)?.message ?? ''), flashOf(res)?.message);
 	eq('and it stays where it was', (await feed(MOVER, addDays(MOVER, 4))).entries.length, 1);
 
 	await post(`/api/v1/leave/${moverId}/cancel`);

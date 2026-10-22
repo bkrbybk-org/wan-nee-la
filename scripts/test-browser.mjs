@@ -387,15 +387,22 @@ async function main() {
 	eq('book button: and keeps its name', await evaluate("document.querySelector('[data-fab]').getAttribute('aria-label')"), 'Book leave');
 	check('book button: steps aside while the day card is on screen', await waitFor("document.querySelector('[data-fab]').classList.contains('fab-away')", 3000), 'still over the card');
 	check('day card: carries its own Book link', await evaluate("Boolean(document.querySelector('.agenda-row.selected .agenda-book[data-book-link]'))"), 'no Book link in the card');
-	// Upcoming repeats the card on a phone, so it shows only for a quiet day.
-	check('phone: Upcoming hidden while the chosen day has people', await evaluate("getComputedStyle(document.querySelector('.cal-upcoming')).display === 'none'"), 'Upcoming shown');
+	// Upcoming stays under the card, folded to its first days, and never names
+	// today's people a second time while the card is showing today.
+	check('phone: Upcoming stays under the day card', await evaluate("getComputedStyle(document.querySelector('.cal-upcoming')).display !== 'none'"), 'Upcoming hidden');
+	check(
+		'phone: and folds past its first four days, with a button for the rest',
+		await evaluate("(() => { const days = document.querySelectorAll('.upcoming-day').length; const all = document.querySelector('[data-upcoming-all]'); return days > 4 ? document.querySelector('.cal-upcoming').classList.contains('folded') && !all.hidden : !all || all.hidden; })()"),
+		'fold and button disagree',
+	);
+	check('phone: a one-line key says which colour is which', await evaluate("getComputedStyle(document.querySelector('.legend')).display === 'flex' && document.querySelector('.legend-item').getBoundingClientRect().height <= 20"), 'no compact legend');
 
 	// A day in the middle of the month, so a step either way stays in it.
 	const mid = `${month}-15`;
 	await tap(`.cell-day[data-day="${mid}"]`);
 	await sleep(150);
-	// The 15th has nobody away in this fixture: Upcoming comes back.
-	check('phone: a quiet day brings Upcoming back', await evaluate("getComputedStyle(document.querySelector('.cal-upcoming')).display !== 'none'"), 'Upcoming still hidden');
+	// The 15th has nobody away in this fixture.
+	check('phone: Upcoming still there on a quiet day', await evaluate("getComputedStyle(document.querySelector('.cal-upcoming')).display !== 'none'"), 'Upcoming hidden');
 	// Banners above the grid can push the card below a short screen's fold;
 	// a person scrolls to it before swiping it, and so does this.
 	await evaluate("document.querySelector('.agenda-row.selected').scrollIntoView({ block: 'center' })");
@@ -503,6 +510,16 @@ async function main() {
 	await sleep(150);
 	eq('laptop: clicking a day shows it in the panel', await evaluate("document.querySelector('.cal-side .agenda-row.selected')?.dataset.day"), tue);
 	check('laptop: the panel sits beside the month', await evaluate("(() => { const g = document.querySelector('.grid-view').getBoundingClientRect(); const p = document.querySelector('.cal-side .agenda-view').getBoundingClientRect(); return p.left >= g.right && p.top < g.bottom; })()"), 'panel not beside the grid');
+	check(
+		'laptop: the weekend columns are narrower than the weekdays',
+		await evaluate("(() => { const w = [...document.querySelectorAll('.grid thead th')].map((th) => [th.classList.contains('weekend'), th.getBoundingClientRect().width]); const we = w.filter(([x]) => x).map(([, v]) => v); const wd = w.filter(([x]) => !x).map(([, v]) => v); return we.length === 2 && Math.max(...we) < Math.min(...wd) * 0.8; })()"),
+		'weekend as wide as a weekday',
+	);
+	check(
+		'laptop: and the bars still line up with the days',
+		await evaluate("[...document.querySelectorAll('.week-bars > .bar')].every((bar) => { const row = bar.closest('tr'); const col = Number(bar.style.gridColumn.split('/')[0]) - 1; const cell = row.children[col].getBoundingClientRect(); const b = bar.getBoundingClientRect(); return Math.abs(b.left - cell.left) <= 7; })"),
+		'a bar starts away from its day',
+	);
 	check('laptop: and does not open the booking form', !(await evaluate("document.querySelector('[data-create-dialog]').open")), 'dialog opened');
 	await tap(`.cell-plus[data-date="${freeDay}"]`);
 	check('book: the + on an empty day opens the form', await waitFor("document.querySelector('[data-create-dialog]').open"), 'dialog closed');
@@ -511,6 +528,15 @@ async function main() {
 	const dlg = "document.querySelector('[data-create-dialog]')";
 	check('form: the summary says what it costs and leaves', await waitFor(`/1 day/.test(${dlg}.querySelector('[data-preview]').textContent) && / left/.test(${dlg}.querySelector('[data-balance]').textContent)`, 5000), await evaluate(`${dlg}.querySelector('[data-summary]').innerText`));
 	eq('form: and the button says it too', await evaluate(`${dlg}.querySelector('[data-submit]').textContent`), 'Book 1 day');
+	// More days than the allowance holds: the summary says so before the
+	// server has to, and the button waits.
+	await evaluate(`${dlg}.querySelector('input[name="mode"][value="range"]').click()`);
+	await evaluate(`(() => { const end = ${dlg}.querySelector('[data-end]'); end.value = ${JSON.stringify(addDays(freeDay, 90))}; end.dispatchEvent(new Event('input', { bubbles: true })); })()`);
+	check('form: too many days holds the button', await waitFor(`${dlg}.querySelector('[data-submit]').disabled`, 5000), await evaluate(`${dlg}.querySelector('[data-summary]').innerText`));
+	check('form: and says why, beside it', await evaluate(`${dlg}.querySelector('[data-balance].bad, [data-preview].bad') !== null && ${dlg}.querySelector('[data-submit]').getAttribute('aria-describedby') === 'booking-summary'`), await evaluate(`${dlg}.querySelector('[data-summary]').innerText`));
+	await evaluate(`(() => { const end = ${dlg}.querySelector('[data-end]'); end.value = ${JSON.stringify(freeDay)}; end.dispatchEvent(new Event('input', { bubbles: true })); })()`);
+	await evaluate(`${dlg}.querySelector('input[name="mode"][value="one"]').click()`);
+	check('form: back within it, the button is free again', await waitFor(`!${dlg}.querySelector('[data-submit]').disabled`, 5000), 'still held');
 	check('form: One day hides the To field', await evaluate(`getComputedStyle(${dlg}.querySelector('[data-end]').closest('.when-end')).display === 'none'`), 'To shown');
 	await evaluate(`${dlg}.querySelector('input[name="mode"][value="range"]').click()`);
 	check('form: Several days shows it, with its half-day ends', await evaluate(`getComputedStyle(${dlg}.querySelector('[data-end]').closest('.when-end')).display !== 'none' && getComputedStyle(${dlg}.querySelector('input[name="dayPart"]').closest('.choice')).display === 'none'`), 'shape did not switch');

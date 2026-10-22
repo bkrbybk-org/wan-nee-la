@@ -149,6 +149,9 @@ rejects(
 	validateBooking(booking({ endDate: '2026-08-21' }), ctx({ remaining: new Map([[1, 3]]) })),
 	'error.notEnough',
 );
+// Nothing left, or overdrawn: says so, rather than "-6.5 remaining".
+rejects('none left', validateBooking(booking({ endDate: '2026-08-17' }), ctx({ remaining: new Map([[1, 0]]) })), 'error.noneLeft');
+rejects('already overdrawn', validateBooking(booking({ endDate: '2026-08-17' }), ctx({ remaining: new Map([[1, -6.5]]) })), 'error.noneLeft');
 okDays('exactly the remaining balance', validateBooking(booking({ endDate: '2026-08-21' }), ctx({ remaining: new Map([[1, 5]]) })), 5);
 // Planned medical leave carries no allowance, so a zero balance must not block
 // it. Unpaid leave used to be the fixture for this; it was removed in 0010, and

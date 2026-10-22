@@ -57,6 +57,7 @@ export const STRINGS = {
 	'cal.bookOn': { en: 'Book leave on {date}', th: 'แจ้งลาวันที่ {date}' },
 	'cal.upcoming': { en: 'Upcoming', th: 'ที่กำลังจะถึง' },
 	'cal.nothingUpcoming': { en: 'Nothing booked in the next {days} days.', th: 'ไม่มีการลาใน {days} วันข้างหน้า' },
+	'cal.upcomingAll': { en: 'Show all upcoming', th: 'แสดงทั้งหมด' },
 	'cal.upcomingWindow': { en: 'Next {days} days, from today', th: '{days} วันข้างหน้า นับจากวันนี้' },
 	'cal.more': { en: '+{n} more', th: 'อีก {n}' },
 	'cal.until': { en: 'until {date}', th: 'ถึง {date}' },
@@ -93,7 +94,7 @@ export const STRINGS = {
 	'book.from': { en: 'From', th: 'ตั้งแต่' },
 	'book.to': { en: 'To', th: 'ถึง' },
 	'book.balanceShort': { en: '{type}: only {remaining} left — not enough for this', th: '{type}: เหลือเพียง {remaining} วัน ไม่พอสำหรับการลานี้' },
-	'book.balanceNone': { en: '{type}: none left', th: '{type}: ไม่เหลือสิทธิ์แล้ว' },
+	'book.balanceNone': { en: '{type}: none left — not enough for this', th: '{type}: ไม่เหลือสิทธิ์แล้ว ไม่พอสำหรับการลานี้' },
 	'book.balance': { en: '{type}: {remaining} left → {after} after this', th: '{type}: เหลือ {remaining} วัน → หลังลานี้ {after} วัน' },
 	'book.bookDays': { en: 'Book {days} day|Book {days} days', th: 'ลา {days} วัน' },
 	'book.cancel': { en: 'Cancel', th: 'ยกเลิก' },
@@ -508,6 +509,7 @@ export const STRINGS = {
 	'error.tooFarBack': { en: 'That start date is more than {days} days in the past. Ask an admin to add it.', th: 'วันที่เริ่มต้นย้อนหลังเกิน {days} วัน กรุณาแจ้งผู้ดูแลระบบ' },
 	'error.tooFarAhead': { en: 'That end date is too far in the future — check the year.', th: 'วันที่สิ้นสุดอยู่ไกลเกินไป กรุณาตรวจสอบปี' },
 	'error.overlap': { en: 'You already have leave booked over {start} – {end}.', th: 'คุณมีการลาอยู่แล้วในช่วง {start} – {end}' },
+	'error.noneLeft': { en: 'No {type} leave left for {year}.', th: 'ไม่เหลือโควตา{typeTh}สำหรับปี {year} แล้ว' },
 	'error.notEnough': { en: 'Not enough {type} leave left: {days} day requested, {left} remaining.|Not enough {type} leave left: {days} days requested, {left} remaining.', th: 'โควตา{typeTh}ไม่พอ: ขอ {days} วัน เหลือ {left} วัน' },
 } satisfies Record<string, Entry>;
 

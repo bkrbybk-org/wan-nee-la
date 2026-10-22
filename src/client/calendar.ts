@@ -277,7 +277,27 @@ if (agenda) {
 // corner — would otherwise sit on top of a name in it.
 const fab = document.querySelector<HTMLElement>('[data-fab]');
 if (fab && agenda && 'IntersectionObserver' in window) {
+	// Out of the way until the observer first reports, which can be a few
+	// frames after the first paint: shown until then, it sat over the card's
+	// corner and then slid away.
+	fab.classList.add('fab-away');
 	new IntersectionObserver(([entry]) => fab.classList.toggle('fab-away', entry.isIntersecting)).observe(agenda);
+}
+
+// On a phone, Upcoming sits under the day card and can run to dozens of rows:
+// it shows the first few days, and a button opens the rest. Folded here rather
+// than in the markup, so without the script every row is there.
+/** Days of Upcoming a phone shows before "Show all". */
+const UPCOMING_FOLDED = 4;
+const upcoming = document.querySelector<HTMLElement>('[data-upcoming]');
+const upcomingAll = upcoming?.querySelector<HTMLButtonElement>('[data-upcoming-all]');
+if (upcoming && upcomingAll && upcoming.querySelectorAll('.upcoming-day').length > UPCOMING_FOLDED) {
+	upcoming.classList.add('folded');
+	upcomingAll.hidden = false;
+	upcomingAll.addEventListener('click', () => {
+		upcoming.classList.remove('folded');
+		upcomingAll.hidden = true;
+	});
 }
 
 // Swipe the month grid to change month. The arrows stay; this follows their

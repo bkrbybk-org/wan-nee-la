@@ -137,7 +137,7 @@ function UpcomingList({
 			: describeRange(e.start_date, e.end_date, e.start_half, e.end_half, lang);
 
 	return (
-		<section class="cal-upcoming">
+		<section class="cal-upcoming" data-upcoming>
 			<h2>{t('cal.upcoming')}</h2>
 			{days.length === 0 ? (
 				// The empty message already names the window, so the caption below
@@ -179,6 +179,10 @@ function UpcomingList({
 							</li>
 						))}
 					</ol>
+					{/* Phone only, and only once the script has folded the list. */}
+					<button type="button" class="btn text upcoming-all" data-upcoming-all hidden>
+						{t('cal.upcomingAll')}
+					</button>
 				</>
 			)}
 		</section>
@@ -450,6 +454,7 @@ function CalendarBody(props: CalendarProps) {
 	const weekStart = parseWeekStart(user.week_start) ?? MONDAY;
 	const grid = monthGrid(year, month, weekStart);
 	const weekdays = weekdayLabels(weekStart, lang);
+	const weekendCol = weekdays.map((_, i) => (weekStart + i) % 7 === 0 || (weekStart + i) % 7 === 6);
 	const weeks = intoWeeks(grid);
 	const holidayMap = new Map(holidays.map((h) => [h.date, h.label]));
 	// Who is away on each day — weekends and holidays inside a booking left
@@ -591,12 +596,21 @@ function CalendarBody(props: CalendarProps) {
 			<div class="cal-layout">
 				<div class="cal-main">
 				<section class="grid-view">
-					<table class="grid">
+					{/* On a laptop the weekend gets narrower columns: it rarely holds
+					    anyone, and the width is worth more to the weekdays' names. The
+					    bars are laid out on a grid of their own over the cells, so it
+					    is told the same proportions (see .week-bars). */}
+					<table class={`grid ${weekendCol[0] ? 'weekend-first' : ''}`}>
 						<caption class="visually-hidden">{t('cal.title', { month: monthName(month, lang), year })}</caption>
+						<colgroup>
+							{weekendCol.map((weekend) => (
+								<col class={weekend ? 'col-weekend' : ''} />
+							))}
+						</colgroup>
 						<thead>
 							<tr>
-								{weekdays.map((w) => (
-									<th scope="col" class={`weekhead-cell ${w === 'Sat' || w === 'Sun' ? 'weekend' : ''}`}>
+								{weekdays.map((w, i) => (
+									<th scope="col" class={`weekhead-cell ${weekendCol[i] ? 'weekend' : ''}`}>
 										{w}
 									</th>
 								))}

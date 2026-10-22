@@ -221,6 +221,11 @@ export function validateBooking(input: BookingInput, ctx: BookingContext): Valid
 
 	if (type.counts_quota) {
 		const left = ctx.remaining.get(type.id) ?? 0;
+		if (count.days > left && left <= 0) {
+			// Nothing left, or already overdrawn by an admin's correction: "-6.5
+			// remaining" is arithmetic, not an answer.
+			return { ok: false, error: msg('error.noneLeft', { type: type.label_en.toLowerCase(), typeTh: type.label_th, year: input.startDate.slice(0, 4) }) };
+		}
 		if (count.days > left) {
 			return {
 				ok: false,
@@ -448,6 +453,7 @@ const ERROR_FIELD: Partial<Record<StringKey, string>> = {
 	// The quota belongs to the leave type, and switching type is the usual way
 	// out of this one — more usual than shortening the booking.
 	'error.notEnough': 'leaveTypeId',
+	'error.noneLeft': 'leaveTypeId',
 	'error.badStart': 'startDate',
 	'error.tooFarBack': 'startDate',
 	'error.notAWorkingDay': 'startDate',
