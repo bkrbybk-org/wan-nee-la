@@ -161,7 +161,6 @@ function UpcomingList({
 										class={`upcoming-item ${canEdit(e) ? 'mine' : ''}`}
 										data-who={keyOf(e.user_email)}
 										href={canEdit(e) ? `/leave/${e.id}/edit` : '#'}
-										aria-label={rangeLabel(e, lang)}
 										{...entryData(e, canEdit(e), visibleNote(e, user), lang)}
 									>
 										<span class="badge" style={`--who: ${colorOf(e.user_email)}`} aria-hidden="true">
@@ -201,12 +200,14 @@ function UpcomingList({
  * so it costs no query of its own. It also carries today's count for the
  * installed app's icon badge (src/client/badge.ts).
  */
-function TodayCard(props: { upcoming: LeaveEntry[]; today: string; user: User; offDay: boolean; lang: Lang }) {
-	const { upcoming, today, user, offDay, lang } = props;
+function TodayCard(props: { upcoming: LeaveEntry[]; awayToday: LeaveEntry[]; today: string; user: User; offDay: boolean; lang: Lang }) {
+	const { upcoming, awayToday, today, user, offDay, lang } = props;
 	const t = useT();
 	const colorOf = useColorOf();
 	const unique = (list: LeaveEntry[]) => [...new Map(list.map((e) => [e.user_email, e])).values()];
-	const away = offDay ? [] : unique(upcoming.filter((e) => e.start_date <= today && e.end_date >= today));
+	// The day card's own list for today: a weekend or holiday inside a longer
+	// booking is left out, a booking made for that day alone is not.
+	const away = unique(awayToday);
 	const awayNow = new Set(away.map((e) => e.user_email));
 	const weekOut = addDays(today, 7);
 	const soon = unique(upcoming.filter((e) => e.start_date > today && e.start_date <= weekOut && !awayNow.has(e.user_email)));
@@ -239,7 +240,7 @@ function TodayCard(props: { upcoming: LeaveEntry[]; today: string; user: User; o
 						))}
 					</span>
 				) : null}
-				<strong>{offDay ? t('cal.dayOff') : away.length > 0 ? t('cal.awayToday', { n: away.length, count: away.length }) : t('cal.allIn')}</strong>
+				<strong>{away.length > 0 ? t('cal.awayToday', { n: away.length, count: away.length }) : offDay ? t('cal.dayOff') : t('cal.allIn')}</strong>
 				{soon.length > 0 ? <span class="today-soon">{t('cal.awaySoon', { n: soon.length })}</span> : null}
 			</p>
 			{away.length > 0 ? <p class="today-names">{away.map((e) => shortName(e.display_name)).join(', ')}</p> : null}
@@ -300,8 +301,10 @@ function WeekBars(props: {
 					s.continuesAfter ? 'cont-after' : '',
 					outside ? 'out' : '',
 					// Finished entirely. A bar still running today stays at full
-					// strength — it is not in the past, only its start is.
-					days[days.length - 1] < today ? 'past' : '',
+					// strength — it is not in the past, only its start is. The
+					// booking's end, not this piece's: a holiday today cuts the
+					// bar short of it, and that piece had been faded as finished.
+					e.end_date < today ? 'past' : '',
 				]
 					.filter(Boolean)
 					.join(' ');
@@ -311,7 +314,6 @@ function WeekBars(props: {
 						href={canEdit(e) ? `/leave/${e.id}/edit` : '#'}
 						style={`--chip: ${e.color}; grid-column: ${s.col + 1} / span ${s.span}; grid-row: ${s.lane + 1}`}
 						title={`${e.display_name} — ${typeLabel(e, lang)}${noteFor(e) ? `: ${noteFor(e)}` : ''}`}
-						aria-label={rangeLabel(e, lang)}
 						data-who={keyOf(e.user_email)}
 						{...entryData(e, canEdit(e), noteFor(e), lang)}
 					>
@@ -321,10 +323,13 @@ function WeekBars(props: {
 						{/* First name and an initial: the surname is what was being cut
 						    off with an ellipsis in every cell. The tooltip, the label
 						    and the popup all keep the full name. */}
-						<span class="bar-name" aria-hidden="true">
+						{/* Named by the short name on screen, then the whole of it, so
+						    the name contains what is visible (WCAG 2.5.3). */}
+						<span class="bar-name">
 							{shortName(e.display_name)}
 							{half}
 						</span>
+						<span class="visually-hidden">, {rangeLabel(e, lang)}</span>
 					</a>
 				);
 			})}
@@ -409,18 +414,18 @@ function DayMore(props: {
 								data-who={keyOf(e.user_email)}
 								href={canEdit(e) ? `/leave/${e.id}/edit` : '#'}
 								style={`--chip: ${e.color}`}
-								aria-label={entryLabel(e, date, lang)}
 								{...entryData(e, canEdit(e), noteFor(e), lang)}
 							>
+								{/* Named by its own text, under the day it opened from. */}
 								<span class="badge" style={`--who: ${colorOf(e.user_email)}`} aria-hidden="true">
 									{initials(e.display_name)}
 								</span>
-								<span class="day-more-name" aria-hidden="true">
+								<span class="day-more-name">
 									{e.display_name}
 									{halfMark(halfOn(e, date), lang)}
 								</span>
-								<span class="day-more-type muted" aria-hidden="true">
-									<span class="dot" />
+								<span class="day-more-type muted">
+									<span class="dot" aria-hidden="true" />
 									{typeLabel(e, lang)}
 								</span>
 							</a>
@@ -565,6 +570,7 @@ function CalendarBody(props: CalendarProps) {
 			{monthPrefix === today.slice(0, 7) ? (
 				<TodayCard
 					upcoming={upcoming}
+					awayToday={map.get(today) ?? []}
 					today={today}
 					user={user}
 					offDay={dayOfWeek(today) === 0 || dayOfWeek(today) === 6 || holidayMap.has(today)}
@@ -867,10 +873,13 @@ function CalendarBody(props: CalendarProps) {
 										href={`/book?date=${row.date}`}
 										data-book-link
 										data-date={row.date}
-										aria-label={t('cal.bookOn', { date: longDate(row.date, lang) })}
 									>
-										<span class="agenda-dow">{weekdayName(row.date, lang)}</span>
+										{/* Named by what it shows and then what it does: an aria-label
+										    of only "Book leave on …" did not contain the "Thu 22" on
+										    screen, which speech input users say to press it. */}
+										<span class="agenda-dow">{weekdayName(row.date, lang)}</span>{' '}
 										<span class="agenda-num">{Number(row.date.slice(8, 10))}</span>
+										<span class="visually-hidden">, {t('cal.bookOn', { date: longDate(row.date, lang) })}</span>
 									</a>
 									<div class="agenda-body">
 										{row.holiday ? <div class="holiday-tag block">{row.holiday}</div> : null}
@@ -879,7 +888,6 @@ function CalendarBody(props: CalendarProps) {
 											<a
 												class={`agenda-item ${canEdit(e) ? 'mine' : ''}`}
 												href={canEdit(e) ? `/leave/${e.id}/edit` : '#'}
-												aria-label={entryLabel(e, row.date, lang)}
 												{...entryData(e, canEdit(e), noteFor(e), lang)}
 											>
 												<span class="dot" style={`--chip: ${e.color}`} />

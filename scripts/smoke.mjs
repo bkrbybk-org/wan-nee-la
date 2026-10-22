@@ -1517,7 +1517,8 @@ async function main() {
 	check('bars: in the week layer', barHtml.includes('class="week-bars"'), 'no bar layer');
 	const barAt = barHtml.indexOf(bars[0] ?? '<none>');
 	check('bars: carries the person\'s badge', /class="badge" style="--who: #[0-9a-f]{6}"/.test(barHtml.slice(barAt, barAt + 900)), 'no badge');
-	check('bars: read aloud with the whole range, not one day', /aria-label="[^"]*–[^"]*"/.test(bars[0] ?? ''), bars[0]);
+	// The short name on screen, then the whole range for a screen reader.
+	check('bars: read aloud with the whole range, not one day', /<span class="visually-hidden">, [^<]*–[^<]*<\/span>/.test(barHtml.slice(barAt, barAt + 1200)), barHtml.slice(barAt, barAt + 1200));
 	check('bars: each cell still has its phone dot', (barHtml.match(/<a class="chip [^"]*"[^>]*data-entry="smoke-bar-1"/g) ?? []).length >= 3, 'phone dots gone');
 	{
 		// Friday to the next Monday: two one-day pieces, nothing across the weekend.
@@ -1604,9 +1605,10 @@ async function main() {
 	// The phone's day card: the row the page opens on, today's in this month.
 	const selectedRow = (html) => /<div class="agenda-row[^"]*\bselected\b[^"]*"[\s\S]*?<\/div><\/div>/.exec(html)?.[0] ?? '';
 
-	// Nothing booked today: the card says so rather than vanishing.
+	// Nothing booked today: the card says so rather than vanishing — or, on a
+	// public holiday, names the holiday instead (found on Chulalongkorn Day).
 	const quietHtml = await (await fetch(`${BASE}/`)).text();
-	check('day card: a quiet today says nobody is away', selectedRow(quietHtml).includes('Nobody is away.'), selectedRow(quietHtml));
+	check('day card: a quiet today says nobody is away', /Nobody is away\.|class="holiday-tag block"/.test(selectedRow(quietHtml)), selectedRow(quietHtml));
 
 	insertLeave('smoke-today', ADMIN, TODAY);
 	const outTodayHtml = await (await fetch(`${BASE}/`)).text();

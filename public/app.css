@@ -311,7 +311,9 @@ a { color: var(--md-primary); }
 /* The mark from src/views/logo.ts, inlined as SVG. */
 .brand-mark { display: inline-flex; line-height: 0; }
 .brand-mark svg { width: 28px; height: 28px; }
-.brand-name { display: none; }
+/* Out of sight on a phone, not out of the accessibility tree: the mark alone
+   left the link with no name. */
+.brand-name { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
 
 /* Desktop navigation: M3 primary tabs, with the active indicator under the
    label. On phones this whole element is hidden and .navbar takes over. */
@@ -928,7 +930,8 @@ form.inline:has(.tf-support) { margin-bottom: 28px; }
 	font-weight: 500;
 	letter-spacing: 0.04em;
 }
-.weekhead-cell.weekend { color: color-mix(in srgb, var(--md-on-surface-variant) 65%, transparent); }
+/* Quieter by weight, not by fading the ink: at 65% the label fell below 4.5:1. */
+.weekhead-cell.weekend { font-weight: 400; }
 
 /* A real table for screen-reader semantics, so the visual gap between days
    comes from border-spacing rather than a grid gap. table-layout: fixed keeps
@@ -965,22 +968,25 @@ form.inline:has(.tf-support) { margin-bottom: 28px; }
 		color-mix(in srgb, var(--md-on-surface) 8%, transparent) 6px 9px
 	);
 }
-.cell.out { opacity: 0.5; }
+/* Days of the next or previous month. The ground and the dots fade; the
+   number keeps the variant ink at full strength, which is still quieter than
+   the month's own days — faded ink had fallen to about 2.5:1. */
+.cell.out { background-color: color-mix(in srgb, var(--cell-bg) 50%, transparent); }
+.cell.out .daynum { color: var(--md-on-surface-variant); }
+.cell.out .chips { opacity: 0.5; }
 /* Days already gone: a washed-out ground and a quieter date, so today and what
    is ahead carry the weight. Not opacity on the cell, which would also fade the
    week's bars that live in its first cell — a bar fades on its own, and only
    once it has finished entirely (.bar.past). Still clickable: booking into the
    past is allowed. */
 .cell.past { background-color: color-mix(in srgb, var(--cell-bg) 40%, transparent); }
-.cell.past .daynum { color: var(--md-on-surface-variant); opacity: 0.7; }
-.cell.past .holiday-tag { opacity: 0.7; }
+.cell.past .daynum { color: var(--md-on-surface-variant); }
 .cell.past .chips { opacity: 0.5; }
 /* The week's first cell carries the bars for the whole week (see .week-bars),
    so it may not clip them, and dimming it would dim every bar in the row. Its
    own contents are dimmed instead, and its background halved by hand. */
 .cell.week-start { overflow: visible; }
-.cell.out.week-start { opacity: 1; background-color: color-mix(in srgb, var(--cell-bg) 50%, transparent); }
-.cell.out.week-start > :not(.week-bars) { opacity: 0.5; }
+
 
 /* Fills the cell so any empty space books that day. Sits beneath the chips, so
    a click that lands on an entry opens the entry instead. */
@@ -1612,7 +1618,7 @@ form.inline:has(.tf-support) { margin-bottom: 28px; }
 @media (min-width: 768px) {
 	body { padding-bottom: 0; }
 	.navbar { display: none; }
-	.brand-name { display: inline; }
+	.brand-name { position: static; width: auto; height: auto; margin: 0; overflow: visible; clip: auto; }
 	.account-name { display: inline; margin-right: 4px; color: var(--md-on-surface-variant); }
 	.fab { display: none; }
 

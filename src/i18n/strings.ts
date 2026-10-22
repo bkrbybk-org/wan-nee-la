@@ -161,7 +161,6 @@ export const STRINGS = {
 	'me.nothingBooked': { en: 'Nothing booked.', th: 'ยังไม่มีการลา' },
 	'me.nothingYet': { en: 'Nothing yet.', th: 'ยังไม่มีข้อมูล' },
 	'me.cancelled': { en: 'Cancelled', th: 'ยกเลิกแล้ว' },
-	'me.editOn': { en: 'Edit leave on {when}', th: 'แก้ไขการลา {when}' },
 	'me.calendar': { en: 'Calendar', th: 'ปฏิทิน' },
 	'me.weekStartHelp': { en: 'Which day the month grid starts on. Weekends stay Saturday and Sunday either way.', th: 'เลือกว่าปฏิทินเริ่มต้นที่วันใด ไม่ว่าเลือกแบบใด วันหยุดสุดสัปดาห์ยังคงเป็นเสาร์และอาทิตย์' },
 	'me.weekStart': { en: 'Week starts on', th: 'สัปดาห์เริ่มวัน' },

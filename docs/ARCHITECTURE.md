@@ -373,6 +373,7 @@ Two languages, English and Thai, chosen per person on `/me/settings` and stored 
 - **Strings** live in `src/i18n/strings.ts`, both languages on one line per key, so a stale translation is visible while editing rather than hiding in a second file.
 - **Components** read the reader's language from a Hono JSX context provided by `Layout`, instead of threading a prop through every component. Rendering is synchronous, so the provider reaches everything below it within one render and nothing is shared between requests.
 - **Pure functions never see a language.** `validateBooking` and `countLeaveDays` return a `Message` — a key plus its numbers — and the route renders it at the edge, where the reader is known. Tests assert on the key, so rewording a message cannot turn a test red.
+- **Accessible names say what is on screen.** A link's name contains its visible text (WCAG 2.5.3, checked by axe-core in `test-browser.mjs`): where more needs saying — the date a day card's link books, a bar's whole range — it follows in a `.visually-hidden` span inside the link rather than replacing the text with an `aria-label`. Faded things fade their ground, never their text below 4.5:1.
 - **Client-rendered text** (the day count, the coverage line, the notification card's states) is handed to the browser as data attributes on the element that needs it. The catalogue stays out of the bundle; esbuild drops it, and the browser is never sent strings in a language nobody asked for.
 
 What stays as it is, and why, is in [ISSUES.md](ISSUES.md) #25.

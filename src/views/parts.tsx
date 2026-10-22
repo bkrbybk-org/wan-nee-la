@@ -186,7 +186,9 @@ export function LeaveRow({
 			{cancelled || !linked ? (
 				<div class="my-link">{body}</div>
 			) : (
-				<a class="my-link" href={`/leave/${entry.id}/edit`} aria-label={t('me.editOn', { when: `${when}${otherYear}` })}>
+				// Named by its own text — dates, type, days — rather than an
+				// "Edit leave on …" label that did not contain what is on screen.
+				<a class="my-link" href={`/leave/${entry.id}/edit`}>
 					{body}
 				</a>
 			)}

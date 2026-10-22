@@ -50,6 +50,7 @@
     "@cloudflare/workers-types": "^5.20261021.1",
     "@eslint/js": "^10.0.1",
     "@stylistic/eslint-plugin": "^5.10.0",
+    "axe-core": "4.14.0",
     "esbuild": "^0.28.1",
     "eslint": "^10.9.1",
     "globals": "^17.11.0",

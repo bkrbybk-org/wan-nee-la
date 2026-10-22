@@ -209,21 +209,22 @@ async function main() {
 	// March 2030 for the screenshots: a month no other fixture touches, with
 	// no holidays and no today in it, so it renders the same on any date. A
 	// spread of types, a half day, a multi-day bar and four people on the 7th.
+	// Each with its real day count: the booking page and My leave show it.
 	const VIS = [
-		['vis-1', 'mai@example.com', 'annual', '2030-03-04', '2030-03-08', 'full', 'full'],
-		['vis-2', 'nok@example.com', 'sick', '2030-03-06', '2030-03-07', 'full', 'full'],
-		['vis-3', 'pim@example.com', 'annual', '2030-03-07', '2030-03-07', 'full', 'full'],
-		['vis-4', 'anan@example.com', 'medical', '2030-03-07', '2030-03-07', 'am', 'am'],
-		['vis-5', ADMIN, 'annual', '2030-03-18', '2030-03-22', 'full', 'full'],
-		['vis-6', 'nok@example.com', 'annual', '2030-03-27', '2030-04-02', 'full', 'full'],
+		['vis-1', 'mai@example.com', 'annual', '2030-03-04', '2030-03-08', 'full', 'full', 5],
+		['vis-2', 'nok@example.com', 'sick', '2030-03-06', '2030-03-07', 'full', 'full', 2],
+		['vis-3', 'pim@example.com', 'annual', '2030-03-07', '2030-03-07', 'full', 'full', 1],
+		['vis-4', 'anan@example.com', 'medical', '2030-03-07', '2030-03-07', 'am', 'am', 0.5],
+		['vis-5', ADMIN, 'annual', '2030-03-18', '2030-03-22', 'full', 'full', 5],
+		['vis-6', 'nok@example.com', 'annual', '2030-03-27', '2030-04-02', 'full', 'full', 5],
 	];
-	for (const [id, email, code, start, end, sh, eh] of VIS) {
+	for (const [id, email, code, start, end, sh, eh, days] of VIS) {
 		sqlite
 			.prepare(
 				`INSERT INTO leave_requests (id, user_email, leave_type_id, start_date, end_date, start_half, end_half, days_total, note, note_private, status, created_at)
-				 VALUES (?, ?, (SELECT id FROM leave_types WHERE code = ?), ?, ?, ?, ?, 1, NULL, 1, 'confirmed', '2026-01-01')`,
+				 VALUES (?, ?, (SELECT id FROM leave_types WHERE code = ?), ?, ?, ?, ?, ?, NULL, 1, 'confirmed', '2026-01-01')`,
 			)
-			.run(id, email, code, start, end, sh, eh);
+			.run(id, email, code, start, end, sh, eh, days);
 	}
 
 	chrome = spawn(chromePath, [
@@ -298,8 +299,24 @@ async function main() {
 		'.due-chip { visibility: hidden !important; }',
 		'.cal-upcoming, .foot { visibility: hidden !important; }',
 	].join('\n');
-	const looksRight = async (name) => {
-		await evaluate(`(() => { const s = document.createElement('style'); s.textContent = ${JSON.stringify(STILL)}; document.head.append(s); document.activeElement?.blur(); scrollTo(0, 0); })()`);
+	// `hide`: selectors that depend on today's date on that page, taken out of
+	// the layout so the rest of it can be compared on any day.
+	// Accessibility, by axe-core: the WCAG 2.1 A and AA rules, failing on what
+	// it rates serious or critical. Run on the pages the screenshots visit, so
+	// what it reads is the same stable fixture. Moderate and minor findings are
+	// printed, not failed: they are worth reading, not worth a red build.
+	const AXE = readFileSync(join('node_modules', 'axe-core', 'axe.min.js'), 'utf8');
+	const accessible = async (name) => {
+		if (!(await evaluate("typeof window.axe === 'object'"))) await evaluate(`${AXE}\n;true`);
+		const found = await evaluate(`axe.run(document, { resultTypes: ['violations'], runOnly: { type: 'tag', values: ['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa'] } })
+			.then((r) => r.violations.map((v) => ({ id: v.id, impact: v.impact, nodes: v.nodes.length, where: v.nodes.slice(0, 3).map((n) => n.target.join(' ')) })))`);
+		const serious = found.filter((v) => v.impact === 'serious' || v.impact === 'critical');
+		for (const v of found.filter((x) => !serious.includes(x))) console.log(`  note: a11y ${name}: ${v.impact} ${v.id} (${v.nodes}) ${v.where.join(' | ')}`);
+		check(`a11y: ${name} has no serious problems`, serious.length === 0, JSON.stringify(serious));
+	};
+	const looksRight = async (name, hide = []) => {
+		const css = hide.length ? `${STILL}\n${hide.join(', ')} { display: none !important; }` : STILL;
+		await evaluate(`(() => { const s = document.createElement('style'); s.textContent = ${JSON.stringify(css)}; document.head.append(s); document.activeElement?.blur(); scrollTo(0, 0); })()`);
 		await send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: 0, y: 0 });
 		await sleep(300);
 		const { data } = await send('Page.captureScreenshot', { format: 'png' });
@@ -610,15 +627,25 @@ async function main() {
 	const scheme = (value) => send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-color-scheme', value }] });
 	await scheme('light');
 	await open('/?y=2030&m=3');
+	await accessible('the month on a phone');
 	await looksRight('phone-month');
 	await scheme('dark');
 	await open('/?y=2030&m=3');
+	await accessible('the month on a phone, dark');
 	await looksRight('phone-month-dark');
 	await scheme('light');
 	await send('Emulation.setTouchEmulationEnabled', { enabled: false });
 	await send('Emulation.setDeviceMetricsOverride', { width: 1280, height: 900, deviceScaleFactor: 1, mobile: false });
 	await open('/?y=2030&m=3');
+	await accessible('the month on a laptop');
 	await looksRight('laptop-month');
+	// A30: the booking dialog over the month, on a quiet Tuesday — its summary
+	// is 2030's allowance and nobody else away, the same on any date.
+	await evaluate("document.querySelector('.cell-plus[data-date=\"2030-03-12\"]').click()");
+	await waitFor("document.querySelector('[data-create-dialog]').open && /\\d/.test(document.querySelector('[data-create-dialog] [data-balance]').textContent)", 5000);
+	await accessible('the booking dialog');
+	await looksRight('laptop-book-dialog');
+	await evaluate("document.querySelector('[data-create-dialog]').close()");
 	// The admin roster, for a year nobody has set allowances in, so every
 	// number is a type default and the year label never moves.
 	const openPlain = async (path) => {
@@ -627,7 +654,19 @@ async function main() {
 		await waitFor("document.readyState === 'complete'");
 	};
 	await openPlain('/admin/people?y=2030');
+	await accessible('the admin People page');
 	await looksRight('laptop-admin-people');
+	await openPlain('/admin');
+	await accessible('the admin overview');
+	// A30: My leave for 2030 — the balance cards and the by-month chart. The
+	// next-leave card and the list run from today, so they are left out.
+	await openPlain('/me?y=2030');
+	await accessible('My leave');
+	await looksRight('laptop-me', ['.next-leave', '.my-leave']);
+	// A30: a booking's page. Its "in N days" counts from today.
+	await openPlain('/leave/vis-5/edit');
+	await accessible("a booking's page");
+	await looksRight('laptop-booking-page', ['.booking-head .tag']);
 	await send('Emulation.setDeviceMetricsOverride', { width: 375, height: 812, deviceScaleFactor: 1, mobile: true });
 	await openPlain('/admin/people?y=2030');
 	await looksRight('phone-admin-people');
@@ -646,6 +685,7 @@ async function main() {
 	await send('Emulation.setDeviceMetricsOverride', { width: 375, height: 812, deviceScaleFactor: 1, mobile: true });
 	await send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-color-scheme', value: 'light' }] });
 	await open('/?y=2030&m=3');
+	await accessible('the month in Thai');
 	await looksRight('phone-month-thai');
 	await send('Emulation.setEmulatedMedia', { features: [] });
 
