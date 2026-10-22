@@ -346,6 +346,13 @@ async function main() {
 		today,
 	);
 	check('day card: names who is away today', await evaluate("document.querySelector('.agenda-row.selected').innerText.includes('Nok Thongdee')"), 'name missing');
+	check('today card: first on a phone', await evaluate("(() => { const c = document.querySelector('.today-card'); return c && getComputedStyle(c).display !== 'none' && c.getBoundingClientRect().bottom <= document.querySelector('.grid-view').getBoundingClientRect().top; })()"), 'no card above the grid');
+	eq(
+		"today card: counts today's people, as the day card does",
+		await evaluate("Number(document.querySelector('.today-card').dataset.awayToday)"),
+		await evaluate("document.querySelectorAll('.agenda-row.today .agenda-item').length"),
+	);
+	check('today card: and names them', await evaluate("document.querySelector('.today-card').innerText.includes('Nok T.')"), await evaluate("document.querySelector('.today-card').innerText"));
 	// With the notification invitation and the admin's holiday reminder both
 	// up — the busiest the top of the page gets — the card still starts on a
 	// 812px screen, with room to read its first row.
@@ -549,6 +556,38 @@ async function main() {
 	}
 	eq('book: submitting it books the day', booked, freeDay);
 
+	// --- drag across days to book them ------------------------------------------
+	await open(`/?y=${y}&m=${m}`);
+	check('laptop: no Today card beside the day panel', await evaluate("!document.querySelector('.today-card') || getComputedStyle(document.querySelector('.today-card')).display === 'none'"), 'card shown');
+	// The same week as the drag test: always on this month's grid.
+	const rangeFrom = addDays(tue, -1);
+	const rangeTo = addDays(tue, 1);
+	await evaluate(`document.querySelector('td:has(> .cell-add[data-date="${rangeFrom}"])').scrollIntoView({ block: 'center' })`);
+	await sleep(100);
+	// Low in the cell, clear of the bars that run along its top.
+	const low = async (date) => {
+		const r = await evaluate(`(() => { const b = document.querySelector('td:has(> .cell-add[data-date="${date}"])').getBoundingClientRect(); return { x: b.left + b.width / 2, y: b.bottom - 8 }; })()`);
+		return r;
+	};
+	const a = await low(rangeFrom);
+	const b = await low(rangeTo);
+	await send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: a.x, y: a.y });
+	await send('Input.dispatchMouseEvent', { type: 'mousePressed', x: a.x, y: a.y, button: 'left', buttons: 1, clickCount: 1 });
+	for (let i = 1; i <= 10; i++) {
+		await send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: a.x + ((b.x - a.x) * i) / 10, y: a.y + ((b.y - a.y) * i) / 10, button: 'left', buttons: 1 });
+		await sleep(20);
+	}
+	eq('range: the days dragged across are marked', await evaluate("document.querySelectorAll('.cell.range-pick').length"), 3);
+	await send('Input.dispatchMouseEvent', { type: 'mouseReleased', x: b.x, y: b.y, button: 'left', buttons: 0, clickCount: 1 });
+	check('range: letting go opens the booking form', await waitFor("document.querySelector('[data-create-dialog]').open", 3000), 'dialog closed');
+	eq(
+		'range: on Several days, from the first day to the last',
+		await evaluate("(() => { const d = document.querySelector('[data-create-dialog]'); return [d.querySelector('input[name=\"mode\"]:checked')?.value, d.querySelector('[data-start]').value, d.querySelector('[data-end]').value].join(' '); })()"),
+		`range ${rangeFrom} ${rangeTo}`,
+	);
+	eq('range: and the marks are cleared', await evaluate("document.querySelectorAll('.cell.range-pick').length"), 0);
+	await evaluate("document.querySelector('[data-create-dialog]').close()");
+
 	// --- days off by month, on /me ----------------------------------------------
 	await send('Page.navigate', { url: `${BASE}/me?y=${y}` });
 	await waitFor("document.readyState === 'complete' && Boolean(document.querySelector('.month-bars'))");
@@ -604,6 +643,11 @@ async function main() {
 	check('thai: the phone heading is the Thai short month', await evaluate("/[\\u0E00-\\u0E7F]/.test(document.querySelector('.month-head .m-short').textContent)"), await evaluate("document.querySelector('.month-head .m-short').textContent"));
 	check('thai: and the day card still works', await evaluate("document.querySelector('[data-agenda]').classList.contains('day-mode') && Boolean(document.querySelector('.agenda-row.selected'))"), 'no day card');
 	await shot('phone-thai');
+	await send('Emulation.setDeviceMetricsOverride', { width: 375, height: 812, deviceScaleFactor: 1, mobile: true });
+	await send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-color-scheme', value: 'light' }] });
+	await open('/?y=2030&m=3');
+	await looksRight('phone-month-thai');
+	await send('Emulation.setEmulatedMedia', { features: [] });
 
 	browser.close();
 }

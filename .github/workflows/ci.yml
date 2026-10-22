@@ -89,6 +89,17 @@ jobs:
         # so it behaves the same here as on a laptop.
         run: npm run test:smoke
 
+      - name: Thai font
+        # The stylesheet names Noto Sans Thai, and the runner image has no Thai
+        # font at all, so the Thai screenshot would compare boxes. Installed
+        # only when missing, so a future image that ships it skips the apt run.
+        run: |
+          if ! fc-list | grep -qi 'Noto Sans Thai'; then
+            sudo apt-get update -qq
+            sudo apt-get install -y -qq --no-install-recommends fonts-noto-core
+          fi
+          fc-list | grep -i 'Noto Sans Thai' | head -1
+
       - name: Browser tests
         # The calendar's own script — the phone's day card, swiping, the
         # notification invitation, the entry popup, drag-to-move — in headless

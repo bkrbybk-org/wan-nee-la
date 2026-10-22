@@ -33,18 +33,38 @@ self.addEventListener('push', (event) => {
 
 	const title = data.title || 'wan-nee-la';
 	event.waitUntil(
-		self.registration.showNotification(title, {
-			body: data.body || '',
-			icon: '/icon-192.png',
-			badge: '/badge.png',
-			// One notification per digest: a second push for the same day replaces
-			// the first instead of stacking a duplicate on the lock screen.
-			tag: data.tag || 'wnl-digest',
-			renotify: false,
-			data: { url: data.url || '/' },
-		}),
+		Promise.all([
+			setBadge(data.badge),
+			self.registration.showNotification(title, {
+				body: data.body || '',
+				icon: '/icon-192.png',
+				badge: '/badge.png',
+				// One notification per digest: a second push for the same day replaces
+				// the first instead of stacking a duplicate on the lock screen.
+				tag: data.tag || 'wnl-digest',
+				renotify: false,
+				data: { url: data.url || '/' },
+			}),
+		]),
 	);
 });
+
+/**
+ * The installed app's icon shows how many are away today: set by the morning
+ * digest, and by the calendar whenever it is opened (src/client/badge.ts), so
+ * a day the digest stays silent still clears yesterday's number. Only where the
+ * Badging API exists — an installed app in Chrome, or on iPhone from the Home
+ * Screen — and a failure is never the notification's problem.
+ */
+async function setBadge(count) {
+	if (typeof count !== 'number' || !('setAppBadge' in self.navigator)) return;
+	try {
+		if (count > 0) await self.navigator.setAppBadge(count);
+		else await self.navigator.clearAppBadge();
+	} catch {
+		// Not installed, or not allowed: the notification still shows.
+	}
+}
 
 self.addEventListener('notificationclick', (event) => {
 	event.notification.close();

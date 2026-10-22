@@ -1,5 +1,6 @@
 /**
- * Drag an entry chip on the month grid to move it to another day.
+ * Drag an entry chip on the month grid to move it to another day — or drag
+ * across empty days to book them.
  *
  * A separate module from calendar.ts because the two features barely touch —
  * calendar.ts turns clicks on real links into dialogs; this turns a
@@ -115,6 +116,73 @@ if (grid) {
 		form.submit();
 	}
 
+	// --- drag across days to book them --------------------------------------
+	//
+	// Pressing on a day rather than on a bar, and moving onto another day,
+	// marks the days between; letting go opens the booking form on Several
+	// days with both ends filled in. The form, its summary and the server's
+	// rules are the ones a click on + uses — this only fills in two dates. A
+	// press that never leaves its day stays a click, which chooses the day.
+	let pickFrom = '';
+	let picking = false;
+
+	function markRange(from: string, to: string) {
+		const [lo, hi] = from <= to ? [from, to] : [to, from];
+		for (const cell of grid!.querySelectorAll<HTMLElement>('.cell')) {
+			const date = dateOf(cell);
+			cell.classList.toggle('range-pick', Boolean(date && date >= lo && date <= hi));
+		}
+	}
+
+	function endPick() {
+		pickFrom = '';
+		picking = false;
+		grid!.classList.remove('picking');
+		for (const cell of grid!.querySelectorAll('.range-pick')) cell.classList.remove('range-pick');
+	}
+
+	grid.addEventListener('pointerdown', (e) => {
+		if (!desktop() || e.button !== 0) return;
+		const target = e.target as HTMLElement;
+		// A bar, a "+N more", or the day's own + is not the start of a range.
+		if (target.closest('.chip, .cell-plus, .bar-more, button')) return;
+		const cell = cellAt(e.clientX, e.clientY);
+		pickFrom = cell ? (dateOf(cell) ?? '') : '';
+		picking = false;
+		startX = e.clientX;
+		startY = e.clientY;
+		suppressClick = false;
+	});
+
+	grid.addEventListener('pointermove', (e) => {
+		if (!pickFrom) return;
+		const cell = cellAt(e.clientX, e.clientY);
+		const date = cell ? dateOf(cell) : null;
+		if (!picking) {
+			if (Math.hypot(e.clientX - startX, e.clientY - startY) < DRAG_THRESHOLD || !date || date === pickFrom) return;
+			picking = true;
+			grid.classList.add('picking');
+			grid.setPointerCapture(e.pointerId);
+		}
+		if (date) markRange(pickFrom, date);
+	});
+
+	grid.addEventListener('pointerup', (e) => {
+		if (!pickFrom) return;
+		const from = pickFrom;
+		const cell = cellAt(e.clientX, e.clientY);
+		const to = cell ? dateOf(cell) : null;
+		const wasPicking = picking;
+		endPick();
+		if (!wasPicking || !to || to === from) return;
+		// A range, not a click on the last day.
+		suppressClick = true;
+		const [start, end] = from <= to ? [from, to] : [to, from];
+		document.dispatchEvent(new CustomEvent('wnl:book-range', { detail: { start, end } }));
+	});
+
+	grid.addEventListener('pointercancel', endPick);
+
 	grid.addEventListener('pointerdown', (e) => {
 		if (!desktop() || e.button !== 0) return;
 		const chip = (e.target as HTMLElement).closest<HTMLAnchorElement>('.chip');
@@ -190,7 +258,8 @@ if (grid) {
 	// scripts/test-browser.mjs on its first run. Refusing the native drag keeps
 	// the pointer events flowing; the link still opens on a click.
 	grid.addEventListener('dragstart', (e) => {
-		if ((e.target as HTMLElement | null)?.closest?.('.chip')) e.preventDefault();
+		// The day links too: a range is dragged across them.
+		if ((e.target as HTMLElement | null)?.closest?.('.chip, .cell-day, .cell-add')) e.preventDefault();
 	});
 
 	// Capture phase, ahead of calendar.ts's click listener on `document`, so

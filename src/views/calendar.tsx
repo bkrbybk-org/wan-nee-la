@@ -9,6 +9,8 @@ import {
 	shiftMonth,
 	shortDate,
 	longDate,
+	addDays,
+	daysBetween,
 	intoWeeks,
 	weekdayLabels,
 	weekdayName,
@@ -71,12 +73,13 @@ function typeLabel(e: { type_label_en: string; type_label_th: string }, lang: La
 }
 
 /**
- * How many names a cell draws before it counts the rest instead.
+ * How many rows of bars a week draws before each day counts the rest instead.
  *
- * Kept in step with the `nth-of-type` rule in app.css that hides the others —
- * change one and the count stops matching what is on screen.
+ * Each week's row is only as tall as the bars it actually has, so this costs a
+ * quiet week nothing: it is how far a busy week may grow before "+N more".
+ * Three had a busy week saying "+3 more" beside quiet weeks with room to spare.
  */
-const CELL_CHIPS = 3;
+const CELL_CHIPS = 5;
 
 /**
  * Dots a phone's 48px cell shows before it shows a number instead. Three fit
@@ -185,6 +188,64 @@ function UpcomingList({
 					</button>
 				</>
 			)}
+		</section>
+	);
+}
+
+/**
+ * The phone's first answer: who is away today, who else is about to be, and
+ * the reader's own next leave. Shown only on the current month, above the grid,
+ * and hidden from 768px, where the day panel and Upcoming sit beside the month.
+ *
+ * Built from Upcoming's rows — 90 days from today, every booking still running —
+ * so it costs no query of its own. It also carries today's count for the
+ * installed app's icon badge (src/client/badge.ts).
+ */
+function TodayCard(props: { upcoming: LeaveEntry[]; today: string; user: User; offDay: boolean; lang: Lang }) {
+	const { upcoming, today, user, offDay, lang } = props;
+	const t = useT();
+	const colorOf = useColorOf();
+	const unique = (list: LeaveEntry[]) => [...new Map(list.map((e) => [e.user_email, e])).values()];
+	const away = offDay ? [] : unique(upcoming.filter((e) => e.start_date <= today && e.end_date >= today));
+	const awayNow = new Set(away.map((e) => e.user_email));
+	const weekOut = addDays(today, 7);
+	const soon = unique(upcoming.filter((e) => e.start_date > today && e.start_date <= weekOut && !awayNow.has(e.user_email)));
+	const mine = upcoming.filter((e) => e.user_email === user.email).sort((a, b) => a.start_date.localeCompare(b.start_date));
+	const current = mine.find((e) => e.start_date <= today);
+	const next = mine.find((e) => e.start_date > today);
+	const when = (e: LeaveEntry) => describeRange(e.start_date, e.end_date, e.start_half, e.end_half, lang);
+	const inDays = next ? daysBetween(today, next.start_date) : 0;
+	const mineText = current
+		? t('cal.youAway', { date: shortDate(current.end_date, lang) })
+		: next
+			? inDays === 1
+				? t('cal.youTomorrow', { when: when(next) })
+				: t('cal.youNext', { when: when(next), n: inDays, count: inDays })
+			: t('cal.youNone', { days: UPCOMING_DAYS });
+	const mineEntry = current ?? next;
+	const SHOWN = 5;
+
+	return (
+		<section class="today-card" aria-label={t('cal.todayCard')} data-away-today={away.length}>
+			{/* Three short lines at most: on an 812px phone, with both banners up,
+			    the day card under the grid still has to start on screen. */}
+			<p class="today-away">
+				{away.length > 0 ? (
+					<span class="today-badges" aria-hidden="true">
+						{away.slice(0, SHOWN).map((e) => (
+							<span class="badge" style={`--who: ${colorOf(e.user_email)}`}>
+								{initials(e.display_name)}
+							</span>
+						))}
+					</span>
+				) : null}
+				<strong>{offDay ? t('cal.dayOff') : away.length > 0 ? t('cal.awayToday', { n: away.length, count: away.length }) : t('cal.allIn')}</strong>
+				{soon.length > 0 ? <span class="today-soon">{t('cal.awaySoon', { n: soon.length })}</span> : null}
+			</p>
+			{away.length > 0 ? <p class="today-names">{away.map((e) => shortName(e.display_name)).join(', ')}</p> : null}
+			<a class="today-mine" href={mineEntry ? `/leave/${mineEntry.id}/edit` : '/me'}>
+				{mineText}
+			</a>
 		</section>
 	);
 }
@@ -499,6 +560,16 @@ function CalendarBody(props: CalendarProps) {
 				<div class="cal-due">
 					<HolidaysDueBanner gap={holidaysDue} link />
 				</div>
+			) : null}
+
+			{monthPrefix === today.slice(0, 7) ? (
+				<TodayCard
+					upcoming={upcoming}
+					today={today}
+					user={user}
+					offDay={dayOfWeek(today) === 0 || dayOfWeek(today) === 6 || holidayMap.has(today)}
+					lang={lang}
+				/>
 			) : null}
 
 			<div class="month-head">

@@ -219,6 +219,9 @@ async function runPush(
 		body: text,
 		url: '/',
 		tag: `wnl-${kind}-${date}`,
+		// How many are away today, for the installed app's icon. The daily
+		// digest only: the week-ahead one counts a week, not a day.
+		...(kind === 'daily' ? { badge: people } : {}),
 	});
 
 	const results = await Promise.all(subs.map((s) => sendPush(s, payload, vapidKeys(env))));

@@ -62,6 +62,10 @@
 	   nearly black and the mix comes out too dim to read at 12px, so the chip
 	   sits on a raised surface instead. */
 	--md-chip-base: var(--md-surface-container-lowest);
+	/* How much of a leave type's colour goes into its chip. More in the dark
+	   theme, where 24% of a mid blue on a dark grey read as one more grey and
+	   the type was only told by the stripe. scripts/palette.mjs checks both. */
+	--md-chip-mix: 24%;
 
 	/* Shadows are darker in light mode than dark, where elevation is carried
 	   mostly by the surface-container tones instead. */
@@ -128,6 +132,7 @@
 		--md-inverse-primary: #375ca2;
 		--md-scrim: #000000;
 		--md-chip-base: var(--md-surface-container-high);
+		--md-chip-mix: 40%;
 		--md-shadow-1: 0 1px 2px rgb(0 0 0 / 0.5), 0 1px 3px 1px rgb(0 0 0 / 0.3);
 		--md-shadow-2: 0 1px 2px rgb(0 0 0 / 0.5), 0 2px 6px 2px rgb(0 0 0 / 0.3);
 		--md-shadow-3: 0 1px 3px rgb(0 0 0 / 0.5), 0 4px 8px 3px rgb(0 0 0 / 0.3);
@@ -170,6 +175,7 @@
 	--md-inverse-primary: #375ca2;
 	--md-scrim: #000000;
 	--md-chip-base: var(--md-surface-container-high);
+	--md-chip-mix: 40%;
 	--md-shadow-1: 0 1px 2px rgb(0 0 0 / 0.5), 0 1px 3px 1px rgb(0 0 0 / 0.3);
 	--md-shadow-2: 0 1px 2px rgb(0 0 0 / 0.5), 0 2px 6px 2px rgb(0 0 0 / 0.3);
 	--md-shadow-3: 0 1px 3px rgb(0 0 0 / 0.5), 0 4px 8px 3px rgb(0 0 0 / 0.3);
@@ -979,6 +985,9 @@ form.inline:has(.tf-support) { margin-bottom: 28px; }
 /* Fills the cell so any empty space books that day. Sits beneath the chips, so
    a click that lands on an entry opens the entry instead. */
 .cell-add { position: absolute; inset: 0; z-index: 0; border-radius: var(--md-shape-md); }
+/* Days being dragged across to book (drag.ts). */
+.grid.picking { user-select: none; cursor: cell; }
+.cell.range-pick { --cell-bg: color-mix(in srgb, var(--md-primary) 16%, var(--md-surface-container-low)); box-shadow: inset 0 0 0 2px var(--md-primary); }
 .cell:hover .cell-add { background: color-mix(in srgb, var(--md-on-surface) 8%, transparent); }
 .cell-add:focus-visible { outline: 2px solid var(--md-primary); outline-offset: -2px; }
 /* The day number and holiday label are decoration over the add target — let
@@ -1022,7 +1031,7 @@ form.inline:has(.tf-support) { margin-bottom: 28px; }
 	padding: 3px 8px;
 	border-radius: var(--md-shape-sm);
 	border-left: 3px solid var(--chip);
-	background: color-mix(in srgb, var(--chip) 24%, var(--md-chip-base));
+	background: color-mix(in srgb, var(--chip) var(--md-chip-mix), var(--md-chip-base));
 	color: var(--md-on-surface);
 	font-size: 12px;
 	line-height: 16px;
@@ -1207,6 +1216,32 @@ form.inline:has(.tf-support) { margin-bottom: 28px; }
 .agenda-view.day-mode .agenda-row.selected { display: flex; }
 .agenda-view.day-mode .agenda-quiet { display: none; }
 
+
+/* ---------- today, on a phone ---------- */
+
+/* Above the month on a phone: today's answer before the grid. From 768px the
+   day panel beside the month says the same, so it is not shown there. */
+.today-card {
+	display: flex;
+	flex-direction: column;
+	gap: 2px;
+	margin-bottom: 12px;
+	padding: 10px 14px;
+	border-radius: var(--md-shape-md);
+	background: var(--md-surface-container);
+}
+.today-card p { margin: 0; }
+.today-away { display: flex; align-items: center; gap: 8px; min-width: 0; font-size: 15px; line-height: 24px; }
+.today-away strong { font-weight: 500; white-space: nowrap; }
+.today-badges { display: inline-flex; flex: none; }
+.today-badges .badge { width: 22px; height: 22px; font-size: 9px; }
+.today-badges .badge + .badge { margin-left: -6px; }
+.today-soon { margin-left: auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; font-size: 12px; line-height: 16px; color: var(--md-on-surface-variant); white-space: nowrap; }
+.today-names { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; line-height: 18px; color: var(--md-on-surface-variant); }
+.today-mine { align-self: flex-start; font-size: 13px; line-height: 18px; font-weight: 500; color: var(--md-primary); text-decoration: none; }
+@media (min-width: 768px) {
+	.today-card { display: none; }
+}
 
 /* ---------- legend ---------- */
 

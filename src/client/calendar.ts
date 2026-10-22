@@ -77,6 +77,20 @@ document.addEventListener('click', (e) => {
 	open(createDialog);
 });
 
+// Days dragged across on the month grid (drag.ts): the same form, on Several
+// days, with both ends filled in.
+document.addEventListener('wnl:book-range', (e) => {
+	const { start, end } = (e as CustomEvent<{ start: string; end: string }>).detail;
+	if (!createDialog || !startInput || !endInput) return;
+	const several = createDialog.querySelector<HTMLInputElement>('input[name="mode"][value="range"]');
+	if (several) several.checked = true;
+	startInput.value = start;
+	endInput.value = end;
+	if (createTitle) createTitle.textContent = S.bookOn.split('{date}').join(`${formatDate(start)} – ${formatDate(end)}`);
+	startInput.dispatchEvent(new Event('change', { bubbles: true }));
+	open(createDialog);
+});
+
 /** Wording from the server, in the reader's language; English if it is absent. */
 const S = {
 	book: 'Book leave',

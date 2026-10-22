@@ -1,0 +1,44 @@
+# Weekly update pull requests, kept deliberately narrow.
+#
+# Version updates only for the two packages the app is built on, Hono and
+# Wrangler: everything else moves when there is a reason to, not on a timer.
+# Security fixes are a separate switch — Dependabot security updates, under
+# the repository's Code security settings — and open a pull request for any
+# package with an advisory, whatever this file allows.
+#
+# eslint stays out: from 10.10 it pulls in @keyv/serialize, which the
+# organisation's npm registry refuses, so a bump would fail `npm ci` locally
+# even where it passes on GitHub.
+#
+# GitHub Actions too: the third-party ones are pinned to a commit (see ci.yml),
+# and a pin nobody moves is a pin that misses its fixes.
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      timezone: Asia/Bangkok
+    allow:
+      - dependency-name: hono
+      - dependency-name: wrangler
+    groups:
+      platform:
+        patterns: [hono, wrangler]
+    open-pull-requests-limit: 2
+    commit-message:
+      prefix: chore
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      timezone: Asia/Bangkok
+    groups:
+      actions:
+        patterns: ['*']
+    open-pull-requests-limit: 2
+    commit-message:
+      prefix: ci

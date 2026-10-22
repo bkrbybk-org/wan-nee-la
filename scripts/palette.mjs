@@ -173,7 +173,7 @@ for (const [scheme, map] of [['light', light], ['dark', dark]]) {
 // --- calendar chip: colour-mix against on-surface text ---------------------
 
 /*
- * The chip background isn't a role pair — it's `color-mix(in srgb, <chip> 24%,
+ * The chip background isn't a role pair — it's `color-mix(in srgb, <chip> <mix>,
  * var(--md-chip-base))`, a leave type's own colour blended into a surface
  * tone. That mix falls outside what PAIRS can express, so it needs its own
  * arithmetic: replicate the browser's srgb color-mix (linear interpolation
@@ -194,6 +194,8 @@ const LEAVE_TYPE_COLORS = {
 };
 
 const CHIP_BASE_ROLE = { light: 'surface-container-lowest', dark: 'surface-container-high' };
+/** `--md-chip-mix` in app.css, per theme. */
+const CHIP_MIX = { light: 0.24, dark: 0.4 };
 
 function srgbColorMix(hexA, pctA, hexB) {
 	const a = [1, 3, 5].map((i) => parseInt(hexA.slice(i, i + 2), 16));
@@ -205,7 +207,7 @@ function srgbColorMix(hexA, pctA, hexB) {
 for (const [scheme, map] of [['light', light], ['dark', dark]]) {
 	const base = map[CHIP_BASE_ROLE[scheme]];
 	for (const [code, colour] of Object.entries(LEAVE_TYPE_COLORS)) {
-		const mixed = srgbColorMix(colour, 0.24, base);
+		const mixed = srgbColorMix(colour, CHIP_MIX[scheme], base);
 		const r = contrast(map['on-surface'], mixed);
 		const ok = r >= 4.5;
 		if (!ok) bad++;

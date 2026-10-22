@@ -357,6 +357,15 @@ with a blocking rule in place, breaking ones get a 403 from the edge instead.
 On Log, both look the same from outside — look the Ray IDs up in Security →
 Analytics.
 
+## Dependency updates
+
+`.github/dependabot.yml` opens a weekly pull request for Hono and Wrangler, and
+one for the GitHub Actions the workflows use. Nothing else is bumped on a
+timer. Security fixes for any package come from **Dependabot security
+updates**, a switch under the repository's *Settings → Code security*, not
+from this file. eslint is deliberately left out: from 10.10 it needs a package
+the organisation's npm registry refuses.
+
 ## Docs
 
 | File | What |
