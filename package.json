@@ -57,7 +57,7 @@
     "swagger-ui-dist": "^5.34.0",
     "typescript": "^5.7.2",
     "typescript-eslint": "^8.68.0",
-    "wrangler": "^4.151.3",
+    "wrangler": "^4.152.0",
     "yaml": "^2.9.1"
   },
   "allowScripts": {
