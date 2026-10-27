@@ -695,6 +695,19 @@ export async function changedByOthers(db: D1Database, email: string): Promise<Ma
 	return new Map((res.results ?? []).map((r) => [r.leave_id, { name: r.name, action: r.action }]));
 }
 
+/**
+ * The latest changes made to someone's leave by anyone but them, newest first:
+ * the admin person page's "Changes others made". Served by the subject index
+ * (migration 0012).
+ */
+export async function auditByOthers(db: D1Database, email: string, limit: number): Promise<AuditRow[]> {
+	const res = await db
+		.prepare('SELECT * FROM leave_audit WHERE subject_email = ?1 AND actor_email <> ?1 ORDER BY id DESC LIMIT ?2')
+		.bind(email, limit)
+		.all<AuditRow>();
+	return res.results ?? [];
+}
+
 export async function auditForLeave(db: D1Database, leaveId: string): Promise<AuditRow[]> {
 	const res = await db.prepare('SELECT * FROM leave_audit WHERE leave_id = ? ORDER BY id DESC LIMIT 50').bind(leaveId).all<AuditRow>();
 	return res.results ?? [];

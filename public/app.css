@@ -1919,6 +1919,9 @@ form.inline:has(.tf-support) { margin-bottom: 28px; }
 .people-table td { vertical-align: middle; padding-top: 10px; padding-bottom: 10px; }
 .people-table th.num, .people-table td.num { text-align: right; font-variant-numeric: tabular-nums; }
 .people-table td.num { white-space: nowrap; }
+/* "4.5 / 10": the allowance quieter than what is used; over it, the error colour. */
+.people-table td.num .of { color: var(--md-on-surface-variant); }
+.people-table td.num.over, .people-table td.num.over .of { color: var(--md-error); font-weight: 500; }
 .people-table th .dot { width: 8px; height: 8px; vertical-align: 1px; }
 .people-table .tag { margin-left: 6px; height: 20px; }
 .people-table .push-state { margin-left: 6px; vertical-align: -3px; }

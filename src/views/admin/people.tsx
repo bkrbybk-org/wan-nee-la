@@ -1,6 +1,8 @@
 import { formatDays } from '../../domain/dates.ts';
 import { allottedFor } from '../../domain/leave.ts';
 import type { LeaveType, Quota, User } from '../../types.ts';
+import type { AuditRow } from '../../repo/db.ts';
+import { AuditItem } from './activity.tsx';
 import { YearNav } from '../layout.tsx';
 import { SelectField, TextField } from '../fields.tsx';
 import { FormActions } from '../parts.tsx';
@@ -17,6 +19,8 @@ export interface PeopleProps {
 	users: User[];
 	types: LeaveType[];
 	quotas: Quota[];
+	/** Days taken per person per type in `year`, confirmed bookings only. */
+	used: Map<string, Map<number, number>>;
 	pushCounts: Map<string, number> | null;
 	error?: string;
 	notice?: string;
@@ -44,7 +48,7 @@ export function AdminPeoplePage(props: PeopleProps) {
 	);
 }
 
-function PeopleBody({ year, users, types, quotas, pushCounts }: PeopleProps) {
+function PeopleBody({ year, users, types, quotas, used, pushCounts }: PeopleProps) {
 	const t = useT();
 	const lang = useLang();
 	// Only types that can still be booked: a retired type's rows stay in the
@@ -106,7 +110,7 @@ function PeopleBody({ year, users, types, quotas, pushCounts }: PeopleProps) {
 										<span class="muted mono person-email">{u.email}</span>
 									</td>
 									{offered.map((type) => (
-										<td class="num">{type.counts_quota ? formatDays(quotaFor(u.email, type)) : '—'}</td>
+										<UsedCell used={used.get(u.email)?.get(type.id) ?? 0} allotted={type.counts_quota ? quotaFor(u.email, type) : null} />
 									))}
 									<td class="row-action">
 										<a href={edit} class="icon-btn" aria-label={t('admin.editPerson', { name: u.display_name })}>
@@ -123,6 +127,44 @@ function PeopleBody({ year, users, types, quotas, pushCounts }: PeopleProps) {
 	);
 }
 
+/**
+ * "4.5 / 10": days used of the days allotted, so who is over or has most left
+ * reads off the roster without opening anyone. Over the allowance is in the
+ * error colour, and says so in words for a screen reader. A type with no
+ * allowance shows only what was taken, or a dash for none.
+ */
+function UsedCell({ used, allotted }: { used: number; allotted: number | null }) {
+	const t = useT();
+	if (allotted === null) {
+		return (
+			<td class="num">
+				{used > 0 ? (
+					<>
+						<span aria-hidden="true">{formatDays(used)}</span>
+						<span class="visually-hidden">{t('admin.usedOnly', { used: formatDays(used) })}</span>
+					</>
+				) : (
+					'—'
+				)}
+			</td>
+		);
+	}
+	const over = used > allotted;
+	return (
+		<td class={`num ${over ? 'over' : ''}`}>
+			<span aria-hidden="true">
+				{formatDays(used)}
+				<span class="of"> / {formatDays(allotted)}</span>
+			</span>
+			<span class="visually-hidden">
+				{over
+					? t('admin.usedOver', { used: formatDays(used), allotted: formatDays(allotted), over: formatDays(used - allotted) })
+					: t('admin.usedOf', { used: formatDays(used), allotted: formatDays(allotted) })}
+			</span>
+		</td>
+	);
+}
+
 export interface PersonProps {
 	user: User;
 	version?: string;
@@ -133,6 +175,10 @@ export interface PersonProps {
 	types: LeaveType[];
 	quotas: Quota[];
 	pushCount: number | null;
+	/** The latest changes someone else made to this person's leave. */
+	byOthers: AuditRow[];
+	/** Names for the trail's actors. */
+	users: User[];
 	error?: string;
 	notice?: string;
 }
@@ -152,6 +198,7 @@ export function AdminPersonPage(props: PersonProps) {
 			headExtra={<YearNav basePath={base} year={year} minYear={minYear} maxYear={maxYear} />}
 		>
 			<PersonBody {...props} />
+			<ChangedByOthers subject={props.subject} rows={props.byOthers} users={props.users} />
 		</AdminShell>
 	);
 }
@@ -205,3 +252,35 @@ function PersonBody({ subject, year, types, quotas, pushCount }: PersonProps) {
 		</section>
 	);
 }
+
+/**
+ * What other people — admins, in practice — did to this person's leave: booked
+ * it for them, moved it, removed it. The same lines as Activity, filtered to
+ * the ones the person did not make themselves, because those are the ones
+ * that come up when someone asks "who changed my leave?".
+ */
+export function ChangedByOthers({ subject, rows, users }: { subject: User; rows: AuditRow[]; users: User[] }) {
+	const t = useT();
+	const names = new Map(users.map((u) => [u.email, u.display_name]));
+	return (
+		<section class="card">
+			<h2>{t('admin.othersChanged', { name: subject.display_name })}</h2>
+			{rows.length === 0 ? (
+				<p class="muted">{t('admin.othersNone')}</p>
+			) : (
+				<>
+					<p class="muted">{t('admin.othersChangedHelp', { n: OTHERS_SHOWN })}</p>
+					<ul class="leave-list">
+						{rows.map((row) => (
+							<AuditItem row={row} names={names} />
+						))}
+					</ul>
+				</>
+			)}
+			<a class="btn text" href={`/admin/activity?audit_who=${encodeURIComponent(subject.email)}`}>{t('admin.othersAll')}</a>
+		</section>
+	);
+}
+
+/** How many of those the person page lists; Activity has the rest. */
+export const OTHERS_SHOWN = 10;

@@ -1,6 +1,6 @@
 # wan-nee-la — Progress
 
-Updated: 2026-10-23
+Updated: 2026-10-27
 
 > This repo is **public**. Every account id, hostname, database id and Access
 > value below is a placeholder; the real ones live in `wrangler.local.jsonc`,
@@ -8,7 +8,7 @@ Updated: 2026-10-23
 
 ## Status
 
-Deployed and serving. Version `f8f434ab-3f83-4952-9e23-fe364bd0e93b`, deployed 2026-10-23 with `npm run ship`, D1 `<database-id>` in APAC, behind Cloudflare Access on `<hostname>`. Production checks passed: the new version serves all traffic, `/health` and `/` both 302 to Access, production D1 answers, all twelve migrations are applied, and `shield:probe` stops all 17 violating requests at the edge.
+Deployed and serving. Version `2113104c-bba6-4f81-9cd3-99e49efd4b9f`, deployed 2026-10-27 with `npm run ship`, D1 `<database-id>` in APAC, behind Cloudflare Access on `<hostname>`. Production checks passed: the new version serves all traffic, `/health` and `/` both 302 to Access, production D1 answers, all twelve migrations are applied, and `shield:probe` stops all 17 violating requests at the edge.
 
 **In real use.** Twelve active users, 24 confirmed bookings, 26 holidays, four leave types, 49 rows in the audit trail (read 2026-10-20). That changes what matters here: the shared surfaces now have a real audience, so note visibility, the audit trail and the privacy rules on `/u/:email` are load-bearing rather than theoretical.
 
@@ -151,7 +151,7 @@ Two consequences worth remembering:
 
 ## Verification
 
-**1,137 automated assertions**, all green. CI runs them, and lint, on every push and pull request.
+**1,144 automated assertions**, all green. CI runs them, and lint, on every push and pull request.
 
 | Suite | Assertions | Covers |
 | --- | --- | --- |
@@ -164,7 +164,7 @@ Two consequences worth remembering:
 | `test-auth.mjs` | 15 | The development bypass: honoured for a loopback caller only, refused for any other |
 | `test-migrate.mjs` | 29 | Migration tracking: the generated SQL on SQLite, then `migrate.mjs` itself through wrangler — applied twice, a legacy database refused and then baselined |
 | `test-i18n.mjs` | 27 | Lookup, placeholders, plurals, and the catalogue's own health |
-| `smoke.mjs` | 526 | The HTTP layer — see below |
+| `smoke.mjs` | 533 | The HTTP layer — see below |
 | `test-browser.mjs` | 84 | Nine screenshots compared with per-platform references (the month on a phone, light, dark and in Thai, and a laptop; the booking dialog, My leave and a booking's page on a laptop; the admin People page on both), and axe-core's WCAG 2.1 A/AA rules on nine pages, failing on anything serious — then the calendar's own script in headless Chrome: the phone's day card, tapping and swiping it, what a screen reader is told, the folding Book button, the days-off-by-month chart, the busy-day count, the card staying on screen under both banners, the month swipe, the notification invitation, the entry popup, drag-to-move, remove and undo, booking from an empty day and the button held when the allowance cannot cover it, the narrower weekend columns with the bars still on their days, the phone's folded Upcoming and its colour key, the phone's Today card, dragging across days to book them, the Thai interface |
 | `check-openapi.mjs` | — | Each of the 43 routes is either documented in `openapi.yaml` or deliberately listed as not, and the API Shield 3.0.3 copy still builds from it, and its validation fingerprint moves only when validation does |
 
@@ -184,7 +184,7 @@ It is built against its own worst failure mode — passing while testing nothing
 
 ## Open items
 
-**No known bugs.** The push keypair mismatch (#40) was repaired on 2026-09-21. 1,137 assertions are green and `npm audit` is clean. The 2026-08-25 audit and the 2026-09-13 review both found and fixed what they turned up — the second a quota overdraw when moving a booking across New Year (#36) — and each fix is covered by a test or, where a test could not reach it, recorded in [ISSUES.md](ISSUES.md).
+**No known bugs.** The push keypair mismatch (#40) was repaired on 2026-09-21. 1,144 assertions are green and `npm audit` is clean. The 2026-08-25 audit and the 2026-09-13 review both found and fixed what they turned up — the second a quota overdraw when moving a booking across New Year (#36) — and each fix is covered by a test or, where a test could not reach it, recorded in [ISSUES.md](ISSUES.md).
 
 What follows is decisions, unfinished configuration, accepted trade-offs and debt — not defects.
 
@@ -265,6 +265,8 @@ Features — iCal, team grouping, coverage scoped to a team — are in PLAN.md s
 - The daily digest runs at 09:00, Mon–Fri, and stays silent on days nobody is away. Its push title is Thai only and names people rather than counting them — a lock screen gives it one line, and the names are the message.
 
 ## Change log
+
+- **2026-10-27** — Admin People shows each person's days used against their allowance ("4.5 / 10"), red when over, so who is overdrawn or has most left reads off the roster. A person's admin page lists the latest changes others made to their leave — booked for them, moved, removed — with a link to the rest in Activity. Dependabot's first two pull requests merged: Wrangler 4.152 and the workflow's `upload-artifact` v7 and SonarQube action 8.3; `npm audit` then found an undici advisory in Wrangler's local server, cleared in range by Wrangler 4.153.
 
 - **2026-10-23** — Accessibility checked by machine: axe-core runs the WCAG 2.1 A and AA rules on the month (phone, dark, laptop, Thai), the booking dialog, My leave, a booking's page and two admin pages, and fails the build on anything it rates serious. Its first run found, and this fixed: weekday headings for Saturday and Sunday, and the numbers of days outside the month or already gone, faded below 4.5:1 (they keep full ink now; the ground and dots still fade); links whose spoken name did not contain the text on screen — the day card's date, its rows, the bars, Upcoming, "+N more" and My leave's rows — which speech-input users say aloud to press (WCAG 2.5.3); and the logo link on a phone, which had no name at all. Three more screenshots are compared: the booking dialog, My leave and a booking's page. Found on the way, because today is Chulalongkorn Day: a bar for leave still running was faded as finished when a holiday today cut it short, and the Today card said "Not a working day" over someone booked for it.
 

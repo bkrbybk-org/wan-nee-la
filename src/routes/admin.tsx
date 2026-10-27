@@ -7,7 +7,7 @@ import { daysWithin, leaveSummary, toCsv } from '../domain/report.ts';
 import { parseLeaveTypeForm } from '../domain/leaveTypes.ts';
 import { toLang } from '../i18n/strings.ts';
 import * as db from '../repo/db.ts';
-import { AdminActivityPage, AdminExportPage, AdminHolidaysPage, AdminNotificationsPage, AdminOverviewPage, AdminPeoplePage, AdminPersonPage, AdminTypesPage, AdminYearEndPage, HolidayPreviewPage } from '../views/admin/index.ts';
+import { AdminActivityPage, AdminExportPage, AdminHolidaysPage, AdminNotificationsPage, AdminOverviewPage, AdminPeoplePage, AdminPersonPage, AdminTypesPage, OTHERS_SHOWN, AdminYearEndPage, HolidayPreviewPage } from '../views/admin/index.ts';
 import { lineConfigured, lineEnabled, pushConfigured, resolveGroupId, runDigest, runWeekAhead } from '../notify/digest.ts';
 import { runYearEnd, yearEndKey, yearEndReport } from '../notify/yearend.ts';
 import { type Ctx, userOf, say, sayMessage, leaveTypesOf, holidayReminder, clampInt, yearNavBounds, errorPage, page, validDateOr, isEmail, type AppEnv } from '../server/common.tsx';
@@ -155,15 +155,16 @@ app.post('/admin/year-end/remind', async (c) => {
 
 app.get('/admin/people', async (c) => {
 	const { year, minYear, maxYear } = adminYear(c);
-	const [users, types, quotas, pushCounts] = await Promise.all([
+	const [users, types, quotas, used, pushCounts] = await Promise.all([
 		db.listUsers(c.env.DB),
 		leaveTypesOf(c),
 		db.listQuotasForYear(c.env.DB, year),
+		db.usedByTypeForYear(c.env.DB, year),
 		pushConfigured(c.env) ? db.subscriptionCounts(c.env.DB) : Promise.resolve(null),
 	]);
 	return page(
 		c,
-		<AdminPeoplePage {...adminCommon(c)} year={year} minYear={minYear} maxYear={maxYear} users={users} types={types} quotas={quotas} pushCounts={pushCounts} />,
+		<AdminPeoplePage {...adminCommon(c)} year={year} minYear={minYear} maxYear={maxYear} users={users} types={types} quotas={quotas} used={used} pushCounts={pushCounts} />,
 	);
 });
 
@@ -172,10 +173,12 @@ app.get('/admin/people/:email', async (c) => {
 	const { year, minYear, maxYear } = adminYear(c);
 	const subject = isEmail(email) ? await db.getUser(c.env.DB, email) : null;
 	if (!subject) return redirectWithFlash(`/admin/people?y=${year}`, 'err', say(c, 'flash.unknownPerson'));
-	const [types, quotas, subs] = await Promise.all([
+	const [types, quotas, subs, byOthers, users] = await Promise.all([
 		leaveTypesOf(c),
 		db.listQuotas(c.env.DB, subject.email, year),
 		pushConfigured(c.env) ? db.subscriptionsFor(c.env.DB, subject.email) : Promise.resolve(null),
+		db.auditByOthers(c.env.DB, subject.email, OTHERS_SHOWN),
+		db.listUsers(c.env.DB),
 	]);
 	return page(
 		c,
@@ -188,6 +191,8 @@ app.get('/admin/people/:email', async (c) => {
 			types={types}
 			quotas={quotas}
 			pushCount={subs ? subs.length : null}
+			byOthers={byOthers}
+			users={users}
 		/>,
 	);
 });

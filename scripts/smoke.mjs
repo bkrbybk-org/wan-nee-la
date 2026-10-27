@@ -1195,6 +1195,27 @@ async function main() {
 		eq('book for: and the form comes back holding who it was for', refused?.draft?.f, 'zzzz');
 		res = await post('/api/v1/leave', { for: otherKey, leaveTypeId: '1', mode: 'one', startDate: FOR, dayPart: 'full' });
 		check('book for: checked against their bookings, not the admin\'s', /overlap|already/i.test(flashOf(res)?.message ?? ''), flashOf(res)?.message);
+
+		// --- the admin sees it: People's used / allowance, the person's changes --
+		const forYear = FOR.slice(0, 4);
+		const otherRow = (html) => /<tr[^>]*>(?:(?!<\/tr>)[^])*other@example\.com(?:(?!<\/tr>)[^])*<\/tr>/.exec(html)?.[0] ?? '';
+		let people = await (await fetch(`${BASE}/admin/people?y=${forYear}`)).text();
+		check('people: a cell is used / allowance', /<td class="num ">\s*<span aria-hidden="true">1<span class="of"> \/ \d+(\.5)?<\/span><\/span>/.test(otherRow(people)), otherRow(people).slice(0, 900));
+		check('people: and says it in words', otherRow(people).includes('1 of ') && otherRow(people).includes(' days used'), 'no words');
+		// An allowance of zero for the year: the day booked for them is over it.
+		d1(`INSERT OR REPLACE INTO quotas (user_email, year, leave_type_id, days_allotted) VALUES ('${OTHER}', ${forYear}, 1, 0)`);
+		people = await (await fetch(`${BASE}/admin/people?y=${forYear}`)).text();
+		check('people: over the allowance is marked, and says by how much', /<td class="num over">/.test(otherRow(people)) && otherRow(people).includes('1 over'), otherRow(people).slice(0, 900));
+		d1(`DELETE FROM quotas WHERE user_email = '${OTHER}' AND year = ${forYear}`);
+
+		const otherPage = await (await fetch(`${BASE}/admin/people/${encodeURIComponent(OTHER)}`)).text();
+		const heading = /Changes others made to Other(?:'|&#39;|&#x27;)s leave/;
+		const changes = otherPage.slice(otherPage.search(heading));
+		check('person: lists the changes others made to their leave', heading.test(otherPage), 'no section');
+		check('person: the admin booking it for them is one', /<ul class="leave-list">[^]*?Created/.test(changes), changes.slice(0, 600));
+		check('person: with the way to everything in Activity', changes.includes(`href="/admin/activity?audit_who=${encodeURIComponent(OTHER)}"`), 'no Activity link');
+		const ownPage = await (await fetch(`${BASE}/admin/people/${encodeURIComponent(ADMIN)}`)).text();
+		check('person: their own changes are not "by others"', ownPage.includes('Nobody else has changed their leave.'), 'the admin\'s own changes listed');
 	}
 
 	await stopServer();
