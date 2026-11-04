@@ -5,6 +5,7 @@
  */
 
 import { addDays, bangkokToday, dayOfWeek, isWeekend } from '../domain/dates.ts';
+import { cleanDisplayName } from '../domain/people.ts';
 import * as db from '../repo/db.ts';
 import type { NotifyChannel, NotifyKind } from '../repo/db.ts';
 import type { Env, LeaveEntry } from '../types.ts';
@@ -130,7 +131,7 @@ const TITLE_NAMES = 3;
  * this, because a notification saying nobody is away is one people switch off.
  */
 export function buildPushTitle(entries: readonly LeaveEntry[]): string {
-	const names = entries.map((e) => e.display_name);
+	const names = entries.map((e) => cleanDisplayName(e.display_name));
 	const rest = names.length - TITLE_NAMES;
 	const who = rest > 0 ? `${names.slice(0, TITLE_NAMES).join(', ')} และอีก ${rest} คน` : names.join(', ');
 	return `วันนี้ ${who} ลา`;

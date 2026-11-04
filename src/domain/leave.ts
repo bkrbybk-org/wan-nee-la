@@ -65,6 +65,14 @@ export interface BookingContext {
 	 * booking's dates would be to change what kind of leave it was.
 	 */
 	keepTypeId?: number;
+	/**
+	 * The days the booking being edited already holds against its own type and
+	 * year, credited back into `remaining`. An edit that asks for no more than
+	 * this adds nothing to the year, so it goes through even when the allowance
+	 * is overdrawn — otherwise someone over their quota could not fix a note or
+	 * shorten a booking, only cancel it.
+	 */
+	credit?: { typeId: number; days: number };
 }
 
 export type Validated = { ok: true; days: number; type: LeaveType } | { ok: false; error: Message };
@@ -219,7 +227,8 @@ export function validateBooking(input: BookingInput, ctx: BookingContext): Valid
 		return { ok: false, error: msg('error.overlap', { start: clash.start_date, end: clash.end_date }) };
 	}
 
-	if (type.counts_quota) {
+	const addsNothing = ctx.credit?.typeId === type.id && count.days <= ctx.credit.days;
+	if (type.counts_quota && !addsNothing) {
 		const left = ctx.remaining.get(type.id) ?? 0;
 		if (count.days > left && left <= 0) {
 			// Nothing left, or already overdrawn by an admin's correction: "-6.5

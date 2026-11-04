@@ -65,7 +65,7 @@ Nothing here is urgent. Ordered by cost-to-benefit.
 | --- | --- | --- | --- |
 | ~~4.1~~ | ~~Stop writing on every request~~ | — | **Done** (2026-09-01): gated on a read that compares a user's quota rows against the number of leave types, so a new year *and* a type added mid-year still seed. |
 | ~~4.2~~ | ~~Fix the `/admin` N+1~~ | — | **Done:** `listQuotasForYear`, one query. |
-| ~~4.3~~ | ~~Extend smoke coverage~~ | — | **Done:** all 32 routes. Current counts in [PROGRESS.md](PROGRESS.md#verification). |
+| ~~4.3~~ | ~~Extend smoke coverage~~ | — | **Done** (32 routes when closed; 43 now). Current counts in [PROGRESS.md](PROGRESS.md#verification). |
 | ~~4.4~~ | ~~Prune `notification_runs` and `leave_audit`~~ | — | **Done** (2026-09-18): the cron keeps audit rows three years and notification runs 90 days (ISSUES #26). |
 | ~~4.5~~ | ~~Correct `ARCHITECTURE.md` schema drift~~ | — | **Done:** the schema block is the one the migrations actually produce, checked against a migrated database. |
 | ~~4.6~~ | ~~Add a formatter and linter~~ | — | **Done:** ESLint with typescript-eslint and @stylistic, tuned to pass on the existing code with zero reformatting. Prettier was tried and cannot reach zero-diff here — the codebase's line breaks are editorial, not width-driven. See 4.10. |
@@ -95,6 +95,27 @@ None of these are needed for the app to do its job. Rough value order.
 | 5.7 | Carry-over of unused leave | **Owner** then **Opus** | An explicit v1 non-goal. Confirm before January. Until then `/admin/year-end` shows what is unbooked, and November's reminder tells each person. The ledger underneath is now sound — since 2026-09-09 leave is charged to the year it starts in, a year with no quota rows falls back to `default_days`, and moving a booking across New Year is checked against the year it lands in — so carry-over would be an adjustment on a correct per-year balance rather than a repair of one. |
 | 5.8 | Sharpen the coverage warning with teams | **Sonnet** | It counts the whole roster ("3 of 4 away"). With 5.4 it could count the people who actually cover for each other. |
 | ~~5.9~~ | ~~An admin UI for leave types~~ | — | **Done** (2026-09-18): add, edit, retire, and delete a type nobody has booked. |
+
+## 6. Open suggestions
+
+From the reviews of 2026-10-20 to 2026-11-03, by the ids they were proposed under, so a later review can say "do B23" without re-deriving the list. An item leaves this table when it ships (see PROGRESS).
+
+| ID | Suggestion |
+|---|---|
+| E6 | Build label only on `/admin`, not every page footer |
+| R1 | Team timeline: a Month ⇄ Timeline toggle on a laptop, one row per person |
+| A27 | `/health` reports the latest applied migration; `ship` checks it matches the code |
+| A31 | Unit tests for `ship`'s refusals (config drift, pending migration, schema warning) |
+| D3 | Split `scripts/smoke.mjs` (2,000+ lines, five sessions in sequence) |
+| B19 | "Your leave starts tomorrow" push in the evening before, which each person can turn off |
+| B21 | Carry-over (= 5.7, needs the policy first) |
+| B22 | Private iCal subscription per person (= 5.1) |
+| B23 | Calendar filters "Only mine" and "Pin a person", remembered per browser |
+| B24 | Print view of the month, A4 landscape |
+| B25 | Departments: a team per person, a calendar filter, coverage per team (= 5.4/5.8) |
+| B27 | "Book again" on a past booking |
+| B30 | Import holidays from an iCal feed |
+| B31 | Buddhist-era years (2569) in the Thai interface |
 
 ---
 

@@ -499,9 +499,14 @@ async function main() {
 	// against this year's remaining days and then recorded against next year's
 	// — spending this year's allowance stopped you booking next year's at all.
 	//
-	// +364 days keeps the weekday and lands in the following calendar year.
-	const NEXT_MON = addDays(MON, 364);
+	// The second Monday of next January, so every range below (up to +32 days)
+	// stays inside that one year. It was MON + 364, which from a December MON
+	// (2026-12-14) is 2027-12-13 — and +21 days from there is 2028, a year with
+	// a fresh allowance of its own, so "runs out" never did.
+	let NEXT_MON = `${Number(MON.slice(0, 4)) + 1}-01-08`;
+	while (new Date(`${NEXT_MON}T00:00:00Z`).getUTCDay() !== 1) NEXT_MON = addDays(NEXT_MON, 1);
 	eq('the next-year fixture really is a year on', Number(NEXT_MON.slice(0, 4)), Number(MON.slice(0, 4)) + 1);
+	eq('and its ranges stay inside that year', addDays(NEXT_MON, 32).slice(0, 4), NEXT_MON.slice(0, 4));
 
 	const annualUsed = (year) =>
 		d1Rows(
@@ -980,6 +985,12 @@ async function main() {
 		d1(`INSERT OR REPLACE INTO quotas (user_email, year, leave_type_id, days_allotted) VALUES ('${ADMIN}', ${soonYear}, 2, 0)`);
 		const overHtml = await (await fetch(`${BASE}/me?y=${soonYear}`)).text();
 		check('me: an overdrawn balance says so, as days over', /class="balance-card over"[^]*?Sick[^]*?days over/.test(overHtml), 'no overdrawn card');
+		// Overdrawn, a booking can still be edited as long as it asks for no
+		// more days: here, just its note. Lengthening it is still refused.
+		res = await post('/api/v1/leave/me-soon/edit', { leaveTypeId: '2', startDate: soon, endDate: soon, note: 'smoke note, edited' });
+		eq('overdrawn: editing only the note still saves', flashOf(res)?.kind, 'ok');
+		res = await post('/api/v1/leave/me-soon/edit', { leaveTypeId: '2', startDate: soon, endDate: addDays(soon, 7), note: 'smoke note' });
+		check('overdrawn: but lengthening the booking is refused', /No sick leave left/.test(flashOf(res)?.message ?? ''), flashOf(res)?.message);
 		d1(`DELETE FROM quotas WHERE user_email = '${ADMIN}' AND year = ${soonYear} AND leave_type_id = 2`);
 		d1("DELETE FROM leave_requests WHERE id IN ('me-soon', 'me-later', 'me-latest')");
 	}
@@ -998,6 +1009,10 @@ async function main() {
 	res = await settings({ lang: 'en', displayName: '   ' });
 	eq('one bad field refuses the whole form', flashOf(res)?.kind, 'err');
 	eq('and saves none of it — still Thai', d1Rows(`SELECT lang FROM users WHERE email = '${ADMIN}'`)[0]?.lang, 'th');
+	// A line break in a name would start a line of its own in the digests.
+	res = await settings({ lang: 'th', displayName: 'Admin\r\nSomchai W — Sick' });
+	eq('a name is saved as one line', d1Rows(`SELECT display_name FROM users WHERE email = '${ADMIN}'`)[0]?.display_name, 'Admin Somchai W — Sick');
+	await settings({ lang: 'th' });
 	res = await settings({ lang: 'en' });
 	page = await (await fetch(`${BASE}/me`)).text();
 	check('and back to English', page.includes('My leave'), 'English heading missing');
