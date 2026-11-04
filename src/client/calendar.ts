@@ -305,7 +305,10 @@ if (fab && agenda && 'IntersectionObserver' in window) {
 const UPCOMING_FOLDED = 4;
 const upcoming = document.querySelector<HTMLElement>('[data-upcoming]');
 const upcomingAll = upcoming?.querySelector<HTMLButtonElement>('[data-upcoming-all]');
-if (upcoming && upcomingAll && upcoming.querySelectorAll('.upcoming-day').length > UPCOMING_FOLDED) {
+// Today's group is left out of the count while the day card already shows it
+// (app.css hides it then), so "four days" means four the reader can see.
+const upcomingShown = upcoming ? [...upcoming.querySelectorAll('.upcoming-day')].filter((d) => getComputedStyle(d).display !== 'none').length : 0;
+if (upcoming && upcomingAll && upcomingShown > UPCOMING_FOLDED) {
 	upcoming.classList.add('folded');
 	upcomingAll.hidden = false;
 	upcomingAll.addEventListener('click', () => {

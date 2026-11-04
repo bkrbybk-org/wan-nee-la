@@ -17,6 +17,7 @@
  */
 
 import { addDays, describeRange, isWeekend, shortDate, weekdayName } from '../domain/dates.ts';
+import { cleanDisplayName } from '../domain/people.ts';
 import type { LeaveEntry } from '../types.ts';
 
 export const LINE_PUSH_URL = 'https://api.line.me/v2/bot/message/push';
@@ -95,7 +96,7 @@ export function buildDigest(date: string, entries: readonly LeaveEntry[]): strin
 	for (const e of entries) {
 		const multiDay = e.start_date !== e.end_date;
 		const span = multiDay ? `  · ${describeRange(e.start_date, e.end_date, e.start_half, e.end_half)}` : '';
-		lines.push(`• ${e.display_name} — ${e.type_label_en}${halfSuffix(e, date)}${span}`);
+		lines.push(`• ${cleanDisplayName(e.display_name)} — ${e.type_label_en}${halfSuffix(e, date)}${span}`);
 	}
 
 	lines.push('', `${entries.length} ${entries.length === 1 ? 'person' : 'people'} out.`);
@@ -140,7 +141,7 @@ export function weekAway(
 			const key = `${e.user_email}|${e.type_label_en}`;
 			const found = byPerson.get(key);
 			if (found) found.days.push(d);
-			else byPerson.set(key, { name: e.display_name, type: e.type_label_en, days: [d] });
+			else byPerson.set(key, { name: cleanDisplayName(e.display_name), type: e.type_label_en, days: [d] });
 		}
 	}
 	return byPerson;

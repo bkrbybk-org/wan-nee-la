@@ -1097,6 +1097,9 @@ form.inline:has(.tf-support) { margin-bottom: 28px; }
 		padding: 3px 2px;
 		border-radius: var(--md-shape-sm);
 	}
+	/* A month that spills into a sixth week (November 2026) would push the
+	   day card below an 812px screen; 48px still clears a 44px tap target. */
+	.grid:has(tbody > tr:nth-child(6)) .cell { height: 48px; }
 	.weekhead-cell { padding: 4px 0; font-size: 11px; }
 
 	/* One tap target per day, over everything else in the cell. */
@@ -2177,6 +2180,9 @@ a.my-link:focus-visible { outline: 2px solid var(--md-primary); outline-offset: 
 	.legend-item .muted { display: none; }
 	/* Folded by calendar.ts to the first few days; the button opens the rest. */
 	.cal-upcoming.folded .upcoming-day:nth-child(n+5) { display: none; }
+	/* Today's group, hidden above while the card shows today, is not one of
+	   the four: the fifth day takes its place. */
+	.cal-side:has(.agenda-view.day-mode .agenda-row.selected.today.has-people) .cal-upcoming.folded .upcoming-day.today ~ .upcoming-day:nth-child(5) { display: list-item; }
 }
 @media (min-width: 768px) {
 	.upcoming-all { display: none; }

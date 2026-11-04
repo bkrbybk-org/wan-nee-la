@@ -59,6 +59,7 @@ async function buildBookingContext(
 	]);
 
 	const remaining = new Map<number, number>();
+	let credit: { typeId: number; days: number } | undefined;
 	for (const t of types) {
 		const allotted = allottedFor(t, quotas);
 		let spent = used.get(t.id) ?? 0;
@@ -70,6 +71,7 @@ async function buildBookingContext(
 		// quota, before this check existed.
 		if (replacing && replacing.leave_type_id === t.id && Number(replacing.start_date.slice(0, 4)) === year) {
 			spent = round(spent - replacing.days_total);
+			credit = { typeId: t.id, days: replacing.days_total };
 		}
 		remaining.set(t.id, round(allotted - spent));
 	}
@@ -81,6 +83,7 @@ async function buildBookingContext(
 		remaining,
 		today,
 		keepTypeId,
+		credit,
 	};
 }
 
