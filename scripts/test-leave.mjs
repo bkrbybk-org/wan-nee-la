@@ -17,6 +17,7 @@ import {
 	visibleNote,
 	weekLanes,
 } from '../src/domain/leave.ts';
+import { cleanDisplayName } from '../src/domain/people.ts';
 import { initials, PERSON_COLORS, personColor, personColors, personKeys, shortName } from '../src/views/person.ts';
 import { parseLeaveTypeForm } from '../src/domain/leaveTypes.ts';
 import { defaultDisplayName } from '../src/repo/db.ts';
@@ -153,6 +154,18 @@ rejects(
 rejects('none left', validateBooking(booking({ endDate: '2026-08-17' }), ctx({ remaining: new Map([[1, 0]]) })), 'error.noneLeft');
 rejects('already overdrawn', validateBooking(booking({ endDate: '2026-08-17' }), ctx({ remaining: new Map([[1, -6.5]]) })), 'error.noneLeft');
 okDays('exactly the remaining balance', validateBooking(booking({ endDate: '2026-08-21' }), ctx({ remaining: new Map([[1, 5]]) })), 5);
+// Overdrawn, editing a 5-day booking: `remaining` already has its 5 days
+// credited back. Keeping or shortening it adds nothing to the year and goes
+// through; lengthening it, or moving the days to another type, does not.
+const overdrawnEdit = ctx({ remaining: new Map([[1, -1], [2, 30]]), credit: { typeId: 1, days: 5 } });
+okDays('overdrawn: an edit keeping the same days', validateBooking(booking({ endDate: '2026-08-21' }), overdrawnEdit), 5);
+okDays('overdrawn: an edit shortening the booking', validateBooking(booking({ endDate: '2026-08-18' }), overdrawnEdit), 2);
+rejects('overdrawn: an edit lengthening the booking', validateBooking(booking({ endDate: '2026-08-24' }), overdrawnEdit), 'error.noneLeft');
+rejects(
+	'credit for one type does not cover another',
+	validateBooking(booking({ endDate: '2026-08-18' }), ctx({ remaining: new Map([[1, -1], [4, 0]]), credit: { typeId: 4, days: 5 } })),
+	'error.noneLeft',
+);
 // Planned medical leave carries no allowance, so a zero balance must not block
 // it. Unpaid leave used to be the fixture for this; it was removed in 0010, and
 // medical is the type that actually has counts_quota = 0 now.
@@ -524,6 +537,15 @@ eq('type form: negative days rejected', typeErr({ default_days: '-1' }), 'flash.
 eq('type form: days over a year rejected', typeErr({ default_days: '366' }), 'flash.daysRange');
 eq('type form: fractional order rejected', typeErr({ sort_order: '1.5' }), 'flash.typeBadOrder');
 eq('type form: order over 999 rejected', typeErr({ sort_order: '1000' }), 'flash.typeBadOrder');
+
+// Display names: one line of visible text, so a name cannot add lines to the
+// plain-text digests.
+eq('name: a line break becomes a space', cleanDisplayName('Nok T.\nSomchai W — Sick'), 'Nok T. Somchai W — Sick');
+eq('name: CR, tab and LINE SEPARATOR too', cleanDisplayName('A\r\n\tB\u2028C'), 'A B C');
+eq('name: direction overrides removed', cleanDisplayName('\u202eNok\u2066'), 'Nok');
+eq('name: Thai kept as typed', cleanDisplayName('  นก ทองดี  '), 'นก ทองดี');
+eq('name: cut to 60, no trailing space', cleanDisplayName('a'.repeat(59) + ' bcd'), 'a'.repeat(59));
+eq('name: only control characters is empty', cleanDisplayName('\n\r\t'), '');
 
 console.log(failures === 0 ? '\nAll leave tests passed.' : `\n${failures} failure(s).`);
 process.exit(failures === 0 ? 0 : 1);

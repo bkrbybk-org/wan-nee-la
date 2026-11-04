@@ -1340,7 +1340,7 @@
 									},
 									"after": {
 										"type": "number",
-										"description": "Days left after it. Negative means the booking would be refused for lack of allowance."
+										"description": "Days left after it. Negative and below `remaining` means the booking would be refused for lack of allowance; an edit that adds no days (`after` at or above `remaining`) is accepted even when the year is overdrawn."
 									}
 								}
 							}

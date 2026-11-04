@@ -30,6 +30,14 @@ interface Balance {
 	after: number;
 }
 
+/**
+ * Whether the save would be refused for lack of allowance. Short is not
+ * enough: an edit that leaves `after` at or above `remaining` adds no days
+ * to the year, and the server lets it through even when the year is already
+ * overdrawn — a note or a shorter range, from someone over their quota.
+ */
+const refused = (b: Balance) => b.after < 0 && b.after < b.remaining;
+
 const forms = document.querySelectorAll<HTMLFormElement>('[data-booking]');
 
 for (const form of forms) enhance(form);
@@ -170,7 +178,7 @@ function enhance(form: HTMLFormElement) {
 			}
 			paintBalance(body.balance ?? null);
 			paintCoverage(body.coverage ?? null);
-			hold(typeof body.days !== 'number' || (body.balance != null && body.balance.after < 0));
+			hold(typeof body.days !== 'number' || (body.balance != null && refused(body.balance)));
 		} catch {
 			// Offline or the request failed. The summary is a nicety; the form
 			// still submits and the server still decides.
@@ -186,7 +194,7 @@ function enhance(form: HTMLFormElement) {
 			balance.classList.remove('bad');
 			return;
 		}
-		const short = data.after < 0;
+		const short = refused(data);
 		// Already at or past zero, "only -6.5 left" is nonsense: say none is left.
 		// Not when an edit gives days back and so still fits: that reads as usual.
 		const template = !short ? S.balance : data.remaining <= 0 ? S.balanceNone : S.balanceShort;

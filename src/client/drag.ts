@@ -23,9 +23,9 @@
 import { addDays, daysBetween } from '../domain/dates.ts';
 
 // Dragging a scrolling month grid on a touch screen fights the scroll
-// gesture and loses to it. Below this width the grid is hidden anyway (see
-// app.css's 768px breakpoint) and the agenda's tap-to-open-popup is the only
-// path — keep it that way.
+// gesture and loses to it. Below this width the grid is a tap-to-choose-a-day
+// grid of dots (app.css's 768px breakpoint, swipe to change month), and the
+// day card under it carries the Book and edit links — keep drag off there.
 const MIN_WIDTH = 768;
 
 // Distance the pointer must travel before a press becomes a drag, so a plain

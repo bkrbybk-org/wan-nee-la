@@ -1,5 +1,6 @@
 import { Hono } from 'hono';
 import { parseWeekStart } from '../domain/dates.ts';
+import { cleanDisplayName } from '../domain/people.ts';
 import { monthlyDays } from '../domain/report.ts';
 import { isLang, t } from '../i18n/strings.ts';
 import * as db from '../repo/db.ts';
@@ -125,7 +126,7 @@ app.get('/me/settings', (c) =>
 app.post('/me/settings', async (c) => {
 	const user = userOf(c);
 	const form = await c.req.parseBody();
-	const name = String(form.displayName ?? '').trim().slice(0, 60);
+	const name = cleanDisplayName(String(form.displayName ?? ''));
 	if (!name) return redirectWithFlash('/me/settings', 'err', say(c, 'flash.nameEmpty'));
 	// Only Sunday and Monday are offered; anything else is a crafted request,
 	// and silently storing it would rotate the grid to an arbitrary column.

@@ -416,8 +416,15 @@ async function main() {
 	check('phone: Upcoming stays under the day card', await evaluate("getComputedStyle(document.querySelector('.cal-upcoming')).display !== 'none'"), 'Upcoming hidden');
 	check(
 		'phone: and folds past its first four days, with a button for the rest',
-		await evaluate("(() => { const days = document.querySelectorAll('.upcoming-day').length; const all = document.querySelector('[data-upcoming-all]'); return days > 4 ? document.querySelector('.cal-upcoming').classList.contains('folded') && !all.hidden : !all || all.hidden; })()"),
+		await evaluate("(() => { const days = [...document.querySelectorAll('.upcoming-day')].filter((d) => !d.matches('.today') || getComputedStyle(d).display !== 'none').length; const all = document.querySelector('[data-upcoming-all]'); return days > 4 ? document.querySelector('.cal-upcoming').classList.contains('folded') && !all.hidden : !all || all.hidden; })()"),
 		'fold and button disagree',
+	);
+	// Today's group is hidden while the card shows today; it must not use up
+	// one of the four.
+	eq(
+		'phone: the fold shows four days, not counting today hidden above',
+		await evaluate("(() => { const shown = [...document.querySelectorAll('.upcoming-day')].filter((d) => getComputedStyle(d).display !== 'none').length; return document.querySelector('.cal-upcoming').classList.contains('folded') ? shown : 4; })()"),
+		4,
 	);
 	check('phone: a one-line key says which colour is which', await evaluate("getComputedStyle(document.querySelector('.legend')).display === 'flex' && document.querySelector('.legend-item').getBoundingClientRect().height <= 20"), 'no compact legend');
 
